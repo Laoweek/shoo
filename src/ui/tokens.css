@@ -1,0 +1,62 @@
+/* Shoo tokens. Source of truth: docs/spec/ui-design.md, Section 2.
+   Defined on :root and :host so the in-page shadow roots get the same values.
+   Dark is the exact inversion. Extension pages switch with prefers-color-scheme,
+   in-page UI switches with the [data-dark] attribute that follows YouTube's html[dark]. */
+:root,
+:host {
+  --paper: #fbfbfa;
+  --ink: #121214;
+  --muted: #5e5e65;
+  --edge: #8a8a8f;
+  --stroke: #8a8a8f;
+  --line: rgb(18 18 20 / 0.11);
+  --line-strong: rgb(18 18 20 / 0.22);
+  --tint: rgb(18 18 20 / 0.035);
+  --lit: rgb(18 18 20 / 0.06);
+  --danger: #c2410c;
+  --shadow: 0 18px 48px -18px rgb(18 18 20 / 0.28), 0 2px 6px rgb(18 18 20 / 0.06);
+
+  --c1: #6e4bff;
+  --c2: #00b39f;
+  --c3: #ffb000;
+  --c4: #ff4fa3;
+  --c5: #8bd100;
+  --c6: #ff8a3d;
+  --c7: #2ea8ff;
+  --c8: #b04bd8;
+  --c9: #9a9a2e;
+  --c10: #6b7a8f;
+
+  --font-ui-system: system-ui, -apple-system, 'Segoe UI', Ubuntu, sans-serif;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  color-scheme: light;
+}
+
+:host([data-dark]),
+:root[data-theme='dark'] {
+  --paper: #121214;
+  --ink: #fbfbfa;
+  --muted: #a6a6ad;
+  --line: rgb(251 251 250 / 0.12);
+  --line-strong: rgb(251 251 250 / 0.24);
+  --tint: rgb(251 251 250 / 0.045);
+  --lit: rgb(251 251 250 / 0.08);
+  --danger: #fb923c;
+  --shadow: 0 18px 48px -18px rgb(0 0 0 / 0.7), 0 2px 6px rgb(0 0 0 / 0.4);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #121214;
+    --ink: #fbfbfa;
+    --muted: #a6a6ad;
+    --line: rgb(251 251 250 / 0.12);
+    --line-strong: rgb(251 251 250 / 0.24);
+    --tint: rgb(251 251 250 / 0.045);
+    --lit: rgb(251 251 250 / 0.08);
+    --danger: #fb923c;
+    --shadow: 0 18px 48px -18px rgb(0 0 0 / 0.7), 0 2px 6px rgb(0 0 0 / 0.4);
+    color-scheme: dark;
+  }
+}

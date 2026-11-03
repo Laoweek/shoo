@@ -1,0 +1,43 @@
+{
+  "name": "error-422-image-too-large",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "cloudflare"
+        ],
+        "allow_fallbacks": false,
+        "data_collection": "deny"
+      },
+      "state": [
+        "Title: Coastline timelapse",
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "data:image/jpeg;base64,<5727472 bytes of a 3400x3400 JPEG elided>"
+          }
+        }
+      ],
+      "questions": {
+        "R4": {
+          "type": "noul",
+          "instructions": "The thumbnail image shows: the sea"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "message": "HTTP 422: {\"errors\":[{\"message\":\"AiError: AiError: {\\\"error\\\":{\\\"type\\\":\\\"invalid_request\\\",\\\"message\\\":\\\"Request body failed validation\\\",\\\"details\\\":{\\\"formErrors\\\":[],\\\"fieldErrors\\\":{\\\"images\\\":[\\\"image exceeds the decoded byte limit\\\"]}}}} (REDACTED)\",\"code\":5012}],\"success\":false,\"result\":{},\"messages\":[]}",
+        "code": 422
+      }
+    }
+  }
+}

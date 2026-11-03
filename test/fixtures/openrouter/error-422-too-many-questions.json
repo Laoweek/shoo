@@ -1,0 +1,37 @@
+{
+  "name": "error-422-too-many-questions",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "cloudflare"
+        ],
+        "allow_fallbacks": false
+      },
+      "state": {
+        "viewer_does_not_want": {
+          "R1": "Reaction videos, where someone watches and reacts to other content",
+          "R2": "Crypto, day trading, or get-rich-quick finance",
+          "R3": "Celebrity gossip and drama"
+        }
+      },
+      "questions": {
+        "note": "65 noul questions t01..t65, elided"
+      }
+    }
+  },
+  "response": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "message": "HTTP 422: {\"errors\":[{\"message\":\"AiError: AiError: {\\\"error\\\":{\\\"type\\\":\\\"invalid_request\\\",\\\"message\\\":\\\"Request body failed validation\\\",\\\"details\\\":{\\\"formErrors\\\":[],\\\"fieldErrors\\\":{\\\"questions\\\":[\\\"Dictionary should have at most 64 items after validation, not 65\\\"]}}}} (REDACTED)\",\"code\":5012}],\"success\":false,\"result\":{},\"messages\":[]}",
+        "code": 422
+      }
+    }
+  }
+}

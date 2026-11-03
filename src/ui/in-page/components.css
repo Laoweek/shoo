@@ -1,0 +1,538 @@
+/* In-page components (docs/spec/ui-design.md, Section 4). Hand-written, px only, tokens only.
+   Imported by src/ui/in-page.css, which is injected inline into every Shoo shadow root. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+button {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.sw {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+/* The Rule tag (parts.tsx): swatch + the Rule's label, its name or else its text. The label is what shrinks first on
+   every surface, to an ellipsis (the tooltip has the full Rule text). */
+.tag {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 700;
+}
+.lb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.muted {
+  color: var(--muted);
+}
+/* src/youtube/mount.ts measures the narrowest width of a chip or label with data-measuring set: the label counts only
+   as the room it needs to show a word, or a long label would always look too wide to sit beside YouTube's duration
+   badge. With less room than that beside the badge, the chip or label sits above it. */
+:host([data-measuring]) .lb {
+  contain: inline-size;
+  min-width: 40px;
+}
+
+/* Buttons. Full-chip buttons look 30 px tall and hit 44 px (::after); compact icon buttons are 24 px. */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btn::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+.btn:hover {
+  background: var(--tint);
+}
+.btn.solid {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.btn.solid:hover {
+  opacity: 0.9;
+}
+.ib {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: transparent;
+}
+.ib:hover {
+  background: var(--tint);
+}
+.ib.solid {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+.ib svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.link:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Review chip and Dry-run label: overlay the thumbnail's bottom-left, clear of YouTube's duration badge
+   (src/youtube/mount.ts places and sizes the host). */
+.chip,
+.label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  max-width: 100%;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+.chip {
+  padding: 6px 6px 6px 10px;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+.chip.compact {
+  flex-wrap: nowrap; /* one row: its width is what decides beside or above the badge */
+  gap: 6px 8px;
+  padding: 4px 4px 4px 8px;
+}
+.chip.compact .note {
+  flex: none;
+  min-width: 0;
+  font-weight: 600;
+}
+.chip > .eyes {
+  padding-right: 8px;
+  box-sizing: content-box;
+  border-right: 1px solid var(--line);
+}
+.what,
+.note {
+  flex: 1 1 0%;
+  min-width: 96px;
+}
+/* "Remove?", the Rule tag and the percent come first: the buttons wrap to a second row before the label shrinks
+   (flex-basis auto), but the three always stay beside the eyes (31 px plus the 10 px gap). They keep at least ~180 px,
+   so the label never shrinks under ~70 px. */
+.what {
+  display: inline-flex;
+  flex-basis: auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 180px;
+  max-width: calc(100% - 41px);
+}
+/* A long Rule label covers at most 200 px of the thumbnail, about 28 characters (ui-design.md Section 4, Review chip). */
+.what .lb,
+.label .lb {
+  max-width: 200px;
+}
+/* Compact: swatch and a short label between the eyes and the icon buttons. 112 px shows a 16-character name such as
+   "Crypto & trading" whole on Home's 300 px thumbnails, where the chip still fits beside the duration badge. */
+.chip.compact .lb,
+.label.compact .lb {
+  max-width: 112px;
+}
+.chip .link {
+  white-space: normal;
+  text-align: left;
+}
+.what b {
+  flex: none;
+  font-weight: 600;
+}
+.acts {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+}
+.label {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  padding: 4px 10px 4px 8px;
+  border: 1px dashed var(--edge);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* Removed-Tile annotation: one line over the empty top band of YouTube's placeholder, no surface of its own.
+   The host is positioned by the caller and takes no pointer events, so only Shoo's buttons are clickable. */
+.annot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.annot .link,
+.annot .tag {
+  color: var(--ink);
+}
+.annot .link {
+  pointer-events: auto;
+}
+/* The Rule label is the text that shrinks: from nothing it grows to its whole width (basis 0, max-width max-content),
+   so a long label never pushes Keep to a second line. It keeps room for a word (min-width), or wraps to its own line
+   ("Already shooed above" on a narrow thumbnail). It takes pointer events for its tooltip, except on "Already shooed
+   above", which stays passive over the thumbnail. */
+.annot .tag {
+  flex: 1 1 0%;
+  min-width: 54px;
+  max-width: max-content;
+}
+.annot:not(.dup) .tag {
+  pointer-events: auto;
+}
+/* Line two: what was shooed (ink) and its context (muted), one line with an ellipsis. Line one's 24 px targets already
+   leave air under their text, so the line sits flush under them (row-gap 0 below). It takes pointer events only for
+   its tooltip. */
+.annot .vid {
+  display: flex;
+  flex: 1 0 100%;
+  min-width: 0;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.annot .vid bdi {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The title gives way first: a channel name never shrinks, it is only capped at half the line (60% when it leads,
+   on the "Don't recommend channel" placeholder). Any shrink, even 1 px, would show an ellipsis. */
+.annot .vid .chn {
+  flex-shrink: 0;
+  max-width: 50%;
+}
+.annot .vid .nm.chn {
+  max-width: 60%;
+}
+.annot .nm {
+  color: var(--ink);
+}
+.annot .sep::before {
+  content: '·';
+  margin: 0 6px 0 4px; /* an ellipsis before it already ends in air */
+}
+/* No room for line two between the placeholder's top and YouTube's buttons (mount.ts sets data-tight): the title
+   takes the place of "Shooed by" in line one, right after the eyes and without the channel (after the Rule tag it would
+   read as part of the Rule). On the "Don't recommend channel" placeholder "Channel shooed by" is the fact that matters
+   (YouTube's sentence is covered there), so the title goes. */
+:host([data-tight]) .annot:not(.chan) .by,
+:host([data-tight]) .annot:not(.chan) .vid :is(.sep, .chn:not(.nm)),
+:host([data-tight]) .annot.chan .vid {
+  display: none;
+}
+/* The folded line never wraps: the title shrinks to its ellipsis instead, and never grows, so the line stays centred. */
+:host([data-tight]) .annot:not(.chan) {
+  flex-wrap: nowrap;
+}
+:host([data-tight]) .annot .vid {
+  flex: 0 1 auto;
+  min-width: 48px;
+  order: -1;
+}
+:host([data-tight]) .annot > .eyes {
+  order: -2;
+}
+/* Folded, the title comes first: the Rule label takes at most 40% of the line. */
+:host([data-tight]) .annot:not(.chan) .tag {
+  flex: 0 1 auto;
+  max-width: 40%;
+}
+/* No 8 px band above YouTube's sentence (mount.ts sets data-cramped, --shoo-cover and --shoo-ground): rather than cut
+   through it, the lines cover the room above YouTube's first button, centred in it, in the colour YouTube paints
+   there, so the card shows no patch (paper only when that colour is unknown). Flat, no shadow, no outline. */
+:host([data-cramped]) .annot {
+  --shoo-fill: var(--shoo-ground, var(--paper));
+  min-height: var(--shoo-cover, 24px);
+  /* Where YouTube's sentence overflows above the card, the top --shoo-cap px are covered only as wide as the sentence
+     (--shoo-cap-x, --shoo-cap-w), so the card's outline beside it stays, and the lines centre below it. */
+  padding-top: var(--shoo-cap, 0px);
+  align-content: center; /* the title line stays under line one in a tall cover */
+  border-radius: 6px;
+  background:
+    linear-gradient(var(--shoo-fill), var(--shoo-fill)) var(--shoo-cap-x, 0px) 0 / var(--shoo-cap-w, 100%) var(--shoo-cap, 0px) no-repeat,
+    linear-gradient(var(--shoo-fill), var(--shoo-fill)) 0 var(--shoo-cap, 0px) / 100% 100% no-repeat;
+}
+/* Even the folded line is taller than the room above YouTube's buttons (mount.ts sets data-min): "Shooed by" goes. */
+:host([data-min]) .annot .by {
+  display: none;
+}
+/* One line on narrow placeholders. Each step comes where the Rule label would keep less than about 100 px: line one
+   needs about 323 px plus the label, so below 432 px the channel action shows its user-check icon ("Crypto & trading"
+   still shows whole above that), and below 288 px "Shooed by" goes too. The host has a fixed width (mount.ts), so the
+   annotation can be its own query container. */
+.annot:not(.dup) {
+  container-type: inline-size;
+  row-gap: 0;
+  justify-content: center; /* YouTube's card is a centred stack: sentence, then buttons */
+}
+.annot:not(.dup) .vid {
+  justify-content: center;
+}
+.annot .ch .ib {
+  display: none;
+}
+@container (max-width: 431px) {
+  .annot .ch {
+    text-decoration: none;
+  }
+  .annot .ch .tx {
+    display: none;
+  }
+  .annot .ch .ib {
+    display: inline-grid;
+  }
+}
+@container (max-width: 287px) {
+  .annot .by {
+    display: none;
+  }
+  /* Folded this narrow (Home at 5 or more per row), title and label together get about 105 px and both end as stubs.
+     The title is the only way to tell which video went, so it takes the room and the Rule shows as its swatch, named
+     by its tooltip and the screen-reader sentence. */
+  :host([data-tight]) .annot:not(.chan) .tag {
+    flex: none;
+    min-width: 0;
+  }
+  :host([data-tight]) .annot:not(.chan) .tag .lb {
+    display: none;
+  }
+}
+/* "Channel shooed by" is about 52 px longer than "Shooed by", so each step comes sooner on the channel placeholder. */
+@container (max-width: 474px) {
+  .annot.chan .ch {
+    text-decoration: none;
+  }
+  .annot.chan .ch .tx {
+    display: none;
+  }
+  .annot.chan .ch .ib {
+    display: inline-grid;
+  }
+}
+@container (max-width: 339px) {
+  .annot.chan .by {
+    display: none;
+  }
+}
+/* "Already shooed above" sits over a thumbnail, so it gets the label's surface: text contrast comes from the tokens,
+   never from the picture. Passive, so no shadow and no outline. */
+.annot.dup {
+  gap: 4px 8px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  white-space: nowrap;
+}
+
+/* Batch summary and notices: one dock fixed at the bottom-right of the viewport. The dock positions
+   itself, so it works in any host (the host stays an inline, zero-size element in <body>). */
+.dock {
+  position: fixed;
+  right: 24px;
+  bottom: calc(24px + var(--shoo-lift, 0px));
+  z-index: 2300;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  width: 320px;
+  pointer-events: none;
+}
+.panel.fade {
+  animation-name: shoo-fade;
+}
+.panel {
+  display: grid;
+  gap: 10px;
+  width: 320px;
+  padding: 14px 14px 12px 16px;
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  pointer-events: auto;
+  animation: shoo-rise 240ms var(--ease-out-expo) both;
+}
+/* Dark only: YouTube's #0F0F0F ground swallows the shadow under a #121214 panel, so floating panels add a 1 px
+   --line-strong ring (drawn in box-shadow, not a border). ui-design.md Section 2, "Space, shape, elevation". */
+:host([data-dark]) .panel,
+:host([data-dark]) .pill {
+  box-shadow: 0 0 0 1px var(--line-strong), var(--shadow);
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.notice h2 {
+  font-size: 14px;
+}
+.notice h2.danger {
+  color: var(--danger);
+}
+/* One row per Rule: the tag, its label cut with an ellipsis, then the count right-aligned. "+N more Rules" lines up
+   with the labels. */
+.rules {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rules li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.rules .tag {
+  font-weight: 600; /* no heavier than the 16 px headline */
+}
+.rules .n {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 500;
+}
+.rules .more {
+  gap: 6px;
+  color: var(--muted);
+}
+.rules .more .sw {
+  visibility: hidden; /* where the moment lands the squares of the Rules folded in here */
+}
+.esc {
+  margin: 0;
+}
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+}
+.moment {
+  position: fixed;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.sq {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ink);
+  will-change: transform, opacity;
+}
+
+@keyframes shoo-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes shoo-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .panel.fade {
+    animation: shoo-fade 150ms ease-out both;
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "_doc": "Rule sets for the Decision model calibration (scripts/calibration/README.md). Refs follow Shoo's R/K numbering. A holds the Topic starter rules from src/locales/en.yml starter.*.text in starter order. The fifth starter, 'Shorts', is an Exact rule (kind 'short', src/ui/pages/rules.ts STARTERS) that Shoo matches locally and never sends to the model, so it is not in A. sameAsB maps each A ref to the B ref with the identical text. E is A with R3 relabelled for the intent 'get-rich-quick hype only' (labels.json E, from labellers/getrich-labeller{1,2}.json). Its texts and sameAsB are A's. run.mjs --rule-text R3=<text> tries other R3 wordings against the same labels.",
+  "A": {
+    "name": "Topic starter rules",
+    "remove": {
+      "R1": "Reaction videos, where someone watches and reacts to other content",
+      "R2": "Clickbait: exaggerated or misleading titles made to get clicks",
+      "R3": "Crypto, day trading, or get-rich-quick finance",
+      "R4": "Celebrity gossip and drama"
+    },
+    "sameAsB": { "R1": "R4", "R2": "R5", "R3": "R3", "R4": "R2" }
+  },
+  "B": {
+    "name": "Realistic 10-rule set",
+    "remove": {
+      "R1": "Movie clips and scenes cut from films",
+      "R2": "Celebrity gossip and drama",
+      "R3": "Crypto, day trading, or get-rich-quick finance",
+      "R4": "Reaction videos, where someone watches and reacts to other content",
+      "R5": "Clickbait: exaggerated or misleading titles made to get clicks",
+      "R6": "True crime",
+      "R7": "AI hype and 'this changes everything' tech news",
+      "R8": "Pranks and staged challenge videos",
+      "R9": "Political outrage commentary",
+      "R10": "Kids' cartoons and nursery rhymes"
+    }
+  },
+  "C": {
+    "name": "Topic Keep rules",
+    "keep": {
+      "K1": "Programming tutorials and talks",
+      "K2": "Long-form science explainers"
+    }
+  },
+  "D": {
+    "name": "Thumbnail rules",
+    "remove": {
+      "T1": "Shocked faces, red arrows or circled objects",
+      "T2": "A person pointing at the camera",
+      "T3": "Text-heavy thumbnails with huge captions"
+    }
+  },
+  "E": {
+    "name": "Topic starter rules, Crypto rule meant as hype only",
+    "remove": {
+      "R1": "Reaction videos, where someone watches and reacts to other content",
+      "R2": "Clickbait: exaggerated or misleading titles made to get clicks",
+      "R3": "Crypto, day trading, or get-rich-quick finance",
+      "R4": "Celebrity gossip and drama"
+    },
+    "sameAsB": { "R1": "R4", "R2": "R5", "R3": "R3", "R4": "R2" }
+  }
+}

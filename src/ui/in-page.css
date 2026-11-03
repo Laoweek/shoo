@@ -1,0 +1,22 @@
+/* In-page UI on YouTube, injected inline into each shadow root (ADR 0006).
+   px only, never rem: YouTube sets html { font-size: 10px }. System font stack, no FontFace. */
+@import './tokens.css';
+@import './eyes.css';
+@import './in-page/components.css';
+
+:host {
+  all: initial;
+  font-family: var(--font-ui-system);
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+:focus-visible {
+  /* Transparent outline keeps a visible ring in forced-colours mode, which drops box-shadow. */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);
+}

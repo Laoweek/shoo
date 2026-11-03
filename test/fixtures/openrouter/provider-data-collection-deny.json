@@ -1,0 +1,57 @@
+{
+  "name": "provider-data-collection-deny",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "cloudflare"
+        ],
+        "allow_fallbacks": false,
+        "data_collection": "deny"
+      },
+      "state": {
+        "viewer_does_not_want": {
+          "R1": "Crypto, day trading, or get-rich-quick finance"
+        }
+      },
+      "questions": {
+        "t01": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one of the rules in viewer_does_not_want?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "answers": {
+        "t01": {
+          "type": "noul",
+          "noul": 0.9618
+        }
+      },
+      "usage": {
+        "input_tokens": 218,
+        "output_tokens": 0,
+        "cost": 0.00001962
+      },
+      "id": "REDACTED",
+      "provider": "Cloudflare"
+    }
+  }
+}

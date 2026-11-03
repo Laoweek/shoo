@@ -1,0 +1,77 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildChatRequest > builds the §6 request with json_schema, temperature 0 and max_tokens 64 + 48 per Tile 1`] = `
+{
+  "max_tokens": 160,
+  "messages": [
+    {
+      "content": "You judge recommended YouTube videos for one viewer. The rules and examples follow as JSON.
+viewer_does_not_want maps rule refs to videos the viewer wants removed. viewer_always_wants maps rule refs to videos the viewer always wants to see. viewer_kept_anyway lists videos the viewer chose to keep, and similar videos should be kept.
+The user message is a JSON array of videos. Return exactly one result per video, with its id.
+If a video matches a rule in viewer_always_wants, set outcome to keep and rule to that ref.
+Otherwise, if it matches a rule in viewer_does_not_want, set outcome to remove and rule to that ref.
+Otherwise set outcome to keep and rule to null.
+Set probability to the probability, from 0 to 1, that the viewer wants the video removed.
+
+{"viewer_does_not_want":{"R1":"Reaction videos"},"viewer_always_wants":{"K2":"Programming tutorials"},"viewer_kept_anyway":["Kept one (channel: Chan)"]}",
+      "role": "system",
+    },
+    {
+      "content": "[{"id":"t01","title":"Reacting to X","channel":"Jake","duration":"10:00","surface":"home page"},{"id":"t02","title":"Rust in 10 minutes","surface":"home page"}]",
+      "role": "user",
+    },
+  ],
+  "model": "my-model",
+  "response_format": {
+    "json_schema": {
+      "name": "shoo_verdicts",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "results": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                },
+                "outcome": {
+                  "enum": [
+                    "keep",
+                    "remove",
+                  ],
+                  "type": "string",
+                },
+                "probability": {
+                  "type": "number",
+                },
+                "rule": {
+                  "type": [
+                    "string",
+                    "null",
+                  ],
+                },
+              },
+              "required": [
+                "id",
+                "outcome",
+                "rule",
+                "probability",
+              ],
+              "type": "object",
+            },
+            "type": "array",
+          },
+        },
+        "required": [
+          "results",
+        ],
+        "type": "object",
+      },
+      "strict": true,
+    },
+    "type": "json_schema",
+  },
+  "temperature": 0,
+}
+`;

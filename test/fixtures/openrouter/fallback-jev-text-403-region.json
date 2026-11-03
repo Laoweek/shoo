@@ -1,0 +1,120 @@
+{
+  "name": "fallback-jev-text-403-region",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "typesafe/jev-1.13",
+      "provider": {
+        "order": [
+          "typesafe"
+        ],
+        "allow_fallbacks": false
+      },
+      "state": {
+        "viewer_does_not_want": {
+          "R1": "Reaction videos, where someone watches and reacts to other content",
+          "R2": "Crypto, day trading, or get-rich-quick finance",
+          "R3": "Celebrity gossip and drama"
+        },
+        "viewer_kept_anyway": [
+          "Vocal coach reacts to classic rock songs (channel: Vocal Coach Ana)"
+        ]
+      },
+      "questions": {
+        "t01": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t02": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t03": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t04": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Taylor and Travis: the breakup rumors explained",
+              "channel": "Pop Tea Daily",
+              "duration": "12:00",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "message": "This model is not available in your region.",
+        "code": 403,
+        "metadata": {
+          "routing_funnel": [
+            {
+              "step": "Initial Endpoints",
+              "endpoint_count": 1
+            }
+          ],
+          "failed_routing_step": "Gate Endpoints with Geo Restrictions"
+        }
+      }
+    }
+  }
+}

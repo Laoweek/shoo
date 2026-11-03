@@ -1,0 +1,10 @@
+{
+  "ratio": 3.1088,
+  "extractMedianMs": 88.748,
+  "calibrationMedianMs": 28.547,
+  "tiles": 14,
+  "repeat": 50,
+  "recordedAt": "2026-10-09",
+  "node": "v24.16.0",
+  "note": "ratio = median extraction latency / median calibration latency, same run. Only ratio is compared."
+}

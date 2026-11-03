@@ -1,0 +1,40 @@
+<!-- captured 2026-10-09 from youtube.com watch sidebar, lang=en-GB, structural skeleton (attributes limited to class/role/aria), anonymized.
+     State: after clicking "Not interested". The SAME yt-lockup-view-model element is kept; YouTube swaps its inner content
+     for div.ytDismissibleItemReplacedContent. For "Don't recommend channel" the structure is identical, the text is
+     "We won't recommend videos from this channel to you again" and the second action is an <a> "Learn more" instead of a "Tell us why" button.
+     Undo restores the original inner content into the same element (observed ~15 ms after the click). -->
+<yt-lockup-view-model class="ytd-item-section-renderer lockup ytLockupViewModelWrapper">
+  <div class="ytDismissibleItemReplacedContent">
+    <div>
+      <notification-multi-action-renderer class="ytNotificationMultiActionRendererHost">
+        <span class="ytNotificationMultiActionRendererTextContainer">
+          <span class="ytAttributedStringHost ytAttributedStringWhiteSpacePreWrap" role="text">Video removed</span>
+        </span>
+        <div class="ytNotificationMultiActionRendererButtonContainer">
+          <div>
+            <button-view-model class="ytSpecButtonViewModelHost ytNotificationMultiActionRendererButton">
+              <button class="ytSpecButtonShapeNextHost ytSpecButtonShapeNextTonal ytSpecButtonShapeNextMono ytSpecButtonShapeNextSizeM" aria-disabled="false">
+                <div class="ytSpecButtonShapeNextButtonTextContent ytSpecButtonShapeNextElevatedContent">
+                  <span class="ytAttributedStringHost ytAttributedStringWhiteSpaceNoWrap" role="text">Undo</span>
+                </div>
+                <yt-touch-feedback-shape aria-hidden="true" class="ytSpecTouchFeedbackShapeHost ytSpecTouchFeedbackShapeTouchResponse">
+                  <div class="ytSpecTouchFeedbackShapeStroke"></div>
+                  <div class="ytSpecTouchFeedbackShapeFill"></div>
+                </yt-touch-feedback-shape>
+              </button>
+            </button-view-model>
+          </div>
+          <div>
+            <button-view-model class="ytSpecButtonViewModelHost ytNotificationMultiActionRendererButton">
+              <button class="ytSpecButtonShapeNextHost ytSpecButtonShapeNextFilled ytSpecButtonShapeNextMono ytSpecButtonShapeNextSizeM" aria-disabled="false">
+                <div class="ytSpecButtonShapeNextButtonTextContent">
+                  <span class="ytAttributedStringHost ytAttributedStringWhiteSpaceNoWrap" role="text">Tell us why</span>
+                </div>
+              </button>
+            </button-view-model>
+          </div>
+        </div>
+      </notification-multi-action-renderer>
+    </div>
+  </div>
+</yt-lockup-view-model>

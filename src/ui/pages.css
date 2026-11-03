@@ -1,0 +1,75 @@
+/* Extension pages (popup, settings, onboarding). Fonts ship here only (ADR 0006). */
+/* Scan only src/ for class names, so builds from the AMO sources zip (no docs/ or test/) emit identical CSS. */
+@import 'tailwindcss' source(none);
+@source '../../src';
+@source not '../../src/**/*.{test,bench}.{ts,tsx}';
+@import './tokens.css';
+@import './eyes.css';
+
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('../../node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-opsz-normal.woff2') format('woff2-variations');
+}
+
+@theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Geist', sans-serif;
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-edge: var(--edge);
+  --color-stroke: var(--stroke);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-tint: var(--tint);
+  --color-lit: var(--lit);
+  --color-danger: var(--danger);
+  --shadow-float: var(--shadow);
+}
+
+@layer base {
+  html {
+    background: var(--paper);
+    scrollbar-color: var(--stroke) transparent;
+    scrollbar-width: thin;
+  }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    scrollbar-color: var(--stroke) transparent;
+    scrollbar-width: thin;
+    accent-color: var(--ink);
+    caret-color: var(--ink);
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--ink) 18%, var(--paper));
+    color: var(--ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: -0.025em;
+  }
+}

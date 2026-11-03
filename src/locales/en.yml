@@ -1,0 +1,818 @@
+# English catalogue. Key format area.component.message (docs/spec/ui-design.md, Section 9).
+# Placeholders: named ({cap}, {host}, {count}) as the spec asks, filled by t(key, { cap: 500 }).
+# Plurals use the 1 / n forms with the count as $1: t(key, count) or t(key, count, { named }).
+# A key is either a message or a group, never both, so "error" groups hold one message per reason.
+extName: Shoo · Clear unwanted recommendations for YouTube
+extDescription: Write what you don't want to see. Shoo tells YouTube "Not interested" for you, and shows which rule did it.
+commandToggle: Turn Shoo on or off
+
+common:
+  wordmark: Shoo
+  loading: Loading…
+  dismiss: Dismiss
+  retry: Retry
+  cancel: Cancel
+  save: Save
+  add: Add
+  delete: Delete
+  undo: Undo
+  keep: Keep
+  new: New
+  openSettings: Open settings
+  keepChannel: Always keep this channel
+  ruleRef: Rule {ref}
+
+# Visually hidden status text beside the wordmark (ui-design.md Section 3, Accessibility).
+eyes:
+  status:
+    watching: Shoo is on
+    judging: Shoo is checking videos
+    review: Shoo is waiting for you
+    paused: Shoo is paused
+    error: Shoo needs attention
+
+mode:
+  label: Mode
+  auto: Auto
+  review: Review
+  dryRun: Dry-run
+  hint:
+    auto: Shoo removes straight away and tells you once per batch.
+    review: Shoo asks on the video before telling YouTube anything.
+    dryRun: Shoo only labels what it would remove. Nothing reaches YouTube.
+
+verdict:
+  remove: Remove
+  keep: Keep
+  pending: …
+  percent: '{p}%'
+  label:
+    remove: 'Verdict: Remove, Rule: {rule}, {p} percent'
+    removeExact: 'Verdict: Remove, Rule: {rule}'
+    keep: 'Verdict: Keep'
+    pending: Judging…
+
+# label: the chip. text: the Rule the Decision model reads (calibrated, see docs/spec/decision-engine.md Section 2.3).
+starter:
+  reaction:
+    label: Reaction videos
+    text: Reaction videos, where someone watches and reacts to other content
+  clickbait:
+    label: Clickbait
+    text: 'Clickbait: exaggerated or misleading titles made to get clicks'
+  crypto:
+    label: Get-rich-quick
+    text: 'Get-rich-quick hype: crypto pumps, trading wins and side hustles that promise fast money'
+  gossip:
+    label: Celebrity gossip
+    text: Celebrity gossip and drama
+  shorts:
+    label: Shorts
+    text: Shorts
+
+# ---------- Popup (Sections 5 and 8) ----------
+popup:
+  title: Shoo
+  switch: Shoo on
+  on: 'On'
+  off: 'Off'
+  state:
+    loading: Loading today's numbers…
+    notOnYouTube: Open YouTube to see Shoo at work.
+    off: Shoo is off.
+    noConsent: Shoo only uses Exact rules.
+    migrating: Updating Shoo's data…
+    hostRevoked: Shoo lost access to YouTube or your Decision model.
+    noKey: Connect OpenRouter to use Topic rules.
+    breakerYouTube: "Shoo paused: YouTube's menu changed."
+    breakerModel: "Shoo paused: OpenRouter didn't answer."
+    # A direct Decision provider or a chat model is active: the copy names its host, not OpenRouter.
+    endpointRejected: '{host} refused Shoo. Check it in Settings, Connection.'
+    breakerEndpoint: "Shoo paused: {host} didn't answer."
+    noCreditsEndpoint: '{host} says the key is out of credits.'
+    dailyCap: Daily limit of {cap} videos reached. Judging resumes at midnight.
+    offline: You're offline. Exact rules still work.
+    noCredits: OpenRouter says the key is out of credits.
+  action:
+    turnOn: Turn on
+    giveConsent: Give consent
+    fixInSettings: Fix in Settings
+    connect: Connect
+    openSettings: Open settings
+    retry: Retry
+    openOpenRouter: Open OpenRouter
+  today:
+    label: Today
+    judged: judged
+    removed: removed
+    spent: spent
+    cap: '{used} of {cap} videos today'
+  waiting:
+    label: Waiting on you
+  escalation:
+    removedBy: '{removed} of {judged} removed by {rule}'
+    removed: '{removed} of {judged} removed by Topic rules'
+    ban: Ban
+    notNow: Not now
+  addRule:
+    label: Add a rule
+    placeholder: Unboxing videos and hauls
+    hint: Describe the videos, not an order.
+    submit: Add
+    added: Rule added
+  confirmAuto:
+    1: Remove the flagged video now?
+    n: Remove the $1 flagged videos now?
+  confirmAutoYes: Remove now
+  confirmAutoNo: Leave them
+  error: Couldn't reach Shoo. Close the popup and try again.
+  footer:
+    connected: OpenRouter connected
+    notConnected: OpenRouter not connected
+    custom: '{host} connected'
+    activity: Activity
+    settings: Settings
+
+# ---------- Settings (Sections 6 and 8) ----------
+options:
+  title: Shoo settings
+settings:
+  nav:
+    label: Settings sections
+    rules: Rules
+    keep: Keep rules
+    banned: Banned channels
+    exceptions: Exceptions
+    activity: Activity
+    connection: Connection
+    advanced: Advanced
+  surfaces:
+    title: Surfaces
+    home: Home
+    watchSidebar: Watch sidebar
+    shortsShelf: Shorts shelf
+    search: Search
+    channel: Channel page
+    endScreen: End screen
+    unsupported: YouTube offers no Not interested here
+    shortsNote: Shorts show no channel, so channel Rules can't match here. Shoo uses Not interested only.
+  shelves:
+    title: Whole shelves on Home
+    hint: Auto and Review only
+    shorts: Shorts shelf
+    shortsHint: Shoo picks the shelf's own "Show fewer Shorts" for you.
+    games: Games shelf
+    gamesHint: Shoo picks the shelf's own "Show fewer games" for you.
+  error:
+    load: Couldn't load Shoo's data. Reload the page to try again.
+
+rules:
+  title: Rules
+  lede: What you'd rather not see. Shoo checks every video against these and tells YouTube "Not interested" for you. The colour of a Rule follows it everywhere.
+  yours: Your Rules
+  sorted: Sorted by activity
+  add: Add a Rule
+  added: 'Rule added: {rule}'
+  empty: Nothing to shoo yet. Add a Rule, or start from one of these.
+  error:
+    save: Couldn't save the Rule. Try again.
+    syncQuota: Browser sync storage is full. Delete or shorten a Rule, then try again.
+  disabled:
+    needsModel: Topic and Thumbnail rules need consent and a Decision model.
+    needsKey: Needs OpenRouter
+  kind:
+    label: Kind
+    topic: Topic
+    thumbnail: Thumbnail
+    channel: Banned channel
+    keyword: Title keyword
+    pattern: Pattern
+    regex: Regular expression
+    duration: Duration
+    views: Views
+    short: Short
+    live: Live
+    channelAction: Don't recommend channel
+    membersOnly: Members-only
+    artistChannel: Artist channel
+  placeholder:
+    channel: Channel name
+    keep: Woodworking tutorials
+    keyword: A word in titles
+    thumbnail: A person pointing at a red arrow
+  pattern:
+    hint: '* matches any run of characters, ? matches one character.'
+  artistChannel:
+    hint: Keeps videos from channels with YouTube's music-note artist badge. Shorts shelf videos show no channel, so they never match.
+  duration:
+    min: At least (min)
+    max: At most (min)
+    between: Between {min} and {max} min
+    shorter: Shorter than {max} min
+    longer: Longer than {min} min
+  views:
+    min: At least (views)
+    max: At most (views)
+    hint: Type 10k or 1.5m for thousands or millions. Shoo reads view counts only while YouTube is in English, and live streams show none, so those videos never match.
+    between: Between {min} and {max} views
+    fewer: Fewer than {max} views
+    more: More than {min} views
+  text:
+    counter: '{count} of {max}'
+    over: Shorter Rules work better.
+    live: Live streams
+    artistChannel: Artist channels
+  # A remove Rule that never removes videos from Subscribed channels (REQ-RULE-14). The list stays on this computer.
+  skipSubscribed:
+    label: Never shoo channels I'm subscribed to
+    note: Skips subscribed channels
+    hint: Shoo reads your subscriptions from YouTube about once a day and keeps them on this computer. Shorts shelf videos show no channel, so this never skips them.
+    channels:
+      1: 1 subscribed channel
+      n: $1 subscribed channels
+    read: 'Skips {channels}, read from YouTube {time}.'
+    pending: Shoo reads your subscriptions from YouTube the next time it checks a video.
+    unreadable: Shoo couldn't read your subscriptions from YouTube. Until it can, this Rule removes only videos that show no channel.
+  # Rule name (REQ-RULE-11): the user's short label, shown instead of the Rule text. Never sent to a model.
+  name:
+    label: Name
+    placeholder: Add a name
+    hint: Shown on YouTube instead of the whole Rule. The model never sees it.
+  # Soft hints while typing a Topic rule (REQ-RULE-12). English patterns only, they never block saving.
+  hint:
+    order: Describe the videos instead of giving an order, for example “Unboxing videos” rather than “No unboxing videos”.
+    negation: Shoo reads “not” and “except” poorly. Write what to remove, and add a Keep rule for the exceptions.
+  # How to write a Rule (REQ-RULE-12). Evidence: docs/spec/decision-engine.md Section 13.
+  guide:
+    title: How to write a Rule
+    lede: For Topic rules, a model reads each video's title, channel name, length and where it shows up. It never sees the description, the comments or the video itself.
+    good: Try
+    avoid: Not
+    describe:
+      title: Describe the videos
+      body: Write what the videos are, not an order.
+      good: Unboxing videos and hauls
+      avoid: No unboxing videos
+    one:
+      title: One idea per Rule
+      body: Mixed topics get judged loosely. Separate Rules also tell you which one removed a video.
+      good: Day trading
+      avoid: Cars, sports or politics
+    is:
+      title: Say what a video is about
+      body: Shoo keeps videos that only report on, explain or review a topic. Say so if those should go too.
+      good: Celebrity gossip, including news about it
+      avoid: Anything mentioning celebrities
+    concrete:
+      title: Name topics, not judgements
+      body: Concrete topics match more reliably than words like “low quality” or “annoying”.
+      good: Prank videos
+      avoid: Low-effort videos
+    noNot:
+      title: Leave out “not” and “except”
+      body: Put the exception in a Keep rule. Keep rules win over everything, so write them narrowly.
+      good: Gaming videos, plus a Keep rule for speedruns
+      avoid: Gaming videos except speedruns
+    exact:
+      title: Use an exact kind when you can
+      body: A channel goes in Banned channel. A word goes in Title keyword, which also matches inside words, so “AI” matches “said”. Shorts, live streams and length have their own kinds. None of them needs the model.
+    name:
+      title: Give it a name
+      body: The name is what you see on YouTube and in Activity. The model reads only the Rule.
+    try: Check a Rule with Try a title below.
+  regex:
+    disabledNote: Off while Regular expression Rules are off in Advanced
+    reason:
+      tooLong: Use 200 characters or fewer.
+      syntax: This isn't a valid regular expression.
+      backreference: Backreferences aren't allowed.
+      lookaround: Lookaheads and lookbehinds aren't allowed.
+      nestedQuantifier: Repeats inside repeats aren't allowed, they can freeze matching.
+      adjacentQuantifier: Two open-ended repeats next to each other aren't allowed.
+      alternationInQuantifiedGroup: Alternatives inside a repeated group aren't allowed.
+      flags: Flags aren't allowed. Shoo always ignores case.
+  table:
+    label: Rules
+    more: More
+    rule: Rule
+    kind: Kind
+    text: Name and description
+    week: This week
+    on: On
+  row:
+    text: '{ref} description'
+    name: '{ref} name'
+    delete: Delete {ref}
+    on: '{ref} on'
+    expand: Expand {ref}
+    collapse: Collapse {ref}
+    removedThisWeek: Removed this week
+    keptThisWeek: Kept this week
+    seeAll:
+      1: See it in Activity
+      n: See all $1 in Activity
+    allTime:
+      1: 1 all time
+      n: $1 all time
+    lastHit: Last hit {time}
+  try:
+    label: Try a title
+    title: Video title
+    titlePlaceholder: Type or paste a video title
+    channel: Channel
+    url: YouTube video URL or thumbnail URL (optional)
+    urlInvalid: Use a YouTube video URL or an i.ytimg.com thumbnail URL.
+    needsConsent: Give consent to try titles
+    paused: Shoo is paused or can't reach OpenRouter right now. Check the popup.
+    noCredits: OpenRouter says the key is out of credits.
+    submit: Try
+    decidedBy: 'Decided by {rule}'
+    decidedByNamed: 'Decided by {name}: {rule}'
+    error:
+      noKey: Connect OpenRouter in Connection to try titles.
+      offline: You're offline. Try again when you're back online.
+      dailyCap: The Daily cap is reached. Try again after midnight.
+      model: OpenRouter didn't answer. Try again.
+      tooManyRules: Too many Topic rules for this Decision provider. Switch some off, or pick another provider in Connection.
+  # A direct Decision provider whose choice question takes fewer options (decision-engine.md Section 12.1).
+  tooManyRules: '{provider} takes at most {max} Topic rules, and {count} are on. Shoo checks no videos by topic until you switch some off, or pick another Decision provider in Connection.'
+  escalation:
+    lead: '{channel} keeps showing up.'
+    detail: '{removed} of {judged} judged videos removed by {rule} in 30 days. Ban the channel?'
+    detailNoRule: '{removed} of {judged} judged videos removed by Topic rules in 30 days. Ban the channel?'
+    ban: Ban channel
+    notNow: Not now
+  budget:
+    label: Reading budget
+    value: '{percent}% used by your Rules and kept videos'
+    over: Your Rules and kept videos are over the model's reading budget. Shorten or switch off a Rule.
+    truncated: Only the first 160 characters of {rule} reach the model.
+    dropped:
+      1: 1 kept video doesn't fit and is left out.
+      n: $1 kept videos don't fit and are left out.
+
+keep:
+  title: Keep rules
+  lede: Always win, whatever a Rule says.
+  yours: Your Keep rules
+  kind:
+    channel: Channel
+  add: Add a Keep rule
+  empty: Nothing is protected yet. Keep rules always win.
+  error:
+    save: Couldn't save the Keep rule. Try again.
+  liftBan:
+    question: Lift the ban on {channel} too?
+    yes: Lift the ban
+    no: Keep the ban
+
+banned:
+  title: Banned channels
+  lede: Shoo tells YouTube "Don't recommend channel" for every video from these channels.
+  table:
+    channel: Channel
+    origin: Added
+    removed: Removed
+  removeLabel: Remove {channel} from Banned channels
+  empty: No banned channels. Ban one from a chip, Activity or an Escalation.
+  error:
+    save: Couldn't update Banned channels. Try again.
+  origin:
+    you: Added by you
+    escalation: Escalation on {date}
+  removed:
+    1: 1 video removed
+    n: $1 videos removed
+  remove: Remove from list
+
+exceptions:
+  title: Exceptions
+  lede: Videos you chose to keep. Shoo never judges them again.
+  deleteLabel: Delete the Exception for {title}
+  noMatch: No Exceptions match.
+  empty: No Exceptions yet. Videos you keep show up here.
+  search: Search Exceptions
+  wantedBy: '{rule} wanted it gone'
+  error:
+    load: Couldn't load Exceptions. Reload the page to try again.
+    save: Couldn't delete the Exception. Try again.
+
+activity:
+  title: Activity
+  lede: The last 30 days of what Shoo did and why.
+  noMatch: Nothing matches this search.
+  more: Show more
+  kept: Kept · won't ask again
+  renumbered: 'Rule renumbered: {detail}'
+  unseen: New
+  undoLabel: Undo the Removal of {title}
+  keepLabel: Keep {title}
+  keepChannelLabel: Always keep {channel}
+  undo:
+    done: Undone on YouTube
+    expired: YouTube's Undo has expired for this video. Use Keep so it isn't removed again.
+  empty: Quiet so far. When Shoo acts, it shows up here.
+  day: '{day} · {count} shooed'
+  today: Today
+  yesterday: Yesterday
+  search: Search Activity
+  kind:
+    removed: Removed
+    kept: Kept
+    keptByRule: Kept by Keep rule
+    wouldRemove: Would remove
+    failed: Failed
+    escalated: Escalated
+    banned: Banned channel
+    undone: Undone
+    renumbered: Renumbered
+    shelfDismissed: Shelf dismissed
+  shelf:
+    shorts: Shorts shelf
+    games: Games shelf
+  filter:
+    rule: Rule
+    kind: Kind
+    batch: Batch
+    allRules: All Rules
+    allKinds: All kinds
+    batchOn: Showing one batch
+    clearBatch: Show all Activity
+  view:
+    list: List
+    label: View
+    wall: Thumbnails
+  error:
+    load: Couldn't load Activity. Reload the page to try again.
+
+connection:
+  title: Connection
+  lede: How Shoo reaches the Decision model, and what it may send.
+  openrouter: OpenRouter
+  reconnect: Connect again
+  reconnectConfirm: Connect again anyway
+  error:
+    save: Couldn't save. Try again.
+  access:
+    body: Allow access again so Shoo can work on YouTube and reach OpenRouter.
+    allow: Allow access
+    denied: Access wasn't allowed. Shoo stays paused until it is.
+  headless:
+    label: Code from openrouter.ai
+    expired: The code expired. Connect again.
+  connect: Connect OpenRouter
+  paste: Paste a key
+  connecting: Connecting…
+  connected: Connected {date} · {label}
+  usage: '{usage} used of {limit}'
+  noLimit: '{usage} used, no limit set'
+  usageToday: '{usage} used today'
+  disconnect: Disconnect
+  disconnectNote: 'Forgets the key on this device. Revoke it on OpenRouter:'
+  reconnectWarning: Connecting again creates a new key. Revoke the old one at openrouter.ai/keys.
+  offline: You're offline. Connect when you're back online.
+  oauth:
+    cancelled: Connection cancelled. Nothing changed.
+    failed: OpenRouter didn't finish connecting. Try again or paste a key.
+  key:
+    label: OpenRouter key
+    save: Save key
+    invalid: OpenRouter rejected this key.
+  consent:
+    title: What Shoo sends
+    give: Give consent
+    given: You gave consent on {date}.
+    givenHost: You gave consent for {host} on {date}.
+    withdraw: Withdraw consent
+    policy: Privacy policy
+    declined: Nothing changed. Shoo keeps using Exact rules only.
+  models:
+    label: Model
+    images: Reads thumbnails
+    text: Model for titles
+    image: Model for thumbnails
+    price: '{price}/M tokens'
+    error: Couldn't load models. Using clef-flash.
+  strength:
+    label: Filtering strength
+    cautious: Cautious
+    balanced: Balanced
+    eager: Eager
+    custom: Custom
+    cutoff: removes at {p}% or more
+    hint:
+      cautious: Removes a video only when the Decision model is very sure.
+      balanced: Removes a video when the Decision model is fairly sure.
+      eager: Removes more videos, and gets a few more wrong.
+      custom: Set with the slider in Advanced.
+  # Shared by a direct Decision provider and the chat model (consent names the host, ui-design.md Section 6).
+  custom:
+    baseUrl: Base URL
+    model: Model
+    permissionDenied: Shoo needs access to {host} to use it.
+    consent: Shoo will send what's listed under What Shoo sends to {host}, instead of OpenRouter.
+    urlInvalid: Use an https address, or http only for localhost.
+    activeDirect: 'Using {model} at {provider} ({host}).'
+    activeLocal: 'Using {model} on this computer ({host}).'
+    activeChat: 'Using the chat model {model} at {host}.'
+    reconsent: Switching back to OpenRouter asks for consent again.
+    saved: Saved. Shoo now sends to {host}.
+    error: "Couldn't save: {detail}"
+  # The chat model, Settings only (decision-engine.md Section 6).
+  chat:
+    title: Chat model
+    badge: Less accurate
+    lede: Any OpenAI-compatible chat model, instead of a Decision model. A chat model rates its own answers, and Filtering strength was not tuned for those ratings, so it removes less reliably.
+    textOnly: Titles only. Thumbnail rules need a Decision model that reads images.
+    fill: 'On this computer:'
+    keyOptional: Key (optional)
+    modelHint: A chat model with JSON schema output.
+    use: Use this chat model
+  # Decision providers (CONTEXT.md, ui-design.md Sections 6 and 7). Provider names are brand names in code.
+  provider:
+    title: Where Shoo checks videos
+    legend: Where Shoo sends videos
+    online: Online
+    local: On this computer, most private
+    recommended: Recommended
+    inUse: In use
+    openrouter:
+      hint: Connect in one click. Reads thumbnails.
+    cloudflare:
+      hint: Your own Cloudflare account. Reads thumbnails.
+      how: In the Cloudflare dashboard, open Workers AI and select “Use REST API”. It shows your account ID and creates a token.
+      open: Open Workers AI
+      account: Account ID
+      accountInvalid: An account ID is 32 letters and digits.
+      token: Cloudflare API token
+      model: Model {model}, the one Filtering strength was tuned on.
+    typesafe:
+      hint: Needs a TypeSafe API key. Titles only.
+    perplexity:
+      hint: Needs a Perplexity API key. Reads thumbnails.
+    ollama:
+      hint: Free app. No key needed.
+      pull: 'Install Ollama 0.35.1 or later, then download the model:'
+      origins: 'Let Shoo reach Ollama, then quit and reopen Ollama:'
+      originsLinux: 'Let Shoo reach Ollama. This restarts the Ollama service:'
+      pullWhat: the command that downloads the model
+      originsWhat: the command that lets Shoo reach Ollama
+      faq: Other ways to set it
+    llamacpp:
+      hint: Free, open-source server. No key needed.
+      start: 'Install llama.cpp, then start its server with clef-flash:'
+      startWhat: the command that starts the llama.cpp server
+    lmstudio:
+      hint: Free desktop app. No key needed.
+      load: In LM Studio, download and load a Decision model, such as clef-flash.
+      serve: Start the server in the Developer tab, then enter the model's API identifier below.
+      modelPlaceholder: The model's API identifier
+    sendsTo: Shoo sends to {host}.
+    sendsToLocal: Shoo sends to {host}, on this computer.
+    images: Reads thumbnails, so Thumbnail rules work too.
+    textOnly: Titles only. Thumbnail rules need a model that reads images.
+    tooManyRules: '{provider} takes at most {max} Topic rules, and {count} are on. Topic rules stop working until you switch some off.'
+    tunedLocal: Filtering strength was tuned on clef-flash at Cloudflare. A copy on this computer may score a little differently.
+    untuned: Filtering strength was tuned on clef-flash, so {model} may remove more or fewer videos.
+    address: Address
+    keyLabel: '{provider} API key'
+    keyKeep: Leave blank to keep the saved key.
+    howKey: How to get a key
+    modelSuggested: Suggested. Any Decision model this provider serves works.
+    modelHint: The Decision model's name on this server.
+    use: Use {provider}
+    saveChanges: Save changes
+    checking: Checking {provider}…
+    copy: Copy
+    copied: Copied.
+    copyFailed: Couldn't copy. Select the text and copy it instead.
+    missing:
+      url: Enter an https address, or http for localhost, to continue.
+      local: Enter an address on this computer, such as http://localhost, to continue.
+      key: Paste your {provider} API key to continue.
+      token: Paste your Cloudflare API token to continue.
+      account: Enter your Cloudflare account ID to continue.
+      model: Enter a model to continue.
+    consentLocal: '{host} is this computer, so nothing leaves it.'
+    error:
+      unreachable: Couldn't reach {host}. Check that {provider} is running.
+      ollamaOrigins: Ollama refused Shoo. Run the second command, restart Ollama, then try again.
+      refused: '{host} refused the request. Check its settings and try again.'
+      noModel: "{host} doesn't have {model}. Download it first, or enter another model."
+      format: "{host} answered, but not in the format Shoo needs ({detail})."
+
+advanced:
+  title: Advanced
+  lede: Where Shoo works, how it tells you, and your data.
+  behaviour: Behaviour
+  data: Your data
+  notification:
+    label: Notification style
+    summary: Batch summary
+    perRemoval: One per Removal
+    silent: Silent (toolbar badge only)
+    silentShort: Silent
+    hint: Silent shows only the count on the toolbar icon.
+  escalation:
+    label: Escalation
+    off: 'Off'
+    suggest: Suggest
+    automatic: Automatic
+    hint:
+      'off': Shoo never suggests banning a channel.
+      suggest: Shoo suggests banning a channel that keeps getting removed.
+      automatic: Shoo bans a channel that keeps getting removed and tells you.
+  dailyCap:
+    label: Daily cap
+    hint: Videos sent to the Decision model per day.
+  strength:
+    label: Exact Filtering strength
+    hint: Set to the {preset} preset. Moving the slider switches to Custom.
+    hintCustom: Custom. Pick a preset in Connection to go back.
+    value: Removes at {p}%
+  regex:
+    label: Regular expression Rules
+    hint: Adds the Regular expression kind. Expressions run on this device only.
+  export:
+    label: Export
+    hint: One JSON file with your Rules, Keep rules, Banned channels and Exceptions. The key is never exported.
+    error: Couldn't export. Try again.
+  import:
+    label: Import
+    checking: Checking file…
+    error: This file isn't a Shoo export, or it's from a newer version.
+    details: Details
+    merge: Merge with my Rules
+    replace: Replace my Rules
+    preview: '{add} new, {update} updated, {renumber} renumbered'
+    invalid:
+      1: 1 entry is skipped
+      n: $1 entries are skipped
+    replaceNote: Merge keeps what you have. Replace deletes your Rules and Exceptions first.
+    previewReplace: Preview Replace
+    previewMerge: Preview Merge
+    removes: 'Replace deletes your current Rules ({rules}) and Exceptions ({exceptions}) first.'
+    syncQuota: This won't fit in browser sync storage, so the import would fail. Delete some Rules or Exceptions first.
+    done: Imported.
+  reset:
+    label: Reset
+    hint: Deletes every Rule, Keep rule, Banned channel, Exception, setting, the key, Activity and cached Verdicts.
+    confirm: Delete everything Shoo stored? Your Rules, Keep rules, Banned channels and Exceptions also disappear from your other browsers that sync with this one. This can't be undone.
+    button: Reset Shoo
+    done: Everything Shoo stored is deleted.
+    error: Couldn't reset. Try again.
+    confirmButton: Delete everything
+
+# ---------- Onboarding (Sections 7 and 8) ----------
+onboarding:
+  title: Welcome to Shoo
+  progress: Step {step} of {total}
+  resumed: Welcome back. You're on the step you left.
+  stepDone: Done
+  next: Continue
+  error: Couldn't save. Try again.
+  what:
+    title: What Shoo does
+    heading: Shoo the videos you don't want
+    does:
+      check: Shoo checks the videos YouTube recommends against your Rules.
+      act: 'For the ones you don''t want, it tells YouTube "Not interested" through YouTube''s own menu.'
+      undo: You always see which Rule acted. Undo it while you're on the page, or Keep the video so Shoo leaves it alone.
+    sendsTitle: What Shoo sends
+    sends:
+      perVideo:
+        title: For each video Shoo checks
+        videoTitle: Title
+        channel: Channel name
+        length: Length
+        surface: 'Where it appeared: Home, the Watch sidebar or the Shorts shelf'
+        thumbnail: Thumbnail image, only if you create a Thumbnail rule
+      request:
+        title: Also in each request
+        rules: The text of your Topic and Thumbnail rules, and of Keep rules you wrote as a sentence, while they are on
+        kept: Titles and channel names of up to 10 videos you chose to keep
+      recipients:
+        title: Who receives it
+        openRouter: OpenRouter
+        openRouterWhen: (openrouter.ai), which passes it to the model provider
+        cloudflare: Cloudflare
+        cloudflareWhen: by default, with the model cloudflare/clef-flash
+        typeSafe: TypeSafe
+        typeSafeWhen: if Shoo falls back to the model typesafe/jev-1.13
+        openAi: OpenAI
+        openAiWhen: if a thumbnail check falls back to openai/gpt-6-luna-decisions
+        otherModel: The provider of another model
+        otherModelWhen: if you pick one in Settings
+        instead: Instead of OpenRouter
+        insteadWhen: only if you choose one, and Shoo names its address first
+        direct: Cloudflare, TypeSafe or Perplexity
+        directWhen: reached directly with your own key
+        local: A model on this computer
+        localWhen: (Ollama, llama.cpp or LM Studio), so nothing leaves your device
+        custom: Your own endpoint
+        customWhen: if you set one up
+      never:
+        title: Never sent
+        urls: Web addresses
+        ids: Video IDs
+        history: Your watch history
+        cookies: Cookies
+        comments: Comments
+        page: The page's HTML
+        account: Your YouTube account details
+    agree: Agree and continue
+    exactOnly: Use Exact rules only
+    later: You can change this later in Settings, Connection.
+  connect:
+    title: Connect
+    heading: Choose where Shoo checks videos
+    body: Topic rules need a Decision model to judge each video. Connect OpenRouter in one click, use a provider directly, or run a model on this computer.
+    openRouter: Connecting creates a key for Shoo on your OpenRouter account.
+    failed: OpenRouter didn't finish connecting. Try again or paste a key.
+    button: Connect OpenRouter
+    paste: Paste a key
+    cost: A few cents per thousand videos.
+    cancelled: Connection cancelled. Try again or paste a key.
+    invalidKey: OpenRouter rejected this key. Check it and paste it again.
+    offline: You're offline. You can connect later in Settings.
+    skip: Skip for now
+  rules:
+    title: First Rules
+    body: Tap a Starter rule or write your own. You can change them any time in Settings.
+    fieldKeyword: A word in titles you'd rather not see
+    field: Describe videos you'd rather not see
+    tip: Describe the videos, like “Unboxing videos and hauls”. One idea per Rule.
+    needsConsent: Needs consent
+  mode:
+    title: Mode
+    body: You can switch Mode any time from the toolbar.
+    start: Start
+    openYouTube: Open YouTube
+
+# ---------- Notices (architecture.md Section 7, ui-design.md Section 4) ----------
+# Before a category trips the copy never says "paused".
+notice:
+  label: Shoo notice
+  keyRejected: OpenRouter rejected the key. Reconnect in Connection.
+  breakerNativeAction: "Shoo paused: YouTube's menu changed."
+  breakerMarkup: "Shoo paused: YouTube's page changed."
+  breakerModel: "Shoo paused: OpenRouter didn't answer."
+  creditsExhausted: "Shoo paused: OpenRouter says the key is out of credits."
+  failureModel: Shoo couldn't reach OpenRouter. Retrying.
+  failureNativeAction:
+    1: Couldn't tell YouTube about 1 video. It stays visible.
+    n: Couldn't tell YouTube about $1 videos. They stay visible.
+  action:
+    openSettings: Open settings
+    retry: Retry
+    openOpenRouter: Open OpenRouter
+
+# ---------- In-page UI on YouTube (Section 4) ----------
+chip:
+  question: Remove?
+  remove: Remove
+  keep: Keep
+  removeLabel: Remove this video
+  keepLabel: Keep this video
+  label: 'Shoo: Remove? Rule: {rule}, {p} percent'
+  labelExact: 'Shoo: Remove? Rule: {rule}'
+  kept:
+    note: Kept · won't ask again
+    session: Kept for this session
+    short: Kept
+
+dryRun:
+  wouldRemove: Would remove ·
+  label: 'Shoo would remove this video, Rule: {rule}'
+
+annotation:
+  shooedBy: Shooed by
+  channelShooedBy: Channel shooed by
+  label: 'Shoo: removed by Rule: {rule}'
+  titledLabel: 'Shoo: removed {title} by Rule: {rule}'
+  titledChannelLabel: 'Shoo: removed {title} from {channel} by Rule: {rule}'
+  channelLabel: "Shoo: YouTube won't recommend this channel, Rule: {rule}"
+  channelNamedLabel: "Shoo: removed {title}, and YouTube won't recommend {channel}, Rule: {rule}"
+  channelOnlyLabel: "Shoo: YouTube won't recommend {channel}, Rule: {rule}"
+  channelTitledLabel: "Shoo: removed {title}, and YouTube won't recommend this channel, Rule: {rule}"
+  nameAndContext: '{name} · {context}'
+  duplicate: Already shooed above
+  duplicateLabel: 'Shoo: already removed above, Rule: {rule}'
+
+summary:
+  label: Shoo
+  shooed:
+    1: Shooed 1 video
+    n: Shooed $1 videos
+  times: ×{count}
+  more:
+    1: +1 more Rule
+    n: +$1 more Rules
+  review: Review
+  undoAll: Undo all
+  expand: Show the summary
+  announce:
+    1: 'Shoo removed 1 video: {list}.'
+    n: 'Shoo removed $1 videos: {list}.'
+  announceItem: '{count} by {rule}'
+  escalated: Banned {channels} too

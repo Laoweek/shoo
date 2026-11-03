@@ -1,0 +1,21 @@
+{
+  "name": "error-413",
+  "handWritten": true,
+  "note": "Not reproducible in the Decisions API smoke test (large images return 422). Defensive case, shape follows the observed error envelope.",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": null
+  },
+  "response": {
+    "status": 413,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "code": 413,
+        "message": "Request payload too large."
+      }
+    }
+  }
+}

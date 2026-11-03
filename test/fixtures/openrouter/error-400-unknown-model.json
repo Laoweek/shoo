@@ -1,0 +1,28 @@
+{
+  "name": "error-400-unknown-model",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/does-not-exist",
+      "state": "x",
+      "questions": {
+        "t01": {
+          "type": "noul",
+          "instructions": "x"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "message": "Model cloudflare/does-not-exist does not exist",
+        "code": 400
+      }
+    }
+  }
+}

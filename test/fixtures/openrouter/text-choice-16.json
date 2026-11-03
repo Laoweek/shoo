@@ -1,0 +1,1020 @@
+{
+  "name": "text-choice-16",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "cloudflare"
+        ],
+        "allow_fallbacks": false,
+        "data_collection": "deny"
+      },
+      "state": {
+        "viewer_does_not_want": {
+          "R1": "Reaction videos, where someone watches and reacts to other content",
+          "R2": "Crypto, day trading, or get-rich-quick finance",
+          "R3": "Celebrity gossip and drama"
+        },
+        "viewer_always_wants": {
+          "K2": "Programming tutorials",
+          "K5": "Woodworking and furniture making"
+        },
+        "viewer_kept_anyway": [
+          "Vocal coach reacts to classic rock songs (channel: Vocal Coach Ana)"
+        ]
+      },
+      "questions": {
+        "t01": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t01_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t01_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t02": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t02_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t02_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t03": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t03_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t03_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t04": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Taylor and Travis: the breakup rumors explained",
+              "channel": "Pop Tea Daily",
+              "duration": "12:00",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t04_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Taylor and Travis: the breakup rumors explained",
+              "channel": "Pop Tea Daily",
+              "duration": "12:00",
+              "surface": "home page"
+            }
+          }
+        },
+        "t04_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Taylor and Travis: the breakup rumors explained",
+              "channel": "Pop Tea Daily",
+              "duration": "12:00",
+              "surface": "home page"
+            }
+          }
+        },
+        "t05": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t05_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t05_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t06": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Musician reacts to Bohemian Rhapsody for the first time",
+              "channel": "Vocal Coach Ana",
+              "duration": "22:10",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t06_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Musician reacts to Bohemian Rhapsody for the first time",
+              "channel": "Vocal Coach Ana",
+              "duration": "22:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t06_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Musician reacts to Bohemian Rhapsody for the first time",
+              "channel": "Vocal Coach Ana",
+              "duration": "22:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t07": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Index funds vs. stock picking: what 30 years of data says",
+              "channel": "Plain Money",
+              "duration": "16:40",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t07_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Index funds vs. stock picking: what 30 years of data says",
+              "channel": "Plain Money",
+              "duration": "16:40",
+              "surface": "home page"
+            }
+          }
+        },
+        "t07_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Index funds vs. stock picking: what 30 years of data says",
+              "channel": "Plain Money",
+              "duration": "16:40",
+              "surface": "home page"
+            }
+          }
+        },
+        "t08": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "I tried day trading for 30 days with $1,000",
+              "channel": "Max Hustle",
+              "duration": "19:02",
+              "surface": "watch page sidebar"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t08_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "I tried day trading for 30 days with $1,000",
+              "channel": "Max Hustle",
+              "duration": "19:02",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t08_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "I tried day trading for 30 days with $1,000",
+              "channel": "Max Hustle",
+              "duration": "19:02",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t09": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Restoring a rusted 1950s hand plane",
+              "channel": "Workshop Tales",
+              "duration": "25:13",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t09_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Restoring a rusted 1950s hand plane",
+              "channel": "Workshop Tales",
+              "duration": "25:13",
+              "surface": "home page"
+            }
+          }
+        },
+        "t09_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Restoring a rusted 1950s hand plane",
+              "channel": "Workshop Tales",
+              "duration": "25:13",
+              "surface": "home page"
+            }
+          }
+        },
+        "t10": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Drake vs Kendrick: every diss track, in order",
+              "channel": "Rap Lore",
+              "duration": "31:20",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t10_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Drake vs Kendrick: every diss track, in order",
+              "channel": "Rap Lore",
+              "duration": "31:20",
+              "surface": "home page"
+            }
+          }
+        },
+        "t10_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Drake vs Kendrick: every diss track, in order",
+              "channel": "Rap Lore",
+              "duration": "31:20",
+              "surface": "home page"
+            }
+          }
+        },
+        "t11": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Bitcoin's whitepaper explained, line by line",
+              "channel": "CS Explained",
+              "duration": "27:45",
+              "surface": "watch page sidebar"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t11_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Bitcoin's whitepaper explained, line by line",
+              "channel": "CS Explained",
+              "duration": "27:45",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t11_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Bitcoin's whitepaper explained, line by line",
+              "channel": "CS Explained",
+              "duration": "27:45",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t12": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t12_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t12_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t13": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "xQc reacts to the new GTA trailer",
+              "channel": "xQc Clips",
+              "duration": "15:33",
+              "surface": "watch page sidebar"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t13_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "xQc reacts to the new GTA trailer",
+              "channel": "xQc Clips",
+              "duration": "15:33",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t13_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "xQc reacts to the new GTA trailer",
+              "channel": "xQc Clips",
+              "duration": "15:33",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t14": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "React hooks crash course for beginners",
+              "channel": "Web Dev Simplified",
+              "duration": "28:03",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t14_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "React hooks crash course for beginners",
+              "channel": "Web Dev Simplified",
+              "duration": "28:03",
+              "surface": "home page"
+            }
+          }
+        },
+        "t14_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "React hooks crash course for beginners",
+              "channel": "Web Dev Simplified",
+              "duration": "28:03",
+              "surface": "home page"
+            }
+          }
+        },
+        "t15": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t15_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t15_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t16": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "wait for it 😂",
+              "surface": "Shorts shelf"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t16_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "wait for it 😂",
+              "surface": "Shorts shelf"
+            }
+          }
+        },
+        "t16_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "wait for it 😂",
+              "surface": "Shorts shelf"
+            }
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "answers": {
+        "t01": {
+          "type": "choice",
+          "choice": "R1",
+          "probabilities": {
+            "keep": 0.0165,
+            "R1": 0.9741,
+            "R2": 0.0019,
+            "R3": 0.0075
+          },
+          "confidence": 0.9323
+        },
+        "t01_K2": {
+          "type": "noul",
+          "noul": 0.0049
+        },
+        "t01_K5": {
+          "type": "noul",
+          "noul": 0.0068
+        },
+        "t02": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.9362,
+            "R1": 0.0465,
+            "R2": 0.0063,
+            "R3": 0.011
+          },
+          "confidence": 0.8383
+        },
+        "t02_K2": {
+          "type": "noul",
+          "noul": 0.0087
+        },
+        "t02_K5": {
+          "type": "noul",
+          "noul": 0.0119
+        },
+        "t03": {
+          "type": "choice",
+          "choice": "R2",
+          "probabilities": {
+            "keep": 0.0039,
+            "R1": 0.0074,
+            "R2": 0.9851,
+            "R3": 0.0036
+          },
+          "confidence": 0.9607
+        },
+        "t03_K2": {
+          "type": "noul",
+          "noul": 0.0058
+        },
+        "t03_K5": {
+          "type": "noul",
+          "noul": 0.0071
+        },
+        "t04": {
+          "type": "choice",
+          "choice": "R3",
+          "probabilities": {
+            "keep": 0.009,
+            "R1": 0.0121,
+            "R2": 0.002,
+            "R3": 0.9769
+          },
+          "confidence": 0.9394
+        },
+        "t04_K2": {
+          "type": "noul",
+          "noul": 0.0051
+        },
+        "t04_K5": {
+          "type": "noul",
+          "noul": 0.0068
+        },
+        "t05": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.9333,
+            "R1": 0.0426,
+            "R2": 0.0122,
+            "R3": 0.0119
+          },
+          "confidence": 0.8307
+        },
+        "t05_K2": {
+          "type": "noul",
+          "noul": 0.9789
+        },
+        "t05_K5": {
+          "type": "noul",
+          "noul": 0.0073
+        },
+        "t06": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.503,
+            "R1": 0.4497,
+            "R2": 0.0084,
+            "R3": 0.0389
+          },
+          "confidence": 0.2758
+        },
+        "t06_K2": {
+          "type": "noul",
+          "noul": 0.0132
+        },
+        "t06_K5": {
+          "type": "noul",
+          "noul": 0.0092
+        },
+        "t07": {
+          "type": "choice",
+          "choice": "R2",
+          "probabilities": {
+            "keep": 0.2288,
+            "R1": 0.054,
+            "R2": 0.6954,
+            "R3": 0.0218
+          },
+          "confidence": 0.3857
+        },
+        "t07_K2": {
+          "type": "noul",
+          "noul": 0.0098
+        },
+        "t07_K5": {
+          "type": "noul",
+          "noul": 0.0069
+        },
+        "t08": {
+          "type": "choice",
+          "choice": "R2",
+          "probabilities": {
+            "keep": 0.0073,
+            "R1": 0.0144,
+            "R2": 0.9735,
+            "R3": 0.0048
+          },
+          "confidence": 0.9307
+        },
+        "t08_K2": {
+          "type": "noul",
+          "noul": 0.0073
+        },
+        "t08_K5": {
+          "type": "noul",
+          "noul": 0.0068
+        },
+        "t09": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.9422,
+            "R1": 0.0363,
+            "R2": 0.0093,
+            "R3": 0.0122
+          },
+          "confidence": 0.8525
+        },
+        "t09_K2": {
+          "type": "noul",
+          "noul": 0.0105
+        },
+        "t09_K5": {
+          "type": "noul",
+          "noul": 0.9817
+        },
+        "t10": {
+          "type": "choice",
+          "choice": "R3",
+          "probabilities": {
+            "keep": 0.2631,
+            "R1": 0.1082,
+            "R2": 0.0098,
+            "R3": 0.6189
+          },
+          "confidence": 0.2855
+        },
+        "t10_K2": {
+          "type": "noul",
+          "noul": 0.0055
+        },
+        "t10_K5": {
+          "type": "noul",
+          "noul": 0.0071
+        },
+        "t11": {
+          "type": "choice",
+          "choice": "R2",
+          "probabilities": {
+            "keep": 0.0958,
+            "R1": 0.0574,
+            "R2": 0.8288,
+            "R3": 0.018
+          },
+          "confidence": 0.5996
+        },
+        "t11_K2": {
+          "type": "noul",
+          "noul": 0.1975
+        },
+        "t11_K5": {
+          "type": "noul",
+          "noul": 0.0078
+        },
+        "t12": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.9496,
+            "R1": 0.0293,
+            "R2": 0.0114,
+            "R3": 0.0097
+          },
+          "confidence": 0.8705
+        },
+        "t12_K2": {
+          "type": "noul",
+          "noul": 0.9833
+        },
+        "t12_K5": {
+          "type": "noul",
+          "noul": 0.007
+        },
+        "t13": {
+          "type": "choice",
+          "choice": "R1",
+          "probabilities": {
+            "keep": 0.0161,
+            "R1": 0.9703,
+            "R2": 0.0038,
+            "R3": 0.0098
+          },
+          "confidence": 0.9225
+        },
+        "t13_K2": {
+          "type": "noul",
+          "noul": 0.0085
+        },
+        "t13_K5": {
+          "type": "noul",
+          "noul": 0.009
+        },
+        "t14": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.9574,
+            "R1": 0.0243,
+            "R2": 0.0099,
+            "R3": 0.0084
+          },
+          "confidence": 0.8897
+        },
+        "t14_K2": {
+          "type": "noul",
+          "noul": 0.9843
+        },
+        "t14_K5": {
+          "type": "noul",
+          "noul": 0.0078
+        },
+        "t15": {
+          "type": "choice",
+          "choice": "R3",
+          "probabilities": {
+            "keep": 0.0059,
+            "R1": 0.0087,
+            "R2": 0.0017,
+            "R3": 0.9837
+          },
+          "confidence": 0.9569
+        },
+        "t15_K2": {
+          "type": "noul",
+          "noul": 0.0057
+        },
+        "t15_K5": {
+          "type": "noul",
+          "noul": 0.0087
+        },
+        "t16": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.8779,
+            "R1": 0.0835,
+            "R2": 0.01,
+            "R3": 0.0286
+          },
+          "confidence": 0.7047
+        },
+        "t16_K2": {
+          "type": "noul",
+          "noul": 0.0087
+        },
+        "t16_K5": {
+          "type": "noul",
+          "noul": 0.0126
+        }
+      },
+      "usage": {
+        "input_tokens": 7454,
+        "output_tokens": 0,
+        "cost": 0.00067086
+      },
+      "id": "REDACTED",
+      "provider": "Cloudflare"
+    }
+  }
+}

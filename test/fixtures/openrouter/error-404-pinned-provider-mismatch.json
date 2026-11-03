@@ -1,0 +1,59 @@
+{
+  "name": "error-404-pinned-provider-mismatch",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "typesafe"
+        ],
+        "allow_fallbacks": false
+      },
+      "state": {
+        "viewer_does_not_want": {
+          "R1": "Crypto, day trading, or get-rich-quick finance"
+        }
+      },
+      "questions": {
+        "t01": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one of the rules in viewer_does_not_want?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "message": "No endpoints found for cloudflare/clef-flash.",
+        "code": 404,
+        "metadata": {
+          "routing_funnel": [
+            {
+              "step": "Initial Endpoints",
+              "endpoint_count": 2
+            },
+            {
+              "step": "Filter by Fallback",
+              "endpoint_count": 0
+            }
+          ]
+        }
+      },
+      "user_id": "REDACTED"
+    }
+  }
+}
