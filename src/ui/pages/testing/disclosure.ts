@@ -8,7 +8,7 @@ import { text } from './render';
 export const DISCLOSURE_ROWS: { title: string; lines?: string[]; lists: string[][] }[] = [
   {
     title: 'For each video Shoo checks',
-    lists: [['Title', 'Channel name', 'Length', 'Where it appeared: Home, the Watch sidebar or the Shorts shelf', 'Thumbnail image, only if you create a Thumbnail rule']],
+    lists: [['Title', 'Channel name', 'Length', "Where it appeared: YouTube's Home, Watch sidebar or Shorts shelf, or Bilibili's Home", 'Thumbnail image, only if you create a Thumbnail rule']],
   },
   {
     title: 'Also in each request',
@@ -39,7 +39,7 @@ export const DISCLOSURE_ROWS: { title: string; lines?: string[]; lists: string[]
   },
   {
     title: 'Never sent',
-    lists: [['Web addresses', 'Video IDs', 'Your watch history', 'Cookies', 'Comments', "The page's HTML", 'Your YouTube account details']],
+    lists: [['Web addresses', "Video IDs, including Bilibili's BV ids", 'Your watch history', 'Cookies', 'Comments', "The page's HTML", 'Your YouTube or Bilibili account details']],
   },
 ];
 

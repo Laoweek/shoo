@@ -17,7 +17,7 @@ export interface SegmentedProps<V extends string> {
 
 /**
  * Radio group with arrow keys (Left/Up previous, Right/Down next, Home, End) and roving tabindex.
- * The selected segment is ink-filled with paper text. Pill-shaped (ui-design.md Section 2).
+ * The selected segment is a paper pill ringed in --edge inside a tinted track (ui-design.md Section 2), so it shows at 3:1 in both themes.
  */
 export function Segmented<V extends string>({ options, value, onChange, label, disabled, class: cls }: SegmentedProps<V>) {
   const group = useRef<HTMLDivElement>(null);
@@ -48,7 +48,7 @@ export function Segmented<V extends string>({ options, value, onChange, label, d
       aria-label={label}
       aria-disabled={disabled || undefined}
       onKeyDown={disabled ? undefined : move}
-      class={`grid auto-cols-fr grid-flow-col gap-0.5 rounded-full border-[1.5px] border-edge p-0.5 ${disabled ? 'opacity-50' : ''} ${cls ?? ''}`}
+      class={`grid auto-cols-fr grid-flow-col gap-0.5 rounded-full bg-tint p-[3px] shadow-[inset_0_0_0_1px_var(--line)] ${disabled ? 'opacity-50' : ''} ${cls ?? ''}`}
     >
       {options.map((o, i) => {
         const on = i === index;
@@ -61,8 +61,8 @@ export function Segmented<V extends string>({ options, value, onChange, label, d
             tabIndex={on ? 0 : -1}
             disabled={disabled}
             onClick={() => onChange(o.value)}
-            class={`h-[30px] rounded-full px-3 font-semibold whitespace-nowrap cursor-pointer disabled:cursor-not-allowed ${
-              on ? 'bg-ink text-paper' : 'text-ink hover:bg-tint'
+            class={`press h-[30px] rounded-full px-3 font-semibold whitespace-nowrap cursor-pointer disabled:cursor-not-allowed ${
+              on ? 'bg-paper text-ink shadow-[inset_0_0_0_1px_var(--edge),0_1px_2px_rgb(0_0_0/0.12)]' : 'text-muted hover:text-ink'
             }`}
           >
             {o.label}

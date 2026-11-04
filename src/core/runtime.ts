@@ -1,5 +1,6 @@
 // RuntimeState and failure counters. Source of truth: docs/spec/architecture.md Section 7 (the precedence
 // table is binding) and docs/spec/requirements.md REQ-COST-4.
+import { SURFACE_SITE, type SiteId } from './sites';
 import {
   SUPPORTED_SURFACES,
   SURFACE_IDS,
@@ -23,6 +24,8 @@ export interface RuntimeInputs {
   /** Host permission for the active model host: openrouter.ai, or the host of the direct or custom endpoint in use. */
   hostModel: boolean;
   tripped: { model?: number; nativeAction?: number; markup?: number };
+  /** The Site whose failures tripped each category. Breakers are shared by every Site. */
+  trippedSite?: Partial<Record<FailureCategory, SiteId>>;
   dailyCapReached: boolean;
   offline: boolean;
   rulesVersion: string;
@@ -135,7 +138,7 @@ export function computeRuntime(i: RuntimeInputs): RuntimeSnapshot {
   );
   const okEye: EyeState = i.judging ? 'judging' : (i.reviewPending ?? 0) > 0 ? 'review' : 'watching';
   const surfaces = Object.fromEntries(
-    SURFACE_IDS.map((id) => [id, SUPPORTED_SURFACES.includes(id) && i.settings.surfaces[id] === true]),
+    SURFACE_IDS.map((id) => [id, SUPPORTED_SURFACES.includes(id) && i.settings.surfaces[id] === true && i.settings.sites[SURFACE_SITE[id]] === true]),
   ) as Record<SurfaceId, boolean>;
 
   const snapshot: RuntimeSnapshot = {
@@ -149,27 +152,31 @@ export function computeRuntime(i: RuntimeInputs): RuntimeSnapshot {
     surfaces,
   };
   if (top?.detail) snapshot.detail = top.detail;
+  const site = top?.reason === 'breakerNativeAction' ? i.trippedSite?.nativeAction : top?.reason === 'breakerMarkup' ? i.trippedSite?.markup : undefined;
+  if (site) snapshot.site = site;
   if (i.reviewPending !== undefined) snapshot.reviewPending = i.reviewPending;
   return snapshot;
 }
 
 export const FAILURE_TRIP_THRESHOLD = 5;
 
-/** `local:runtime`: consecutive failures per category and when each category tripped. */
+/** `local:runtime`: consecutive failures per category, when each category tripped, and on which Site. */
 export interface FailureState {
   failures: Record<FailureCategory, number>;
   tripped: Partial<Record<FailureCategory, number>>;
+  trippedSite?: Partial<Record<FailureCategory, SiteId>>;
 }
 
 /**
  * Counts one failure. The 5th consecutive failure trips the category (`tripped[cat] = now`, kept until
- * Resume). `tripped` is whether the category is tripped after this call, `newlyTripped` whether this call
- * tripped it (show the notice once).
+ * Resume), and records the `site` of that failure. `tripped` is whether the category is tripped after this call,
+ * `newlyTripped` whether this call tripped it (show the notice once).
  */
 export function recordFailure(
   state: FailureState,
   cat: FailureCategory,
   now: number,
+  site?: SiteId,
 ): { state: FailureState; tripped: boolean; newlyTripped: boolean } {
   const count = state.failures[cat] + 1;
   const already = state.tripped[cat] !== undefined;
@@ -178,13 +185,14 @@ export function recordFailure(
     failures: { ...state.failures, [cat]: count },
     tripped: trips ? { ...state.tripped, [cat]: now } : state.tripped,
   };
+  if (trips && site) next.trippedSite = { ...state.trippedSite, [cat]: site };
+  else if (state.trippedSite) next.trippedSite = state.trippedSite;
   return { state: next, tripped: already || trips, newlyTripped: trips };
 }
 
 /** A success resets only its own category's counter. A trip stays until Resume. */
 export function recordSuccess(state: FailureState, cat: FailureCategory): { state: FailureState; tripped: boolean } {
-  return {
-    state: { failures: { ...state.failures, [cat]: 0 }, tripped: state.tripped },
-    tripped: state.tripped[cat] !== undefined,
-  };
+  const next: FailureState = { failures: { ...state.failures, [cat]: 0 }, tripped: state.tripped };
+  if (state.trippedSite) next.trippedSite = state.trippedSite;
+  return { state: next, tripped: state.tripped[cat] !== undefined };
 }

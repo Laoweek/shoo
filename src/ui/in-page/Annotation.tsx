@@ -1,9 +1,10 @@
-// The removed-Tile annotation over YouTube's placeholder (docs/spec/ui-design.md Section 4,
+// The removed-Tile annotation over the Site's own placeholder (docs/spec/ui-design.md Section 4,
 // "Removed-Tile annotation").
 import { useEffect, useRef } from 'preact/hooks';
 import type { ColourCode } from '~/core/types';
 import { t } from '~/i18n';
 import { EyesSvg } from '../eyes/EyesSvg';
+import { siteName } from './site';
 import { UserCheckIcon } from './icons';
 import { RuleTag, ruleLabel, type RuleNaming } from './parts';
 
@@ -35,7 +36,7 @@ export interface AnnotationProps extends RuleNaming {
  * line: the channel action becomes its user-check icon, then "Shooed by" goes (components.css). Line two names what
  * was removed: the title, then the channel, or the channel first on the "Don't recommend channel" placeholder. It
  * stays one line with an ellipsis and the full text as a tooltip. Where the placeholder has no room for two lines
- * (src/youtube/mount.ts, data-tight) the title moves into line one instead of "Shooed by", or goes on the channel
+ * (src/content/mount.ts, data-tight) the title moves into line one instead of "Shooed by", or goes on the channel
  * placeholder (components.css). Names stay whole for screen readers. "Already shooed above" sits on a Tile whose own
  * title still shows, so it has no second line.
  */
@@ -76,9 +77,10 @@ export function RemovedAnnotation(props: AnnotationProps) {
 function srLabel(props: AnnotationProps, named: { rule: string }, title: string, channel: string): string {
   if (props.duplicate) return t('annotation.duplicateLabel', named);
   if (props.channel) {
-    if (channel && title) return t('annotation.channelNamedLabel', { ...named, channel, title });
-    if (channel) return t('annotation.channelOnlyLabel', { ...named, channel });
-    return title ? t('annotation.channelTitledLabel', { ...named, title }) : t('annotation.channelLabel', named);
+    const site = siteName();
+    if (channel && title) return t('annotation.channelNamedLabel', { ...named, channel, title, site });
+    if (channel) return t('annotation.channelOnlyLabel', { ...named, channel, site });
+    return title ? t('annotation.channelTitledLabel', { ...named, title, site }) : t('annotation.channelLabel', { ...named, site });
   }
   if (title && channel) return t('annotation.titledChannelLabel', { ...named, title, channel });
   return title ? t('annotation.titledLabel', { ...named, title }) : t('annotation.label', named);

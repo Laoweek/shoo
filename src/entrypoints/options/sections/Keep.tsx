@@ -28,19 +28,25 @@ export function Keep({ data }: SectionProps) {
         <SkeletonRows rows={3} />
       ) : (
         <>
-          <SubHead id="keep-yours" title={t('keep.yours')} hint={keep.length > 0 ? t('rules.sorted') : undefined} />
-          {keep.length === 0 ? (
-            <p class="m-0 border-t border-line-strong pt-4">{t('keep.empty')}</p>
-          ) : (
-            <RuleTable rules={keep} stats={stats.data ?? {}} now={now} regexEnabled={data.settings.regexEnabled} labelledBy="keep-yours" />
-          )}
-          {channel.prompt}
-          <AddRule
-            polarity="keep"
-            regexEnabled={data.settings.regexEnabled}
-            modelOk={data.modelOk}
-            onKeepChannel={(name) => channel.keep({ channelName: name })}
-          />
+          <div class="card px-3 pt-5 pb-5 sm:px-5">
+            <div class="px-2">
+              <SubHead id="keep-yours" title={t('keep.yours')} hint={keep.length > 0 ? t('rules.sorted') : undefined} />
+            </div>
+            {keep.length === 0 ? (
+              <p class="m-0 px-2">{t('keep.empty')}</p>
+            ) : (
+              <RuleTable rules={keep} stats={stats.data ?? {}} now={now} regexEnabled={data.settings.regexEnabled} labelledBy="keep-yours" />
+            )}
+            <div class="px-2">
+              {channel.prompt}
+              <AddRule
+                polarity="keep"
+                regexEnabled={data.settings.regexEnabled}
+                modelOk={data.modelOk}
+                onKeepChannel={(name, site) => channel.keep({ channelName: name, site })}
+              />
+            </div>
+          </div>
           <Status tone="danger" class="mt-2">
             {failed ? t('keep.error.save') : ''}
           </Status>

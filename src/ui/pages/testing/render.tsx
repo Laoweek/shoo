@@ -83,7 +83,7 @@ export function snapshot(over: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot {
     eye: 'watching',
     settingsGeneration: 1,
     rulesVersion: 'v1',
-    surfaces: { home: true, watchSidebar: true, shortsShelf: true, search: false, channel: false, endScreen: false },
+    surfaces: { home: true, watchSidebar: true, shortsShelf: true, search: false, channel: false, endScreen: false, bilibiliHome: true, bilibiliVideoSidebar: false },
     ...over,
   };
 }

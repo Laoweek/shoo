@@ -557,7 +557,7 @@ describe('the moment', () => {
     act(() => void showSummary(summary({ count: 10, rules })));
     const target = overlayRoot().querySelector('.rules')!;
     // jsdom has no layout: the two swatches and the folded spot each get a place of their own.
-    const place = (sel: string, top: number) => vi.spyOn(target.querySelector(sel)!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, top, 8, 8));
+    const place = (sel: string, top: number) => vi.spyOn(target.querySelector(sel)!, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, top, 10, 10));
     place('[data-ref="R1"]', 200);
     place('[data-ref="R2"]', 220);
     place('[data-refs]', 240);
@@ -702,9 +702,9 @@ describe('in-page CSS decisions', () => {
     expect(rule('.annot.dup')).toMatch(/background:\s*color-mix\(in srgb, var\(--paper\) 96%, transparent\)/);
   });
 
-  it('edges floating panels with a --line-strong ring in dark only', () => {
-    expect(inPageCss).toMatch(/:host\(\[data-dark\]\) \.panel,\s*:host\(\[data-dark\]\) \.pill\s*\{\s*box-shadow:\s*0 0 0 1px var\(--line-strong\), var\(--shadow\);/);
-    expect(rule('.panel')).not.toMatch(/border:/);
+  it("rings floating panels with --line-strong in dark only, where their shadow doesn't show on the Site's dark ground", () => {
+    expect(inPageCss).toMatch(/:host\(\[data-dark\]\) \.panel,\s*:host\(\[data-dark\]\) \.pill\s*\{\s*box-shadow:\s*0 0 0 1px var\(--line-strong\), var\(--shadow-float\);/);
+    for (const panel of ['.panel', '.pill']) expect(rule(panel)).not.toMatch(/border:/);
   });
 
   it("gives the removed-Tile annotation YouTube's own ground only when it covers YouTube's sentence", () => {

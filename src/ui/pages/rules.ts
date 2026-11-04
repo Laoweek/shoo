@@ -2,8 +2,8 @@
 // RuleOp builders. Labels follow CONTEXT.md (docs/spec/ui-design.md Section 9).
 import { channelKey } from '~/core/channel';
 import { formatCount, parseCount } from '~/core/count';
-import { isBannedChannel, sortByRef } from '~/core/rules';
-import type { Polarity, Rule, RuleKind, RuleOp, RuleParams } from '~/core/types';
+import { isBannedChannel, ruleSite, siteChoosable, sortByRef } from '~/core/rules';
+import type { Polarity, Rule, RuleKind, RuleOp, RuleParams, SiteId } from '~/core/types';
 import { t } from '~/i18n';
 import { hitsThisWeek, type RuleStats } from '~/store/local';
 
@@ -65,10 +65,11 @@ export function sortByActivity(rules: Rule[], stats: RuleStats, now: number): Ru
 
 export const byId = (rules: Rule[] | undefined): Map<string, Rule> => new Map((rules ?? []).map((r) => [r.id, r]));
 
-/** The Banned channel Rule for a channel name, if any. */
-export function bannedRuleFor(rules: Rule[], channelName: string): Rule | undefined {
+/** The Banned channel Rule for a channel name on a Site (any Site when unknown), if any. */
+export function bannedRuleFor(rules: Rule[], channelName: string, site?: SiteId): Rule | undefined {
   const key = channelKey(channelName);
-  return rules.find((r) => isBannedChannel(r) && r.deletedAt === undefined && channelKey(r.params?.channelName ?? r.text) === key);
+  const onSite = (r: Rule) => !site || (ruleSite(r) ?? site) === site;
+  return rules.find((r) => isBannedChannel(r) && r.deletedAt === undefined && onSite(r) && channelKey(r.params?.channelName ?? r.text) === key);
 }
 
 /** Display text for a Rule's channel. */
@@ -110,6 +111,8 @@ export interface Draft {
   /** View count bounds, as typed: `10000`, `10,000`, `10k` or `1.5m`. */
   minViews?: string;
   maxViews?: string;
+  /** The one Site the Rule works on, unset for all sites. Ignored for kinds bound to one Site. */
+  site?: SiteId;
 }
 
 const minutes = (s: string | undefined): number | undefined => {
@@ -165,7 +168,8 @@ export function addOp(polarity: Polarity, d: Draft): RuleOp | undefined {
       if (!text) return undefined;
   }
   const name = hasName(d.kind) ? d.name?.trim() : undefined;
-  return { op: 'add', rule: { ...base, text: finalText, ...(name ? { name } : {}), ...(params ? { params } : {}) } };
+  const site = d.site && siteChoosable({ kind: d.kind }) ? d.site : undefined;
+  return { op: 'add', rule: { ...base, text: finalText, ...(name ? { name } : {}), ...(params ? { params } : {}), ...(site ? { site } : {}) } };
 }
 
 /** Channel Rules have no Rule name: their text is the channel name. */
@@ -192,6 +196,11 @@ export function viewsText(p: RuleParams): string {
   if (min !== undefined && max !== undefined) return t('rules.views.between', { min, max });
   if (max !== undefined) return t('rules.views.fewer', { max });
   return t('rules.views.more', { min: min ?? '0' });
+}
+
+/** Makes a Rule work on one Site, or on all sites again (`undefined`). */
+export function sitePatch(rule: Rule, site: SiteId | undefined): RuleOp {
+  return { op: 'update', id: rule.id, patch: { site: site ?? null } };
 }
 
 /** Text edits on channel Rules keep params.channelName in step with the visible name. */

@@ -1,7 +1,9 @@
-// Banned channels (docs/spec/ui-design.md Section 6): channel name, how it got there (you, or an
+// Banned channels (docs/spec/ui-design.md Section 6): channel name, its Site, how it got there (you, or an
 // Escalation with its date), videos removed, remove from list.
 import { useMemo, useState } from 'preact/hooks';
-import { isBannedChannel, sortByRef } from '~/core/rules';
+import { isBannedChannel, ruleSite, sortByRef } from '~/core/rules';
+import { SITE_NAMES } from '~/core/sites';
+import type { Rule } from '~/core/types';
 import { t } from '~/i18n';
 import { readRuleStats, watchRuleStats } from '~/store/read';
 import { Button, Notice, RuleRef, SkeletonRows } from '~/ui/components';
@@ -11,6 +13,12 @@ import { SectionHead, Status, focusHeading } from '~/ui/pages/parts';
 import { channelOf } from '~/ui/pages/rules';
 import { mutate } from '~/ui/pages/RuleTable';
 import type { SectionProps } from '../context';
+
+/** A ban made from a video names that video's Site. One typed by name may work on all sites. */
+const siteName = (r: Rule): string => {
+  const site = ruleSite(r);
+  return site ? SITE_NAMES[site] : t('rules.site.all');
+};
 
 export function Banned({ data }: SectionProps) {
   const stats = useAsync(() => readRuleStats(), [watchRuleStats]);
@@ -34,15 +42,16 @@ export function Banned({ data }: SectionProps) {
       ) : !data.rules ? (
         <SkeletonRows rows={3} />
       ) : banned.length === 0 ? (
-        <p class="m-0 border-t border-line-strong pt-4">{t('banned.empty')}</p>
+        <p class="card m-0 p-5">{t('banned.empty')}</p>
       ) : (
         // A container, so the Added and Removed columns give way to the channel name in a narrow list.
-        <div class="@container">
-          <table aria-labelledby="section-banned" class="w-full border-collapse border-t border-line-strong text-left">
+        <div class="card @container px-3 pt-1 pb-2">
+          <table aria-labelledby="section-banned" class="w-full border-collapse text-left [&_tbody_tr:last-child]:border-b-0">
             <thead>
-              <tr class="h-[30px] border-b border-line-strong text-[12px] text-muted">
+              <tr class="h-[34px] border-b border-line-strong text-[13px] text-muted">
                 <th scope="col" class="w-16 px-2 font-semibold">{t('rules.table.rule')}</th>
                 <th scope="col" class="px-2 font-semibold">{t('banned.table.channel')}</th>
+                <th scope="col" class="px-2 font-semibold @max-md:hidden">{t('banned.table.site')}</th>
                 <th scope="col" class="px-2 font-semibold @max-2xl:hidden">{t('banned.table.origin')}</th>
                 <th scope="col" class="px-2 text-right font-semibold @max-lg:hidden">{t('banned.table.removed')}</th>
                 <th scope="col" class="w-36 px-2">
@@ -57,6 +66,7 @@ export function Banned({ data }: SectionProps) {
                     <RuleRef rule={r} show="ref" off={!r.enabled} />
                   </td>
                   <td class={`px-2 py-2 ${r.enabled ? '' : 'text-muted'}`}>{channelOf(r)}</td>
+                  <td class="px-2 py-2 text-[13px] whitespace-nowrap text-muted @max-md:hidden">{siteName(r)}</td>
                   <td class="px-2 py-2 text-[13px] whitespace-nowrap text-muted @max-2xl:hidden">
                     {r.origin === 'escalation' ? t('banned.origin.escalation', { date: date(r.createdAt) }) : t('banned.origin.you')}
                   </td>

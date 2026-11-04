@@ -44,7 +44,7 @@ export function ProviderPicker({ value, onChange, inUse }: { value: ProviderId |
   const group = (id: string, Icon: typeof Cloud, title: string, ids: readonly ProviderId[]) => (
     <div role="group" aria-labelledby={id} class="min-w-0">
       <p id={id} class="m-0 mb-2 flex items-center gap-2 text-[12px] font-semibold text-muted">
-        <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+        <Icon size={14} strokeWidth={2} aria-hidden="true" />
         {title}
       </p>
       <div class="border-t border-line-strong">
@@ -91,10 +91,10 @@ function Command({ text, what }: { text: string; what: string }) {
     );
   return (
     <>
-      <div class="mt-2 flex items-start gap-2 rounded-[10px] bg-lit py-2 pr-2 pl-3">
+      <div class="mt-2 flex items-start gap-2 rounded-[14px] bg-lit py-2 pr-2 pl-3">
         <code class="min-w-0 flex-1 py-0.5 font-mono text-[13px] leading-[1.45] wrap-anywhere">{text}</code>
         <Button size="sm" onClick={copy}>
-          <Copy size={14} strokeWidth={1.75} aria-hidden="true" />
+          <Copy size={14} strokeWidth={2} aria-hidden="true" />
           {t('connection.provider.copy')}
           <span class="sr-only"> {what}</span>
         </Button>
@@ -111,7 +111,7 @@ const Steps = ({ children }: { children: ComponentChildren }) => <ol class="m-0 
 const Ext = ({ href, children }: { href: string; children: ComponentChildren }) => (
   <a href={href} target="_blank" rel="noreferrer" class={LINK}>
     {children}
-    <ExternalLink size={14} strokeWidth={1.75} aria-hidden="true" />
+    <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
   </a>
 );
 
@@ -307,7 +307,7 @@ function SaveArea({
   return (
     <>
       {step.kind === 'consent' || step.kind === 'saving' ? (
-        <div ref={flow.callout} tabIndex={-1} class="grid gap-2 rounded-[10px] bg-lit px-4 py-3 focus:outline-none focus-visible:outline-2">
+        <div ref={flow.callout} tabIndex={-1} class="grid gap-2 rounded-[14px] bg-lit px-4 py-3 focus:outline-none focus-visible:outline-2">
           <p class="m-0 font-semibold">{t('connection.custom.consent', { host })}</p>
           {local && <p class="m-0 text-[13px]">{t('connection.provider.consentLocal', { host })}</p>}
           {disclosure && <Disclosure compact level={3} />}
@@ -347,7 +347,7 @@ function SaveArea({
 /** A muted fact about the choice, with its icon. */
 const Fact = ({ icon: Icon, children }: { icon: typeof Cloud; children: ComponentChildren }) => (
   <p class="m-0 flex items-start gap-2">
-    <Icon size={14} strokeWidth={1.75} aria-hidden="true" class="mt-[3px] shrink-0" />
+    <Icon size={14} strokeWidth={2} aria-hidden="true" class="mt-[3px] shrink-0" />
     <span>{children}</span>
   </p>
 );
@@ -457,7 +457,7 @@ export function DirectSetup({ provider, initial, active, topicRules = 0, disclos
         <Fact icon={images ? Image : ImageOff}>{t(images ? 'connection.provider.images' : 'connection.provider.textOnly')}</Fact>
         {topicRules > topicRuleLimit(p) && (
           <p class="m-0 flex items-start gap-2 text-danger">
-            <TriangleAlert size={14} strokeWidth={1.75} aria-hidden="true" class="mt-[3px] shrink-0" />
+            <TriangleAlert size={14} strokeWidth={2} aria-hidden="true" class="mt-[3px] shrink-0" />
             <span>{t('connection.provider.tooManyRules', { provider: p.name, max: String(topicRuleLimit(p)), count: String(topicRules) })}</span>
           </p>
         )}
@@ -567,11 +567,11 @@ export function ChatEndpoint({ settings }: { settings: Settings }) {
   return (
     <details class="group" open={settings.engine === 'custom' || undefined}>
       <summary class="flex cursor-pointer list-none items-center gap-2 rounded-[6px] py-1 text-[15px] font-bold tracking-[-0.01em] [&::-webkit-details-marker]:hidden">
-        <ChevronRight size={16} strokeWidth={1.75} aria-hidden="true" class="transition-transform group-open:rotate-90 motion-reduce:transition-none" />
+        <ChevronRight size={16} strokeWidth={2} aria-hidden="true" class="transition-transform group-open:rotate-90 motion-reduce:transition-none" />
         {t('connection.chat.title')}
         <span class="text-[12px] font-normal tracking-normal text-muted">{t('connection.chat.badge')}</span>
       </summary>
-      <div class="mt-2 border-t border-line-strong pt-4">
+      <div class="mt-2 border-t border-line pt-4">
         <div class="grid max-w-xl gap-4">
           <div class="grid gap-1 text-[13px] text-muted">
             <p class="m-0">{t('connection.chat.lede')}</p>

@@ -9,12 +9,12 @@ How to configure WXT, the manifest and releases so one codebase ships to Chrome 
 | Item | Value | Why |
 |---|---|---|
 | Manifest version | MV3 for both browsers | WXT builds MV2 for Firefox by default, so always pass `--mv3` for Firefox |
-| `permissions` | `storage`, `alarms`, `identity` | storage for everything, alarms for Activity retention pruning, identity for Connect OpenRouter (REQ-MODEL-4) |
+| `permissions` | `storage`, `alarms`, `identity` | storage for everything, alarms for Activity retention pruning, identity for Connect OpenRouter (REQ-MODEL-4). None of them shows a permission warning beyond the hosts |
 | `unlimitedStorage` | **no** | Activity has a byte budget and the Verdict cache is size-capped (`architecture.md`, storage budgets), so the 10 MB `storage.local` quota is enough. Fewer permissions, simpler review |
-| `host_permissions` | `https://www.youtube.com/*`, `https://openrouter.ai/*`, `https://i.ytimg.com/*` | content script, Decisions API and OAuth key exchange, thumbnails for Thumbnail rules |
-| `optional_host_permissions` | `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` | a Decision provider reached directly or on this computer (REQ-MODEL-7, onboarding step 2 or Settings) or a custom chat endpoint (REQ-MODEL-5, Settings only), requested for the single origin the user saves, never from the popup |
+| `host_permissions` | `https://www.youtube.com/*`, `https://i.ytimg.com/*`, `https://www.bilibili.com/*`, `https://i0.hdslb.com/*`, `https://openrouter.ai/*` | each Site's content script and its thumbnails for Thumbnail rules (REQ-SITE-1, ADR 0011), then the Decisions API and OAuth key exchange |
+| `optional_host_permissions` | `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` | a Decision provider reached directly or on this computer (REQ-MODEL-7, onboarding step 2 or Settings) or a custom chat endpoint (REQ-MODEL-5, Settings only), requested for the single origin the user saves. Never from the popup |
 | `web_accessible_resources` | **none** | single content-script bundle with inline CSS and no fonts in the page (ADR 0006). WAR entries would make Shoo detectable by pages |
-| Content script matches | `https://www.youtube.com/*` only | no `m.youtube.com`, no other sites (REQ-DIST-2) |
+| Content script matches | `https://www.youtube.com/*` and `https://www.bilibili.com/*`, one script per Site | no `m.youtube.com` or `m.bilibili.com`, no other sites (REQ-DIST-2). A new required host after release makes Chrome disable Shoo until the user accepts it, so a third Site would be opt-in (ADR 0011) |
 | Content script `runAt` | `document_idle` | YouTube is a single-page app, the watcher handles later navigation |
 | Commands | `toggle-shoo`, suggested `Alt+Shift+S` | REQ-KEY-1, rebindable in both browsers. The handler is specified in `architecture.md` (messages contract) |
 | Chrome minimum | `minimum_chrome_version: "120"` | REQ-DIST-2 |
@@ -42,8 +42,10 @@ export default defineConfig({
     permissions: ['storage', 'alarms', 'identity'],
     host_permissions: [
       'https://www.youtube.com/*',
-      'https://openrouter.ai/*',
       'https://i.ytimg.com/*',
+      'https://www.bilibili.com/*',
+      'https://i0.hdslb.com/*',
+      'https://openrouter.ai/*',
     ],
     optional_host_permissions: ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'],
     action: { default_title: 'Shoo' },
@@ -72,16 +74,14 @@ export default defineConfig({
 });
 ```
 
-The content script declares its own options in `src/entrypoints/content/index.ts`. It is one bundle (WXT bundles content scripts as IIFE without code splitting, ADR 0006). Its CSS is imported as an inline string and injected into each shadow root, so nothing is fetched from an extension URL:
+Each Site's content script declares its own options in `src/entrypoints/<site>.content.ts` (`youtube.content.ts`, `bilibili.content.ts`). Each is one bundle (WXT bundles content scripts as IIFE without code splitting, ADR 0006). The in-page CSS is imported as an inline string (`src/ui/in-page/index.ts`) and injected into each shadow root, so nothing is fetched from an extension URL:
 
 ```ts
-import uiCss from '~/ui/in-page.css?inline';
-
 export default defineContentScript({
-  matches: ['https://www.youtube.com/*'],
+  matches: ['https://www.bilibili.com/*'], // youtube.content.ts: 'https://www.youtube.com/*'
   runAt: 'document_idle',
   cssInjectionMode: 'manual', // WXT's 'ui' mode may load CSS from an extension URL, which would need WAR
-  main(ctx) { /* bootstrap, see docs/spec/architecture.md. Pass uiCss to the shadow-root UI. */ },
+  main: (ctx) => startContent(ctx, bilibili),
 });
 ```
 
@@ -184,7 +184,7 @@ Firefox release only installs signed add-ons. Signing uses the publisher's own A
 
 ### Chrome Web Store
 
-- **Single purpose**: "Shoo tells YouTube which recommendations you don't want, using YouTube's own Not interested and Don't recommend channel actions, based on rules you write."
+- **Single purpose**: "Shoo tells YouTube and Bilibili which recommendations you don't want, using the site's own Not interested and Don't recommend channel actions, based on rules you write."
 - **Permission justifications**
 
 | Permission | Justification |
@@ -195,14 +195,16 @@ Firefox release only installs signed add-ons. Signing uses the publisher's own A
 | `https://www.youtube.com/*` | Reads video titles, channel names and lengths on YouTube and tells YouTube Not interested or Don't recommend channel through YouTube's own menu. |
 | `https://openrouter.ai/*` | Sends the data listed in the privacy policy to the decision model you connected, and completes OpenRouter sign-in. |
 | `https://i.ytimg.com/*` | Downloads a video's thumbnail only when you have a Thumbnail rule. |
+| `https://www.bilibili.com/*` | Reads video titles, channel names and lengths on Bilibili and tells Bilibili Not interested or Don't recommend channel through Bilibili's own menu. You can turn Bilibili off in Settings. |
+| `https://i0.hdslb.com/*` | Downloads a Bilibili video's thumbnail only when you have a Thumbnail rule. |
 | optional hosts | Only requested when you choose your own model endpoint (during setup or in Settings), and only for that address. |
 
 - **Privacy practices form** (must match REQ-PRIV-1, the Firefox declaration and the privacy policy):
-  - Data collected: **Website content** (video titles, channel names, lengths, the part of YouTube each video appeared on, thumbnails only with Thumbnail rules, the text of your Topic and Thumbnail rules and of Keep rules written as a sentence, and titles and channel names of up to 10 videos you kept) and **Authentication information** (the OpenRouter key, the key of a provider reached directly and the key of a custom endpoint, each stored on your device and sent only to its own service). The submitted wording is in `docs/release/chrome-web-store.md`.
+  - Data collected: **Website content** (video titles, channel names, lengths, the part of YouTube or Bilibili each video appeared on, thumbnails only with Thumbnail rules, the text of your Topic and Thumbnail rules and of Keep rules written as a sentence, and titles and channel names of up to 10 videos you kept) and **Authentication information** (the OpenRouter key, the key of a provider reached directly and the key of a custom endpoint, each stored on your device and sent only to its own service). The submitted wording is in `docs/release/chrome-web-store.md`.
   - Recipients: OpenRouter and the model provider it routes to (Cloudflare by default, TypeSafe for the text fallback, OpenAI for the thumbnail fallback, or the provider of another decision model the user picks in Settings), or instead, when the user chooses, Cloudflare, TypeSafe or Perplexity directly, a model on the user's computer, or the user's own endpoint.
   - Not collected: personally identifiable information, health, financial, personal communications, location, web history, user activity.
   - Certify: not sold to third parties, not used for unrelated purposes, not used for creditworthiness or lending.
-  - **Limited Use**: certify compliance and publish this statement on the privacy policy page: "Shoo's use of information received from YouTube pages is limited to deciding which videos to tell YouTube you're not interested in. It is sent only to OpenRouter and the model provider you use, and is never used for advertising or sold."
+  - **Limited Use**: certify compliance and publish this statement on the privacy policy page: "Shoo's use of information received from YouTube and Bilibili pages is limited to deciding which videos to tell YouTube or Bilibili you're not interested in. It is sent only to OpenRouter and the model provider you use, and is never used for advertising or sold."
 - **In-extension disclosure and consent**: onboarding step 1 (REQ-PRIV-2, REQ-ONB-1) shows exactly what is sent and to whom before any request. Store screenshots should include that screen.
 - **Privacy policy URL**: https://laoweek.github.io/shoo/release/privacy-policy.html, served by GitHub Pages from the `docs/` folder of `main` (`docs/.nojekyll` serves the files as they are). The listing and Settings, Connection link it.
 
@@ -214,10 +216,10 @@ Firefox release only installs signed add-ons. Signing uses the publisher's own A
 
 ### Listing copy (both stores)
 
-- **Name**: `Shoo · Clear unwanted recommendations for YouTube` (49 characters, under AMO's 50 and CWS's 75, verify both limits at submission).
-- **Summary** (under 132 characters): "Write what you don't want to see. Shoo tells YouTube \"Not interested\" for you, and shows which rule did it."
+- **Name**: `Shoo · Clear unwanted video recommendations` (43 characters, under AMO's 50 and CWS's 75, verify both limits at submission).
+- **Summary** (under 132 characters): "Write what you don't want to see. Shoo tells YouTube and Bilibili \"Not interested\" for you, and shows which rule did it."
 - **Description**: the current text is in the submission packs in `docs/release/`: `chrome-web-store.md`, Description, which `amo.md` reuses.
-- **Branding rules**: never use "YouTube" or "YT" as part of the product name itself (only "for YouTube"). Do not use the YouTube logo or red play button in Shoo's icon or promo art. Screenshots of youtube.com may show YouTube's UI as it appears. Include the non-affiliation line.
+- **Branding rules**: never use "YouTube" or "YT" as part of the product name itself. The listing name names no site, and the summary and description name YouTube and Bilibili as the sites Shoo works on. Do not use the YouTube logo or red play button in Shoo's icon or promo art. Screenshots of youtube.com may show YouTube's UI as it appears. Include the non-affiliation line.
 
 ## 5. Privacy policy
 

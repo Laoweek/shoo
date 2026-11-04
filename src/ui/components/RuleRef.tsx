@@ -20,8 +20,7 @@ export interface RuleRefProps {
   rule: RuleLike;
   /**
    * 'label' (default): swatch + Rule name, or the text when the Rule has none, on one line with an
-   * ellipsis and the full text as its tooltip. 'ref': swatch + R-number, beside each Rule in the
-   * Settings tables.
+   * ellipsis and the full text as its tooltip. 'ref': swatch + R-number, beside each Rule in the Settings tables.
    */
   show?: 'label' | 'ref';
   /**
@@ -31,22 +30,25 @@ export interface RuleRefProps {
   sentence?: (rule: string) => string;
   /** The label wraps with the sentence instead of truncating (prose lines such as Try a title). */
   wrap?: boolean;
-  /** Switched-off Rule: greyed swatch, muted ref. */
+  /** Switched-off Rule: hollow swatch, muted text. */
   off?: boolean;
   class?: string;
 }
 
-/** Swatch + Rule name (or R-number in the Settings tables): the pair that names a Rule wherever a Verdict appears. */
+/** The Rule's dot and its R-number (K-number for a Keep rule), as the Settings tables show it. */
+export function RuleNumber({ refText, colour, off, class: cls }: { refText: string; colour?: ColourCode; off?: boolean; class?: string }) {
+  return (
+    <span class={`num inline-flex shrink-0 items-center gap-2.5 font-medium text-muted ${cls ?? ''}`}>
+      <Swatch colour={colour} off={off} />
+      {refText}
+    </span>
+  );
+}
+
+/** Swatch + Rule name (or its R-number in the Settings tables): the pair that names a Rule wherever a Verdict appears. */
 export function RuleRef({ rule, show = 'label', sentence, wrap, off, class: cls }: RuleRefProps) {
   const colour = rule.polarity === 'keep' ? undefined : rule.colour;
-  if (show === 'ref') {
-    return (
-      <span class={`inline-flex min-w-0 items-center gap-2 ${cls ?? ''}`}>
-        <Swatch colour={colour} off={off} />
-        <span class={`num font-bold ${off ? 'text-muted' : ''}`}>{rule.ref}</span>
-      </span>
-    );
-  }
+  if (show === 'ref') return <RuleNumber refText={rule.ref} colour={colour} off={off} class={cls} />;
   const label = ruleLabel(rule);
   const [before = '', after = ''] = sentence ? sentence(MARK).split(MARK) : [];
   if (wrap) {

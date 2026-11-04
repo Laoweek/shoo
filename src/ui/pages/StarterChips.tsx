@@ -54,7 +54,7 @@ export function StarterChips({ rules, modelOk, disabledNote, onAdded }: StarterC
           const label = starterLabel(s);
           if (rule) {
             return (
-              <li key={s.id} class="inline-flex h-[34px] items-center rounded-full border border-line-strong pr-4 pl-3">
+              <li key={s.id} class="inline-flex h-[34px] items-center rounded-full bg-tint pr-4 pl-3">
                 {/* A Starter rule stored without a Rule name shows the chip label. */}
                 <RuleRef rule={{ ...rule, name: rule.name || label }} />
               </li>
@@ -67,9 +67,9 @@ export function StarterChips({ rules, modelOk, disabledNote, onAdded }: StarterC
                 disabled={blocked || busy !== undefined}
                 aria-describedby={blocked ? `starter-note-${s.id}` : undefined}
                 onClick={() => void add(s)}
-                class="inline-flex h-[34px] cursor-pointer items-center gap-2 rounded-full border border-edge pr-4 pl-3 font-medium hover:bg-tint disabled:cursor-not-allowed disabled:border-stroke disabled:text-muted disabled:hover:bg-transparent"
+                class="press inline-flex h-[34px] cursor-pointer items-center gap-2 rounded-full border border-edge bg-paper pr-4 pl-3 font-medium hover:border-ink disabled:cursor-not-allowed disabled:border-stroke disabled:text-muted disabled:hover:border-stroke"
               >
-                <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+                <Plus size={16} strokeWidth={2} aria-hidden="true" />
                 {label}
                 {blocked && (
                   <span id={`starter-note-${s.id}`} class="text-[12px] font-normal">

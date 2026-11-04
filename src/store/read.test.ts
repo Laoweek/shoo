@@ -11,11 +11,17 @@ beforeEach(() => fakeBrowser.reset());
 describe('readEnabled (content script start-up)', () => {
   it('reads local:settings once and defaults to enabled', async () => {
     const get = vi.spyOn(fakeBrowser.storage.local, 'get');
-    expect(await readEnabled()).toBe(true);
+    expect(await readEnabled('youtube')).toBe(true);
     expect(get).toHaveBeenCalledTimes(1);
     expect(get).toHaveBeenCalledWith('settings');
     await fakeBrowser.storage.local.set({ settings: { ...DEFAULT_SETTINGS, enabled: false } });
-    expect(await readEnabled()).toBe(false);
+    expect(await readEnabled('youtube')).toBe(false);
+  });
+
+  it('is off on a Site the user turned off, and on for the other', async () => {
+    await fakeBrowser.storage.local.set({ settings: { ...DEFAULT_SETTINGS, sites: { youtube: true, bilibili: false } } });
+    expect(await readEnabled('bilibili')).toBe(false);
+    expect(await readEnabled('youtube')).toBe(true);
   });
 });
 
@@ -62,7 +68,7 @@ describe('page readers', () => {
   it('accept injected areas', async () => {
     const local: AreaLike = createMemoryArea();
     await local.set({ settings: { enabled: false } });
-    expect(await readEnabled(local)).toBe(false);
+    expect(await readEnabled('youtube', local)).toBe(false);
     expect((await readSettings({ local })).mode).toBe('review');
   });
 });

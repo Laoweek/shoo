@@ -5,13 +5,16 @@ import type { Settings } from '~/core/types';
 import { getOne, isRecord, type Areas } from './areas';
 
 export const SCHEMA = 1;
-export const CONSENT_VERSION = 2;
+// 2: the consent names the provider of another model and the direct and local Decision providers (REQ-PRIV-1).
+// 3: the consent also names Bilibili's Home, where Shoo works from install (ADR 0011).
+export const CONSENT_VERSION = 3;
 
 export const DEFAULT_SETTINGS: Settings = {
   generation: 0,
   enabled: true,
   mode: 'review',
-  surfaces: { home: true, watchSidebar: true, shortsShelf: true, search: false, channel: false, endScreen: false },
+  sites: { youtube: true, bilibili: true },
+  surfaces: { home: true, watchSidebar: true, shortsShelf: true, search: false, channel: false, endScreen: false, bilibiliHome: true, bilibiliVideoSidebar: false },
   notificationStyle: 'summary',
   dailyCap: 5000,
   escalationMode: 'suggest',
@@ -88,5 +91,8 @@ export async function runMigrations(areas: Areas): Promise<void> {
 /** Stored settings with defaults filled in for fields added since they were written. */
 export function withDefaults(stored: unknown): Settings {
   if (!isRecord(stored)) return DEFAULT_SETTINGS;
-  return { ...DEFAULT_SETTINGS, ...(stored as Partial<Settings>) };
+  const settings = { ...DEFAULT_SETTINGS, ...(stored as Partial<Settings>) };
+  // Sites and Surfaces added since (Bilibili's) take their default.
+  const merged = <T extends object>(defaults: T, value: unknown): T => ({ ...defaults, ...(isRecord(value) ? (value as Partial<T>) : {}) });
+  return { ...settings, sites: merged(DEFAULT_SETTINGS.sites, stored.sites), surfaces: merged(DEFAULT_SETTINGS.surfaces, stored.surfaces) };
 }

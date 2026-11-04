@@ -1,7 +1,7 @@
 // Settings sections and links between pages.
 import { sendMessage } from '~/messaging/protocol';
 
-export const SECTIONS = ['rules', 'keep', 'banned', 'exceptions', 'activity', 'connection', 'advanced'] as const;
+export const SECTIONS = ['rules', 'keep', 'banned', 'exceptions', 'activity', 'sites', 'connection', 'advanced'] as const;
 export type Section = (typeof SECTIONS)[number];
 
 export interface Route {

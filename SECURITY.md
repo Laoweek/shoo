@@ -10,13 +10,13 @@ Include what you found, how to reproduce it, the browser and Shoo version, and t
 
 In scope:
 
-- The Shoo extension itself: the background, the content script on youtube.com, the popup, onboarding and Settings pages.
-- How Shoo stores, isolates and sends API keys (OpenRouter, direct Decision providers and custom endpoints), for example a key reaching a host other than the one the user chose, or becoming readable by YouTube pages or the content script.
-- How Shoo handles YouTube pages, for example page content that makes Shoo run code, act on the wrong video, or send data that `docs/release/privacy-policy.md` says is never sent (URLs, video IDs, cookies, history).
+- The Shoo extension itself: the background, the content scripts on youtube.com and bilibili.com, the popup, onboarding and Settings pages.
+- How Shoo stores, isolates and sends API keys (OpenRouter, direct Decision providers and custom endpoints), for example a key reaching a host other than the one the user chose, or becoming readable by YouTube or Bilibili pages or the content scripts.
+- How Shoo handles YouTube and Bilibili pages, for example page content that makes Shoo run code, act on the wrong video, or send data that `docs/release/privacy-policy.md` says is never sent (URLs, video IDs, cookies, history).
 
 Out of scope:
 
-- Vulnerabilities in YouTube, OpenRouter, a model provider or a local model runtime. Report those to their owners.
+- Vulnerabilities in YouTube, Bilibili, OpenRouter, a model provider or a local model runtime. Report those to their owners.
 - Problems that need an already compromised browser, extension profile or computer.
 - Model answers that judge a video wrongly, unless they lead to one of the in-scope problems above.
 

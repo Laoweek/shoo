@@ -11,7 +11,7 @@ export interface DryRunLabelProps extends RuleNaming {
 }
 
 /**
- * Passive Dry-run label: not focusable, no buttons, dashed --edge outline. The full sentence
+ * Passive Dry-run label: not focusable, no buttons, dashed --muted outline. The full sentence
  * ("Shoo would remove this video, Rule: Celebrity gossip") sits in the shadow root in reading
  * order for screen readers. No aria-describedby (IDREFs do not cross shadow boundaries).
  */

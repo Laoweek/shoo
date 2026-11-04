@@ -141,6 +141,15 @@ describe('import and privacy', () => {
     expect(parseImportedRule({ ...r, params: {} }, T0)).toBe('viewsBounds');
   });
 
+  it("imports Bilibili Exceptions, and a Rule's Site, but no id of neither shape and no unknown Site", () => {
+    expect(parseImportedException({ videoId: 'BV1GJ411x7h7', title: 't', at: T0 }, T0)).toEqual({ videoId: 'BV1GJ411x7h7', title: 't', at: T0 });
+    expect(parseImportedException({ videoId: 'BV1GJ411x7h77', title: 't', at: T0 }, T0)).toBe('videoId');
+    const { colour: _colour, ...made } = makeRule(rng(1), 1);
+    const r = { ...made, polarity: 'keep', ref: 'K1', kind: 'channel', text: 'Up', params: { channelName: 'Up' }, site: 'bilibili' };
+    expect(parseImportedRule(r, T0)).toMatchObject({ params: { channelName: 'Up' }, site: 'bilibili' });
+    expect(parseImportedRule({ ...r, site: 'vimeo' }, T0)).toBe('site');
+  });
+
   it('updateRuntime writes nothing for a private-window sender', async () => {
     const local = createMemoryArea();
     const writer = createWriter({ areas: { sync: createMemoryArea(), local, session: createMemoryArea() }, now: () => T0 });

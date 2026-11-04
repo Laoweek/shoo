@@ -2,9 +2,11 @@
 // Subscribed channels, Exception archive. Source of truth: docs/spec/architecture.md Section 8
 // ("storage.local"), docs/spec/decision-engine.md Sections 1.2 (Verdict cache record) and 8.3 (accounting).
 import { dayKey, pruneEscalation, type EscalationRecord } from '~/core/escalation';
+import { fnv1a32 } from '~/core/ids';
+import { siteOfVideo, videoSite } from '~/core/sites';
 import type { FailureState } from '~/core/runtime';
 import type { SubscribedChannels } from '~/core/subscriptions';
-import type { ActivityEvent, ActivityKind, Exception, Settings } from '~/core/types';
+import type { ActivityEvent, ActivityKind, Exception, Settings, SiteId } from '~/core/types';
 import type { TextModelResult, ThumbModelResult } from '~/core/verdict';
 import { getDefined, getOne, isQuotaError, isRecord, itemBytes, type AreaLike } from './areas';
 import { SETTINGS_KEY, withDefaults } from './schema';
@@ -19,12 +21,17 @@ export function retentionStart(now: number): string {
   return dayKey(d.getTime());
 }
 
-/** 64 buckets by the first character of the videoId (YouTube ids use [A-Za-z0-9_-]). */
+export const VIDEO_BUCKETS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'];
+
+/**
+ * 64 buckets by the first character of a YouTube videoId ([A-Za-z0-9_-]). Every Bilibili id starts with 'BV', so
+ * those spread over the same 64 buckets by hash instead of crowding into 'B'.
+ */
 export function videoBucket(videoId: string): string {
+  if (videoSite(videoId) === 'bilibili') return VIDEO_BUCKETS[fnv1a32(videoId) % VIDEO_BUCKETS.length]!;
   const c = videoId.charAt(0);
   return /^[A-Za-z0-9_-]$/.test(c) ? c : '_';
 }
-export const VIDEO_BUCKETS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-'];
 
 // ---------------------------------------------------------------------------------------------------
 // Quota errors: evict Activity (oldest days), then Verdict cache (oldest entries), retrying once each
@@ -264,6 +271,8 @@ export interface ActivityQuery {
   ruleId?: string;
   batchId?: string;
   videoId?: string;
+  /** Events about a video on this Site. */
+  site?: SiteId;
   /** Case-insensitive match on title, channel name and detail. */
   text?: string;
   limit?: number;
@@ -285,6 +294,7 @@ export async function queryActivity(local: AreaLike, q: ActivityQuery = {}): Pro
       if (q.ruleId && e.ruleId !== q.ruleId) continue;
       if (q.batchId && e.batchId !== q.batchId) continue;
       if (q.videoId && e.videoId !== q.videoId) continue;
+      if (q.site && siteOfVideo(e) !== q.site) continue;
       if (needle && ![e.title, e.channelName, e.detail].some((s) => s?.toLocaleLowerCase().includes(needle))) continue;
       out.push(e);
     }

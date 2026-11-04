@@ -1,7 +1,8 @@
 // Hand-written payload guards for every inbound message (docs/spec/architecture.md Section 13: validate payload
 // shapes in the router). A failed guard runs nothing: the route answers its `invalid` reply, or router.ts rejects
 // the message with InvalidInput.
-import { SHELF_IDS, SURFACE_IDS, type ActionStep, type Mode, type NativeAction, type Settings, type ShelfId, type SurfaceId, type TileFacts, type TileResult } from '~/core/types';
+import { BILIBILI_COVER_PATH, SITE_IDS } from '~/core/sites';
+import { SHELF_IDS, SURFACE_IDS, type ActionStep, type Mode, type NativeAction, type Settings, type ShelfId, type SiteId, type SurfaceId, type TileFacts, type TileResult } from '~/core/types';
 
 export type Guard<T> = (v: unknown) => v is T;
 
@@ -23,6 +24,9 @@ const SOURCES = ['keepRule', 'exception', 'exact', 'model', 'modelThumbnail'] as
 export const isMode = oneOf(MODES);
 export const isSurface = oneOf(SURFACE_IDS as readonly SurfaceId[]);
 export const isShelf = oneOf(SHELF_IDS as readonly ShelfId[]);
+export const isSite = oneOf(SITE_IDS as readonly SiteId[]);
+/** A Bilibili cover path from a page (core/sites.ts BILIBILI_COVER_PATH), or absent. */
+export const isCover = (v: unknown) => v === undefined || (typeof v === 'string' && BILIBILI_COVER_PATH.test(v));
 export const isNativeAction = oneOf(ACTIONS);
 export const isStep = oneOf(STEPS);
 export const isSource = oneOf(SOURCES);
@@ -49,7 +53,8 @@ export function isTileFacts(v: unknown): v is TileFacts {
     isBool(v.isLive) &&
     isBool(v.isUpcoming) &&
     isBool(v.isMembersOnly) &&
-    optional(v.isArtistChannel, isBool)
+    optional(v.isArtistChannel, isBool) &&
+    isCover(v.cover)
   );
 }
 
@@ -89,6 +94,7 @@ const flags = (key: (k: unknown) => boolean) => (v: unknown) => isRecord(v) && O
 const PATCH_GUARDS: { [K in keyof Settings]?: (v: unknown) => boolean } = {
   enabled: isBool,
   mode: isMode,
+  sites: flags(isSite),
   surfaces: flags(isSurface),
   notificationStyle: oneOf(['summary', 'perRemoval', 'silent'] as const),
   dailyCap: (v) => isNum(v) && v >= 0 && Number.isInteger(v),

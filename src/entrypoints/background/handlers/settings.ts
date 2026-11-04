@@ -3,7 +3,7 @@
 import type { RuleOp, Settings } from '~/core/types';
 import { computeRulesVersion } from '~/engine/judge';
 import { clearCustomKey, clearDirectKey, clearOpenRouterKey } from '~/store/secret';
-import { cleanSettingsPatch, isBool, isCategory, isMode, isRecord, isStr, optional } from '../guards';
+import { cleanSettingsPatch, isBool, isCategory, isMode, isRecord, isSite, isStr, optional } from '../guards';
 import type { Routes } from '../router';
 import type { Services } from '../services';
 
@@ -15,14 +15,22 @@ export async function applySettings(s: Services, patch: Partial<Settings>, extra
   return settings;
 }
 
-/** The contract's update patch: `Partial<Pick<Rule, 'text' | 'name' | 'params' | 'enabled' | 'kind' | 'skipSubscribed'>>`. Ids, refs and tombstones belong to the writer. */
-const PATCH_KEYS = new Set(['text', 'name', 'params', 'enabled', 'kind', 'skipSubscribed']);
+/** The contract's update patch: `Partial<Pick<Rule, 'text' | 'name' | 'params' | 'enabled' | 'kind' | 'skipSubscribed'>>` and a Site or null. Ids, refs and tombstones belong to the writer. */
+const PATCH_KEYS = new Set(['text', 'name', 'params', 'enabled', 'kind', 'skipSubscribed', 'site']);
+const isSiteOrNull = (v: unknown) => v === null || isSite(v);
 
 const isRuleOp = (v: unknown): v is RuleOp => {
   if (!isRecord(v)) return false;
   if (v.op === 'delete') return typeof v.id === 'string';
   if (v.op === 'update') {
-    return typeof v.id === 'string' && isRecord(v.patch) && Object.keys(v.patch).every((k) => PATCH_KEYS.has(k)) && optional(v.patch.name, isStr) && optional(v.patch.skipSubscribed, isBool);
+    return (
+      typeof v.id === 'string' &&
+      isRecord(v.patch) &&
+      Object.keys(v.patch).every((k) => PATCH_KEYS.has(k)) &&
+      optional(v.patch.name, isStr) &&
+      optional(v.patch.skipSubscribed, isBool) &&
+      optional(v.patch.site, isSiteOrNull)
+    );
   }
   // Shapes inside `rule` are validated by the writer through core validateRuleInput. A name must be a string to be trimmed.
   return (
@@ -32,7 +40,8 @@ const isRuleOp = (v: unknown): v is RuleOp => {
     typeof v.rule.kind === 'string' &&
     typeof v.rule.polarity === 'string' &&
     optional(v.rule.name, isStr) &&
-    optional(v.rule.skipSubscribed, isBool)
+    optional(v.rule.skipSubscribed, isBool) &&
+    optional(v.rule.site, isSite)
   );
 };
 
@@ -75,7 +84,7 @@ export function settingsRoutes(s: Services): Pick<Routes, 'updateSettings' | 'se
     },
 
     resumeFromBreaker: {
-      // Also accepted from content: the in-page model notice offers Retry (entrypoints/content/pipeline.ts).
+      // Also accepted from content: the in-page model notice offers Retry (src/content/pipeline.ts).
       from: 'both',
       valid: (v) => v === undefined || (isRecord(v) && optional(v.category, isCategory)),
       async run(req, sender) {

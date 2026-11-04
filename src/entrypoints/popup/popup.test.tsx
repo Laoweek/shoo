@@ -2,11 +2,11 @@
 import '~/ui/test/catalogue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeReason, RuntimeSnapshot } from '~/core/types';
+import { CONSENT_VERSION } from '~/store/schema';
 import { replies, resetMessages, sendMessage, sent } from '~/ui/pages/testing/messages';
 import { fake, reset } from '~/ui/pages/testing/read';
 import { button, click, hasButton, mount, settle, snapshot, text, type, unmountAll } from '~/ui/pages/testing/render';
 import { App } from './App';
-import { CONSENT_VERSION } from '~/store/schema';
 
 vi.mock('~/messaging/protocol', () => import('~/ui/pages/testing/messages'));
 vi.mock('~/store/read', () => import('~/ui/pages/testing/read'));
@@ -14,6 +14,7 @@ vi.mock('~/store/read', () => import('~/ui/pages/testing/read'));
 let runtime: RuntimeSnapshot;
 let tabUrl: string | undefined;
 let permissionRequests: unknown[];
+let hostsGranted: boolean;
 
 beforeEach(() => {
   reset();
@@ -25,6 +26,8 @@ beforeEach(() => {
   replies.getKeyUsage = () => ({ connectedAt: 1, usage: 0, limit: null, limitRemaining: null, label: 'Shoo' });
   replies.listEscalations = () => [];
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => [{ url: tabUrl } as Browser.tabs.Tab]);
+  hostsGranted = true;
+  browser.permissions.contains = (() => Promise.resolve(hostsGranted)) as typeof browser.permissions.contains;
   permissionRequests = [];
   browser.permissions.request = ((p: unknown) => {
     permissionRequests.push(p);
@@ -51,12 +54,32 @@ describe('popup screen states (ui-design.md Section 8)', () => {
     expect((el.querySelector('[role="switch"]') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('says to open YouTube when the active tab is elsewhere', async () => {
+  it('points to the Sites when the active tab is elsewhere', async () => {
     tabUrl = 'https://example.com/';
-    expect(text(await popup())).toContain('Open YouTube to see Shoo at work.');
+    expect(text(await popup())).toContain('Open YouTube or Bilibili to see Shoo at work.');
     tabUrl = undefined;
     unmountAll();
-    expect(text(await popup())).toContain('Open YouTube to see Shoo at work.');
+    expect(text(await popup())).toContain('Open YouTube or Bilibili to see Shoo at work.');
+  });
+
+  it('on a Site the user turned off, says so and turns that Site back on', async () => {
+    tabUrl = 'https://www.bilibili.com/';
+    fake.settings.sites = { youtube: true, bilibili: false };
+    const el = await popup();
+    expect(text(el)).toContain('Shoo is off on Bilibili.');
+    click(button(el, 'Turn on'));
+    await settle();
+    expect(sent('updateSettings')).toEqual([{ patch: { sites: { youtube: true, bilibili: true } } }]);
+  });
+
+  it('says when the browser took away access to a Site that is on, even where the tab hides its address', async () => {
+    tabUrl = undefined;
+    browser.permissions.contains = ((p: { origins: string[] }) => Promise.resolve(!p.origins.includes('https://www.bilibili.com/*'))) as typeof browser.permissions.contains;
+    const el = await popup();
+    expect(text(el)).toContain('Shoo has no access to Bilibili.');
+    click(button(el, 'Fix in Settings'));
+    await settle();
+    expect(sent('openSettings')).toEqual([{ hash: 'sites' }]);
   });
 
   it('shows no YouTube hint on YouTube and no notice when everything is fine', async () => {
@@ -171,7 +194,7 @@ describe('popup actions', () => {
     click(button(el, 'Dry-run'));
     await settle();
     expect(sent('setMode')).toEqual([{ mode: 'dryRun' }]);
-    expect(text(el)).toContain('Shoo asks on the video before telling YouTube anything.');
+    expect(text(el)).toContain('Shoo asks on the video before telling the site anything.');
   });
 
   it('Review to Auto asks first when chips are showing, then acts on them', async () => {
@@ -243,6 +266,25 @@ describe('popup actions', () => {
     expect(text(el)).toContain('Rule added No unboxing videos');
     expect(text(el)).not.toContain('R7');
     expect(text(help)).toBe('Describe the videos, not an order.');
+  });
+
+  it('quick add on a Site can make the Rule work there only, and works on all sites unticked', async () => {
+    tabUrl = 'https://www.bilibili.com/';
+    replies.mutateRules = ({ ops }) => {
+      const op = ops[0]!;
+      if (op.op !== 'add') throw new Error('unexpected');
+      return { rules: [{ ...op.rule, id: 'r7', ref: 'R7', colour: 'c7', createdAt: 2, updatedAt: 2 }], rulesVersion: 'v2' };
+    };
+    const el = await popup();
+    const only = [...el.querySelectorAll('label')].find((l) => text(l) === 'Only on Bilibili')!.querySelector('input')!;
+    type(el.querySelector('#quick-add') as HTMLInputElement, 'Anime openings');
+    click(only);
+    el.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await settle();
+    expect(sent('mutateRules')).toEqual([{ ops: [{ op: 'add', rule: { polarity: 'remove', kind: 'topic', text: 'Anime openings', enabled: true, origin: 'user', site: 'bilibili' } }] }]);
+    unmountAll();
+    tabUrl = 'https://example.com/';
+    expect([...(await popup()).querySelectorAll('label')].some((l) => text(l).startsWith('Only on'))).toBe(false);
   });
 
   it('quick add is disabled without consent', async () => {

@@ -3,6 +3,7 @@ import '~/ui/test/catalogue';
 import { act as preactAct } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActivityEvent, Rule } from '~/core/types';
+import { CONSENT_VERSION } from '~/store/schema';
 import { replies, resetMessages, sent } from '~/ui/pages/testing/messages';
 import { expectDisclosure } from '~/ui/pages/testing/disclosure';
 import { fake, reset } from '~/ui/pages/testing/read';
@@ -17,8 +18,8 @@ import { Connection } from './sections/Connection';
 import { Exceptions } from './sections/Exceptions';
 import { Keep } from './sections/Keep';
 import { Rules } from './sections/Rules';
+import { Sites } from './sections/Sites';
 import { TryTitle, tryErrorMessage } from './sections/TryTitle';
-import { CONSENT_VERSION } from '~/store/schema';
 
 vi.mock('~/messaging/protocol', () => import('~/ui/pages/testing/messages'));
 vi.mock('~/store/read', () => import('~/ui/pages/testing/read'));
@@ -55,6 +56,8 @@ function data(over: Partial<PageData> = {}): PageData {
 const params = new URLSearchParams();
 let permissionRequests: unknown[];
 let hostsGranted: boolean;
+/** permissions.onAdded and onRemoved listeners (the fake browser has no permission events). */
+let permissionListeners: Set<() => void>;
 
 beforeEach(() => {
   reset();
@@ -68,6 +71,9 @@ beforeEach(() => {
     permissionRequests.push(p);
     return Promise.resolve(true);
   }) as typeof browser.permissions.request;
+  permissionListeners = new Set();
+  const events = { addListener: (cb: () => void) => void permissionListeners.add(cb), removeListener: (cb: () => void) => void permissionListeners.delete(cb) };
+  Object.assign(browser.permissions, { onAdded: events, onRemoved: events });
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -355,6 +361,22 @@ describe('Try a title', () => {
     expect(sent('tryTitle')).toEqual([]);
   });
 
+  it('asks which Site the video is on once a Rule works on one Site only, and tries a Bilibili title without a URL', async () => {
+    replies.tryTitle = () => ({ result: { videoId: 'x', status: 'decided', verdict: { videoId: 'x', outcome: 'keep', source: 'model', rulesVersion: 'v', at: 1 } }, costUsd: 0 });
+    const plain = mount(<TryTitle consent rules={[rule({ id: 'a', ref: 'R1' })]} onGiveConsent={vi.fn()} />);
+    expect(text(plain)).not.toContain('Try it as a video on');
+    unmountAll();
+    const el = mount(<TryTitle consent rules={[rule({ id: 'b', ref: 'R2', site: 'bilibili' })]} onGiveConsent={vi.fn()} />);
+    expect(text(el)).toContain('Try it as a video on');
+    click([...el.querySelectorAll('[role="radio"]')].find((r) => text(r) === 'Bilibili')!);
+    await settle();
+    expect(el.querySelector('#try-url')).toBeNull();
+    type(el.querySelector('#try-title') as HTMLInputElement, '新番导视');
+    key(el.querySelector('#try-title')!, 'Enter');
+    await settle();
+    expect(sent('tryTitle')).toEqual([{ title: '新番导视', site: 'bilibili' }]);
+  });
+
   it('sends the title, channel and only the derived thumbnail URL, then shows the Verdict', async () => {
     const r2 = rule({ id: 'r2', ref: 'R2', colour: 'c2', name: 'Crypto', text: 'Crypto, day trading, or get-rich-quick finance' });
     replies.tryTitle = () => ({
@@ -469,6 +491,15 @@ describe('Rules table', () => {
     expect(el.querySelector('[aria-labelledby="rule-skip-d"]')).toBeNull();
   });
 
+  it('a Rule that works only on Bilibili offers no skipping of Subscribed channels, which are YouTube\'s list', async () => {
+    const el = mount(<Rules data={data({ rules: [{ ...rules[0]!, site: 'bilibili', skipSubscribed: true }] })} params={params} />);
+    await settle();
+    expect(text(el)).not.toContain('Skips subscribed channels');
+    click(button(el, 'Expand R1'));
+    await settle();
+    expect(el.querySelector('[aria-labelledby="rule-skip-a"]')).toBeNull();
+  });
+
   it('names a Rule inline: saves on blur, Escape reverts, an empty name clears it, channel Rules have none', async () => {
     replies.mutateRules = () => ({ rules, rulesVersion: 'v' });
     const named = [{ ...rules[0]!, name: 'Reaction' }, rules[1]!, rules[3]!];
@@ -545,6 +576,57 @@ describe('Rules table', () => {
     expect(text(el)).toContain('31 all time');
   });
 
+  it('Add a Rule works on all sites unless a Site is unchecked, and a kind bound to YouTube shows that instead of a choice', async () => {
+    replies.mutateRules = () => ({ rules, rulesVersion: 'v' });
+    const el = mount(<Rules data={data({ rules: rules.slice(0, 1) })} params={params} />);
+    await settle();
+    click(button(el, 'Add a Rule'));
+    await settle();
+    const box = (site: string) => el.querySelector(`#add-remove-site-${site}`) as HTMLInputElement;
+    expect([box('youtube').checked, box('bilibili').checked]).toEqual([true, true]);
+    click(box('youtube'));
+    await settle();
+    expect(box('bilibili').disabled).toBe(true);
+    type(el.querySelector('#add-remove-text') as HTMLInputElement, 'Anime openings');
+    click(button(el, 'Save'));
+    await settle();
+    expect(sent('mutateRules')).toEqual([{ ops: [{ op: 'add', rule: { polarity: 'remove', kind: 'topic', text: 'Anime openings', enabled: true, origin: 'user', site: 'bilibili' } }] }]);
+    click(button(el, 'Add a Rule'));
+    await settle();
+    act(el.querySelector('#add-remove-kind') as HTMLSelectElement, 'change', 'short');
+    await settle();
+    expect([box('youtube').checked, box('bilibili').checked]).toEqual([true, false]);
+    expect([box('youtube').disabled, box('bilibili').disabled]).toEqual([true, true]);
+  });
+
+  it('a Site-only rule says so on its row, and its panel makes it work on all sites again', async () => {
+    replies.mutateRules = () => ({ rules, rulesVersion: 'v' });
+    const only = rule({ id: 'e', ref: 'R5', colour: 'c5', text: 'Anime openings', site: 'bilibili' });
+    const el = mount(<Rules data={data({ rules: [only, rules[0]!] })} params={params} />);
+    await settle();
+    const row = (ref: string) => [...el.querySelectorAll('tbody tr')].find((r) => text(r.querySelector('td')!) === ref)!;
+    expect(text(row('R5'))).toContain('Bilibili only');
+    expect(text(row('R1'))).not.toContain('only');
+    click(button(el, 'Expand R5'));
+    await settle();
+    click(el.querySelector('#works-on-e-youtube') as HTMLInputElement);
+    await settle();
+    expect(sent('mutateRules')).toEqual([{ ops: [{ op: 'update', id: 'e', patch: { site: null } }] }]);
+  });
+
+  it("a channel Rule made from a video keeps its video's Site, and its panel says why", async () => {
+    const fromVideo = rule({ id: 'f', ref: 'R6', colour: 'c6', kind: 'channel', text: 'Up', params: { channelName: 'Up', channelId: '10000001' }, site: 'bilibili' });
+    const el = mount(<Rules data={data({ rules: [fromVideo] })} params={params} />);
+    await settle();
+    click(button(el, 'Expand R6'));
+    await settle();
+    expect(text(el)).toContain('This channel is on Bilibili, so the Rule works there only.');
+    expect([...el.querySelectorAll<HTMLInputElement>('input[id^="works-on-f-"]')].map((b) => [b.checked, b.disabled])).toEqual([
+      [false, true],
+      [true, true],
+    ]);
+  });
+
   it('Add a Rule takes an optional name with its help text, kind placeholders, and soft hints that never block saving', async () => {
     replies.mutateRules = ({ ops }) => {
       const op = ops[0]!;
@@ -559,7 +641,7 @@ describe('Rules table', () => {
     expect(textField.placeholder).toBe('Unboxing videos and hauls');
     expect(nameField.placeholder).toBe('Add a name');
     expect(nameField.maxLength).toBe(40);
-    expect(text(el.querySelector(`#${nameField.getAttribute('aria-describedby')}`)!)).toBe('Shown on YouTube instead of the whole Rule. The model never sees it.');
+    expect(text(el.querySelector(`#${nameField.getAttribute('aria-describedby')}`)!)).toBe('Shown on the video instead of the whole Rule. The model never sees it.');
     const kind = el.querySelector('#add-remove-kind') as HTMLSelectElement;
     act(kind, 'change', 'keyword');
     expect((el.querySelector('#add-remove-text') as HTMLInputElement).placeholder).toBe('A word in titles');
@@ -749,6 +831,22 @@ describe('Keep rules', () => {
   });
 });
 
+describe('Banned channels', () => {
+  it('name the Site each ban works on', async () => {
+    const bans = [
+      rule({ id: 'g', ref: 'R7', colour: 'c7', kind: 'channel', text: 'Up', params: { channelName: 'Up', channelId: '10000001' }, site: 'bilibili' }),
+      rule({ id: 'h', ref: 'R8', colour: 'c8', kind: 'channel', text: 'Hustle Daily', params: { channelName: 'Hustle Daily' } }),
+    ];
+    const el = mount(<Banned data={data({ rules: bans })} params={params} />);
+    await settle();
+    const cells = [...el.querySelectorAll('tbody tr')].map((r) => [...r.querySelectorAll('td')].slice(1, 3).map(text));
+    expect(cells).toEqual([
+      ['Up', 'Bilibili'],
+      ['Hustle Daily', 'All sites'],
+    ]);
+  });
+});
+
 describe('Exceptions', () => {
   it('searches and deletes', async () => {
     const exceptions = [
@@ -774,6 +872,17 @@ describe('Activity', () => {
     { id: 'e2', kind: 'removed', at: now - 2 * 60 * 60 * 1000, videoId: 'bbbbbbbbbbb', title: 'This altcoin will 100x', channelName: 'Crypto Kingz', surface: 'watchSidebar', ruleId: 'a', seenAt: now },
     { id: 'e3', kind: 'wouldRemove', at: now - 120_000, videoId: 'ccccccccccc', title: 'Breakup rumours', surface: 'home', ruleId: 'a', batchId: 'b2', seenAt: now },
   ];
+
+  it('names the Site with each Surface, and filters by Site', async () => {
+    fake.activity = [...events, { id: 'e4', kind: 'removed', at: now - 30_000, videoId: 'BV1FIXTURE01', title: '新番导视', channelName: 'Up', surface: 'bilibiliHome', ruleId: 'a' }];
+    const el = mount(<Activity data={data({ rules: [rule({ id: 'a', ref: 'R1', colour: 'c1' })] })} params={params} />);
+    await settle();
+    expect(text(el.querySelector('li[data-activity-id="e4"]')!)).toContain('Up · Bilibili Home');
+    expect(text(el.querySelector('li[data-activity-id="e2"]')!)).toContain('Crypto Kingz · YouTube Watch sidebar');
+    act(el.querySelector('#activity-site') as HTMLSelectElement, 'change', 'bilibili');
+    await settle();
+    expect(fake.queries.at(-1)).toMatchObject({ site: 'bilibili' });
+  });
 
   it('groups by day with the shooed count, lights unseen rows and offers the right actions', async () => {
     fake.activity = events;
@@ -811,6 +920,30 @@ describe('Activity', () => {
     expect(row.className).not.toContain('bg-lit');
     expect(row.querySelectorAll('button')).toHaveLength(0);
     expect([...(el.querySelector('#activity-kind') as HTMLSelectElement).options].map(text)).toContain('Kept by Keep rule');
+  });
+
+  it("keeps a channel from a Bilibili row on Bilibili only, reading the Site from the video's id when the row has no Surface", async () => {
+    replies.keepChannel = () => ({ ruleId: 'k1' });
+    fake.activity = [{ id: 'b1', kind: 'kept', at: now - 60_000, videoId: 'BV1FIXTURE01', title: 'Fixture title', channelName: 'Fixture Uploader', ruleId: 'a' }];
+    const el = mount(<Activity data={data({ rules: [rule({ id: 'a', ref: 'R1', colour: 'c1' })] })} params={params} />);
+    await settle();
+    const row = el.querySelector('li[data-activity-id="b1"]')!;
+    click([...row.querySelectorAll('button')].find((b) => text(b).includes('Always keep this channel'))!);
+    await settle();
+    expect(sent('keepChannel')).toEqual([{ channelName: 'Fixture Uploader', site: 'bilibili' }]);
+  });
+
+  it('keeps a channel from a Bilibili row without asking about a same-named ban whose handle puts it on YouTube', async () => {
+    replies.keepChannel = () => ({ ruleId: 'k1' });
+    const ban = rule({ id: 'b', ref: 'R5', colour: 'c5', kind: 'channel', text: 'Hustle Daily', params: { channelName: 'Hustle Daily', handle: '@hustledaily' } });
+    fake.activity = [{ id: 'b1', kind: 'kept', at: now - 60_000, videoId: 'BV1FIXTURE01', title: 'Fixture title', channelName: 'Hustle Daily', ruleId: 'a' }];
+    const el = mount(<Activity data={data({ rules: [rule({ id: 'a', ref: 'R1', colour: 'c1' }), ban] })} params={params} />);
+    await settle();
+    const row = el.querySelector('li[data-activity-id="b1"]')!;
+    click([...row.querySelectorAll('button')].find((b) => text(b).includes('Always keep this channel'))!);
+    await settle();
+    expect(text(el)).not.toContain('Lift the ban on');
+    expect(sent('keepChannel')).toEqual([{ channelName: 'Hustle Daily', site: 'bilibili' }]);
   });
 
   it('drops the shooed count on a day with no Removals (Dry-run only)', async () => {
@@ -1188,31 +1321,67 @@ describe('Settings shell', () => {
     location.hash = '';
   });
 
-  it('Advanced lists unsupported Surfaces disabled with the reason and the Shorts note', async () => {
-    const el = mount(<Advanced data={data()} params={params} />);
+  it('Sites lists unsupported Surfaces disabled with the reason and the Shorts note', async () => {
+    const el = mount(<Sites data={data()} params={params} />);
     await settle();
     const switches = [...el.querySelectorAll('[role="switch"]')] as HTMLButtonElement[];
     const byLabel = (id: string) => switches.find((s) => s.getAttribute('aria-labelledby') === `surface-${id}`)!;
     expect(byLabel('search').disabled).toBe(true);
     expect(byLabel('channel').disabled).toBe(true);
     expect(byLabel('endScreen').disabled).toBe(true);
+    expect(byLabel('bilibiliVideoSidebar').disabled).toBe(true);
     expect(byLabel('home').disabled).toBe(false);
+    expect(byLabel('bilibiliHome').disabled).toBe(false);
     expect(text(el)).toContain('YouTube offers no Not interested here');
+    expect(text(el)).toContain('Bilibili offers no Not interested here');
     expect(text(el)).toContain("Shorts show no channel, so channel Rules can't match here. Shoo uses Not interested only.");
     click(byLabel('watchSidebar'));
     await settle();
     expect(sent('updateSettings')).toEqual([{ patch: { surfaces: { ...fake.settings.surfaces, watchSidebar: false } } }]);
   });
 
-  it('Shelf dismissal switches start off and save one Shelf at a time', async () => {
-    const el = mount(<Advanced data={data()} params={params} />);
+  it('Shelf dismissal switches sit under YouTube, start off and save one Shelf at a time', async () => {
+    const el = mount(<Sites data={data()} params={params} />);
     await settle();
     const shelf = (id: string) => el.querySelector(`[role="switch"][aria-labelledby="shelf-${id}"]`) as HTMLButtonElement;
     expect(shelf('shorts').getAttribute('aria-checked')).toBe('false');
     expect(shelf('games').getAttribute('aria-checked')).toBe('false');
+    const youtubeCard = el.querySelector('[aria-labelledby="site-youtube"]')!.closest('.card')!;
+    expect(youtubeCard.contains(shelf('shorts'))).toBe(true);
+    expect(youtubeCard.contains(shelf('games'))).toBe(true);
     click(shelf('games'));
     await settle();
     expect(sent('updateSettings')).toEqual([{ patch: { shelfDismissal: { games: true } } }]);
+  });
+
+  it("Sites turns one Site off without touching its Surfaces' own switches, which wait disabled", async () => {
+    const el = mount(<Sites data={data()} params={params} />);
+    await settle();
+    click(el.querySelector('[role="switch"][aria-labelledby="site-bilibili"]') as HTMLButtonElement);
+    await settle();
+    expect(sent('updateSettings')).toEqual([{ patch: { sites: { youtube: true, bilibili: false } } }]);
+    unmountAll();
+    const off = mount(<Sites data={data({ settings: { ...fake.settings, sites: { youtube: true, bilibili: false } } })} params={params} />);
+    await settle();
+    expect(text(off)).toContain('Off. Shoo does nothing on Bilibili.');
+    expect((off.querySelector('[role="switch"][aria-labelledby="surface-bilibiliHome"]') as HTMLButtonElement).disabled).toBe(true);
+    expect((off.querySelector('[role="switch"][aria-labelledby="surface-home"]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("Sites says when the browser took a Site's access away, and asks for it again in the click", async () => {
+    browser.permissions.contains = ((p: { origins: string[] }) => Promise.resolve(!p.origins.includes('https://www.bilibili.com/*'))) as typeof browser.permissions.contains;
+    browser.permissions.request = ((p: unknown) => {
+      permissionRequests.push(p);
+      return Promise.resolve(false);
+    }) as typeof browser.permissions.request;
+    const el = mount(<Sites data={data()} params={params} />);
+    await settle();
+    expect(text(el)).toContain("Shoo has no access to Bilibili. It was taken away in your browser's settings.");
+    expect(text(el)).not.toContain('Shoo has no access to YouTube');
+    click(button(el, 'Allow access'));
+    expect(permissionRequests).toEqual([{ origins: ['https://www.bilibili.com/*', 'https://i0.hdslb.com/*'] }]);
+    await settle();
+    expect(text(el)).toContain("The browser didn't give Shoo access to Bilibili.");
   });
 
   it('Reset asks for confirmation first and says it also clears synced data', async () => {

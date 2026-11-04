@@ -24,8 +24,11 @@ import {
   setModelsCache,
   updateArchive,
   updateEscalation,
+  videoBucket,
+  VIDEO_BUCKETS,
   withQuotaRetry,
 } from './local';
+import { DEFAULT_SETTINGS, withDefaults } from './schema';
 import { createMemoryArea, withQuota } from './testing/quota-storage';
 
 const T0 = new Date(2026, 9, 10, 12, 0, 0).getTime(); // local noon, 2026-10-10
@@ -85,6 +88,14 @@ describe('Activity', () => {
     expect((await queryActivity(local, { ruleId: 'rule-2' })).map((e) => e.id)).toEqual(['e1000']);
     expect((await queryActivity(local, { batchId: 'b1' })).length).toBe(16);
     expect((await queryActivity(local, { text: 'gossip' })).map((e) => e.id)).toEqual(['e1000']);
+  });
+
+  it('files an escalated event recorded before Sites under YouTube', async () => {
+    const local = createMemoryArea();
+    const escalated = event(1, T0, { kind: 'escalated', videoId: undefined, channelName: 'Hustle Daily' });
+    await appendActivity(local, [escalated]);
+    expect((await queryActivity(local, { site: 'youtube' })).map((e) => e.id)).toEqual(['e1']);
+    expect(await queryActivity(local, { site: 'bilibili' })).toEqual([]);
   });
 
   it('truncates titles to 120 characters and marks rows seen', async () => {
@@ -232,5 +243,21 @@ describe('counters, stats, escalation, models, archive, retention', () => {
     const esc = await getEscalation(local);
     expect(Object.keys(esc).sort()).toEqual(['dismissed', 'live']);
     expect(esc.dismissed).toMatchObject({ topicRemoved: {}, removalsAtDismiss: 0 });
+  });
+});
+
+describe('videoBucket', () => {
+  it("spreads Bilibili ids over the 64 buckets instead of crowding them into 'B', and keeps YouTube ids by first character", () => {
+    expect(videoBucket('dQw4w9WgXcQ')).toBe('d');
+    const buckets = new Set(Array.from({ length: 200 }, (_, i) => videoBucket(`BV1${String(i).padStart(9, '0')}`)));
+    expect(buckets.size).toBeGreaterThan(40);
+    expect([...buckets].every((b) => VIDEO_BUCKETS.includes(b))).toBe(true);
+  });
+});
+
+describe('withDefaults', () => {
+  it("gives settings stored before Bilibili existed its Surfaces' defaults and keeps the user's own switches", () => {
+    const stored = { ...DEFAULT_SETTINGS, surfaces: { home: false, watchSidebar: true, shortsShelf: true, search: false, channel: false, endScreen: false } };
+    expect(withDefaults(stored).surfaces).toEqual({ ...DEFAULT_SETTINGS.surfaces, home: false });
   });
 });

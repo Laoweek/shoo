@@ -74,7 +74,7 @@ function harness(opts: {
     settings: async () => h.settings,
     rules: async () => h.rules,
     exceptionIds: async (ids) => new Set(ids.filter((v) => (opts.exceptions ?? []).some((e) => e.videoId === v))),
-    recentExceptions: async (n) => (opts.exceptions ?? []).slice(0, n),
+    recentExceptions: async (n, keep) => (opts.exceptions ?? []).filter(keep).slice(0, n),
     ...(opts.subscriptions && { subscriptions: async () => opts.subscriptions!() }),
     cacheGet: async (ids, rv) => new Map(ids.flatMap((v) => (h.cache.get(v)?.rulesVersion === rv ? [[v, h.cache.get(v)!] as const] : []))),
     cachePut: async (puts) => {
@@ -195,6 +195,37 @@ describe('judgeTiles: text pass', () => {
     expect(changed.rulesVersion).not.toBe(first.rulesVersion);
     expect(decisions(h)).toHaveLength(2);
     collect(h, tiles);
+  });
+
+  it("asks each Site only its own Rules, and a Rule for another Site never voids this Site's cached answers", async () => {
+    const h = harness({ rules: [R1], script: { [DECISIONS_URL]: [answerer({ choose }), answerer({ choose })] } });
+    const judge = createJudge(h.deps);
+    const onYouTube = [tile(id(1), 'Streamer reacts')];
+    const first = await judge.judgeTiles(onYouTube, CTX);
+    const ANIME = rule('R6', 'Anime opening compilations', { site: 'bilibili' });
+    h.rules = [R1, ANIME];
+    const again = await judge.judgeTiles(onYouTube, CTX);
+    expect(decisions(h)).toHaveLength(1);
+    expect(again.results[0]!.verdict).toMatchObject({ outcome: 'remove', ruleRef: 'R1' });
+    // Content still re-judges on any Rule change, so the version it compares moves.
+    expect(again.rulesVersion).not.toBe(first.rulesVersion);
+    await judge.judgeTiles([tile('BV1FIXTURE01', '新番导视', { surface: 'bilibiliHome' })], CTX);
+    expect(decisions(h)).toHaveLength(2);
+    expect(JSON.stringify(decisions(h)[0]!.body)).not.toContain('Anime opening');
+    expect(JSON.stringify(decisions(h)[1]!.body)).toContain('Anime opening');
+  });
+
+  it('leaves out kept examples whose Rule works only on another Site', async () => {
+    const ANIME = rule('R6', 'Anime opening compilations', { site: 'bilibili' });
+    const exceptions: Exception[] = [
+      { videoId: 'BV1FIXTURE02', title: 'Kept on Bilibili', ruleId: ANIME.id, at: 2 },
+      { videoId: id(9), title: 'Kept anywhere', ruleId: R1.id, at: 1 },
+    ];
+    const h = harness({ rules: [R1, ANIME], exceptions, script: { [DECISIONS_URL]: [answerer({ choose })] } });
+    await createJudge(h.deps).judgeTiles([tile(id(1), 'Gardening')], CTX);
+    const body = JSON.stringify(decisions(h)[0]!.body);
+    expect(body).toContain('Kept anywhere');
+    expect(body).not.toContain('Kept on Bilibili');
   });
 
   it('never writes the Verdict cache for private-window Tiles', async () => {
@@ -816,6 +847,14 @@ describe('judgeTiles: Rules that skip Subscribed channels (REQ-RULE-14)', () => 
     const h = harness({ rules: [SKIP_KW, plainKw], subscriptions: () => undefined });
     const { results } = await createJudge(h.deps).judgeTiles([tile(id(1), 'Huge giveaway', { channelName: 'Anyone' })], CTX);
     expect(results[0]).toMatchObject({ status: 'decided', verdict: { outcome: 'remove', ruleRef: 'R6' } });
+  });
+
+  it("removes a Bilibili Tile as usual and never reads the YouTube list for it", async () => {
+    let reads = 0;
+    const h = harness({ rules: [SKIP_KW], subscriptions: () => (reads++, undefined) });
+    const { results } = await createJudge(h.deps).judgeTiles([tile('BV1FIXTURE01', 'Huge giveaway', { surface: 'bilibiliHome', channelName: 'Anyone' })], CTX);
+    expect(results[0]).toMatchObject({ status: 'decided', verdict: { outcome: 'remove', ruleRef: 'R4' } });
+    expect(reads).toBe(0);
   });
 });
 

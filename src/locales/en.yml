@@ -2,8 +2,8 @@
 # Placeholders: named ({cap}, {host}, {count}) as the spec asks, filled by t(key, { cap: 500 }).
 # Plurals use the 1 / n forms with the count as $1: t(key, count) or t(key, count, { named }).
 # A key is either a message or a group, never both, so "error" groups hold one message per reason.
-extName: Shoo · Clear unwanted recommendations for YouTube
-extDescription: Write what you don't want to see. Shoo tells YouTube "Not interested" for you, and shows which rule did it.
+extName: Shoo · Clear unwanted video recommendations
+extDescription: Write what you don't want to see. Shoo tells YouTube and Bilibili "Not interested" for you, and shows which rule did it.
 commandToggle: Turn Shoo on or off
 
 common:
@@ -38,8 +38,8 @@ mode:
   dryRun: Dry-run
   hint:
     auto: Shoo removes straight away and tells you once per batch.
-    review: Shoo asks on the video before telling YouTube anything.
-    dryRun: Shoo only labels what it would remove. Nothing reaches YouTube.
+    review: Shoo asks on the video before telling the site anything.
+    dryRun: Shoo only labels what it would remove. Nothing reaches the site.
 
 verdict:
   remove: Remove
@@ -70,6 +70,16 @@ starter:
     label: Shorts
     text: Shorts
 
+# ---------- Sites (Section 6) ----------
+sites:
+  title: Sites
+  lede: Where Shoo works. Every Rule works on all of them unless you limit it to one site.
+  on: Shoo works on {site} wherever it's switched on below.
+  off: Off. Shoo does nothing on {site}.
+  noAccess: Shoo has no access to {site}. It was taken away in your browser's settings.
+  denied: The browser didn't give Shoo access to {site}.
+  allowAccess: Allow access
+
 # ---------- Popup (Sections 5 and 8) ----------
 popup:
   title: Shoo
@@ -78,13 +88,15 @@ popup:
   off: 'Off'
   state:
     loading: Loading today's numbers…
-    notOnYouTube: Open YouTube to see Shoo at work.
+    notOnSite: Open YouTube or Bilibili to see Shoo at work.
     off: Shoo is off.
+    siteOff: Shoo is off on {site}.
+    noSiteAccess: Shoo has no access to {site}.
     noConsent: Shoo only uses Exact rules.
     migrating: Updating Shoo's data…
     hostRevoked: Shoo lost access to YouTube or your Decision model.
     noKey: Connect OpenRouter to use Topic rules.
-    breakerYouTube: "Shoo paused: YouTube's menu changed."
+    breakerSite: "Shoo paused: {site}'s menu changed."
     breakerModel: "Shoo paused: OpenRouter didn't answer."
     # A direct Decision provider or a chat model is active: the copy names its host, not OpenRouter.
     endpointRejected: '{host} refused Shoo. Check it in Settings, Connection.'
@@ -120,6 +132,7 @@ popup:
     hint: Describe the videos, not an order.
     submit: Add
     added: Rule added
+    onlyHere: Only on {site}
   confirmAuto:
     1: Remove the flagged video now?
     n: Remove the $1 flagged videos now?
@@ -144,17 +157,21 @@ settings:
     banned: Banned channels
     exceptions: Exceptions
     activity: Activity
+    sites: Sites
     connection: Connection
     advanced: Advanced
   surfaces:
-    title: Surfaces
+    # A Surface with its Site, where no Site heading is above it: "YouTube Home".
+    where: '{site} {surface}'
     home: Home
     watchSidebar: Watch sidebar
     shortsShelf: Shorts shelf
     search: Search
     channel: Channel page
     endScreen: End screen
-    unsupported: YouTube offers no Not interested here
+    bilibiliHome: Home
+    bilibiliVideoSidebar: Video page
+    unsupported: '{site} offers no Not interested here'
     shortsNote: Shorts show no channel, so channel Rules can't match here. Shoo uses Not interested only.
   shelves:
     title: Whole shelves on Home
@@ -168,7 +185,7 @@ settings:
 
 rules:
   title: Rules
-  lede: What you'd rather not see. Shoo checks every video against these and tells YouTube "Not interested" for you. The colour of a Rule follows it everywhere.
+  lede: What you'd rather not see. Shoo checks every video against these and tells the site "Not interested" for you. A Rule works on all sites unless you limit it to one, and its colour follows it everywhere.
   yours: Your Rules
   sorted: Sorted by activity
   add: Add a Rule
@@ -195,6 +212,13 @@ rules:
     channelAction: Don't recommend channel
     membersOnly: Members-only
     artistChannel: Artist channel
+  # Where a Rule works (ADR 0012). Most work on all sites.
+  site:
+    label: Works on
+    all: All sites
+    only: '{site} only'
+    youtubeKind: Bilibili videos never match this kind, so it works on YouTube only.
+    channel: This channel is on {site}, so the Rule works there only.
   placeholder:
     channel: Channel name
     keep: Woodworking tutorials
@@ -224,7 +248,7 @@ rules:
     artistChannel: Artist channels
   # A remove Rule that never removes videos from Subscribed channels (REQ-RULE-14). The list stays on this computer.
   skipSubscribed:
-    label: Never shoo channels I'm subscribed to
+    label: Never shoo YouTube channels I'm subscribed to
     note: Skips subscribed channels
     hint: Shoo reads your subscriptions from YouTube about once a day and keeps them on this computer. Shorts shelf videos show no channel, so this never skips them.
     channels:
@@ -232,12 +256,12 @@ rules:
       n: $1 subscribed channels
     read: 'Skips {channels}, read from YouTube {time}.'
     pending: Shoo reads your subscriptions from YouTube the next time it checks a video.
-    unreadable: Shoo couldn't read your subscriptions from YouTube. Until it can, this Rule removes only videos that show no channel.
+    unreadable: Shoo couldn't read your subscriptions from YouTube. Until it can, this Rule removes no YouTube video that shows a channel.
   # Rule name (REQ-RULE-11): the user's short label, shown instead of the Rule text. Never sent to a model.
   name:
     label: Name
     placeholder: Add a name
-    hint: Shown on YouTube instead of the whole Rule. The model never sees it.
+    hint: Shown on the video instead of the whole Rule. The model never sees it.
   # Soft hints while typing a Topic rule (REQ-RULE-12). English patterns only, they never block saving.
   hint:
     order: Describe the videos instead of giving an order, for example “Unboxing videos” rather than “No unboxing videos”.
@@ -278,7 +302,7 @@ rules:
       body: A channel goes in Banned channel. A word goes in Title keyword, which also matches inside words, so “AI” matches “said”. Shorts, live streams and length have their own kinds. None of them needs the model.
     name:
       title: Give it a name
-      body: The name is what you see on YouTube and in Activity. The model reads only the Rule.
+      body: The name is what you see on the video and in Activity. The model reads only the Rule.
     try: Check a Rule with Try a title below.
   regex:
     disabledNote: Off while Regular expression Rules are off in Advanced
@@ -320,12 +344,14 @@ rules:
     title: Video title
     titlePlaceholder: Type or paste a video title
     channel: Channel
+    site: Try it as a video on
     url: YouTube video URL or thumbnail URL (optional)
     urlInvalid: Use a YouTube video URL or an i.ytimg.com thumbnail URL.
     needsConsent: Give consent to try titles
     paused: Shoo is paused or can't reach OpenRouter right now. Check the popup.
     noCredits: OpenRouter says the key is out of credits.
     submit: Try
+    idle: The Verdict shows up here.
     decidedBy: 'Decided by {rule}'
     decidedByNamed: 'Decided by {name}: {rule}'
     error:
@@ -368,9 +394,10 @@ keep:
 
 banned:
   title: Banned channels
-  lede: Shoo tells YouTube "Don't recommend channel" for every video from these channels.
+  lede: Shoo tells the site "Don't recommend channel" for every video from these channels.
   table:
     channel: Channel
+    site: Site
     origin: Added
     removed: Removed
   removeLabel: Remove {channel} from Banned channels
@@ -409,8 +436,8 @@ activity:
   keepLabel: Keep {title}
   keepChannelLabel: Always keep {channel}
   undo:
-    done: Undone on YouTube
-    expired: YouTube's Undo has expired for this video. Use Keep so it isn't removed again.
+    done: Undone on {site}
+    expired: "{site}'s Undo has expired for this video. Use Keep so it isn't removed again."
   empty: Quiet so far. When Shoo acts, it shows up here.
   day: '{day} · {count} shooed'
   today: Today
@@ -434,6 +461,8 @@ activity:
     rule: Rule
     kind: Kind
     batch: Batch
+    site: Site
+    allSites: All sites
     allRules: All Rules
     allKinds: All kinds
     batchOn: Showing one batch
@@ -603,7 +632,7 @@ connection:
 
 advanced:
   title: Advanced
-  lede: Where Shoo works, how it tells you, and your data.
+  lede: How Shoo tells you, how far it goes, and your data.
   behaviour: Behaviour
   data: Your data
   notification:
@@ -675,8 +704,8 @@ onboarding:
     title: What Shoo does
     heading: Shoo the videos you don't want
     does:
-      check: Shoo checks the videos YouTube recommends against your Rules.
-      act: 'For the ones you don''t want, it tells YouTube "Not interested" through YouTube''s own menu.'
+      check: Shoo checks the videos YouTube and Bilibili recommend against your Rules.
+      act: 'For the ones you don''t want, it tells the site "Not interested" through the site''s own menu.'
       undo: You always see which Rule acted. Undo it while you're on the page, or Keep the video so Shoo leaves it alone.
     sendsTitle: What Shoo sends
     sends:
@@ -685,7 +714,7 @@ onboarding:
         videoTitle: Title
         channel: Channel name
         length: Length
-        surface: 'Where it appeared: Home, the Watch sidebar or the Shorts shelf'
+        surface: "Where it appeared: YouTube's Home, Watch sidebar or Shorts shelf, or Bilibili's Home"
         thumbnail: Thumbnail image, only if you create a Thumbnail rule
       request:
         title: Also in each request
@@ -714,12 +743,12 @@ onboarding:
       never:
         title: Never sent
         urls: Web addresses
-        ids: Video IDs
+        ids: Video IDs, including Bilibili's BV ids
         history: Your watch history
         cookies: Cookies
         comments: Comments
         page: The page's HTML
-        account: Your YouTube account details
+        account: Your YouTube or Bilibili account details
     agree: Agree and continue
     exactOnly: Use Exact rules only
     later: You can change this later in Settings, Connection.
@@ -748,26 +777,27 @@ onboarding:
     body: You can switch Mode any time from the toolbar.
     start: Start
     openYouTube: Open YouTube
+    openBilibili: Open Bilibili
 
 # ---------- Notices (architecture.md Section 7, ui-design.md Section 4) ----------
 # Before a category trips the copy never says "paused".
 notice:
   label: Shoo notice
   keyRejected: OpenRouter rejected the key. Reconnect in Connection.
-  breakerNativeAction: "Shoo paused: YouTube's menu changed."
-  breakerMarkup: "Shoo paused: YouTube's page changed."
+  breakerNativeAction: "Shoo paused: {site}'s menu changed."
+  breakerMarkup: "Shoo paused: {site}'s page changed."
   breakerModel: "Shoo paused: OpenRouter didn't answer."
   creditsExhausted: "Shoo paused: OpenRouter says the key is out of credits."
   failureModel: Shoo couldn't reach OpenRouter. Retrying.
   failureNativeAction:
-    1: Couldn't tell YouTube about 1 video. It stays visible.
-    n: Couldn't tell YouTube about $1 videos. They stay visible.
+    1: Couldn't tell {site} about 1 video. It stays visible.
+    n: Couldn't tell {site} about $1 videos. They stay visible.
   action:
     openSettings: Open settings
     retry: Retry
     openOpenRouter: Open OpenRouter
 
-# ---------- In-page UI on YouTube (Section 4) ----------
+# ---------- In-page UI on YouTube and Bilibili (Section 4) ----------
 chip:
   question: Remove?
   remove: Remove
@@ -791,10 +821,10 @@ annotation:
   label: 'Shoo: removed by Rule: {rule}'
   titledLabel: 'Shoo: removed {title} by Rule: {rule}'
   titledChannelLabel: 'Shoo: removed {title} from {channel} by Rule: {rule}'
-  channelLabel: "Shoo: YouTube won't recommend this channel, Rule: {rule}"
-  channelNamedLabel: "Shoo: removed {title}, and YouTube won't recommend {channel}, Rule: {rule}"
-  channelOnlyLabel: "Shoo: YouTube won't recommend {channel}, Rule: {rule}"
-  channelTitledLabel: "Shoo: removed {title}, and YouTube won't recommend this channel, Rule: {rule}"
+  channelLabel: "Shoo: {site} won't recommend this channel, Rule: {rule}"
+  channelNamedLabel: "Shoo: removed {title}, and {site} won't recommend {channel}, Rule: {rule}"
+  channelOnlyLabel: "Shoo: {site} won't recommend {channel}, Rule: {rule}"
+  channelTitledLabel: "Shoo: removed {title}, and {site} won't recommend this channel, Rule: {rule}"
   nameAndContext: '{name} · {context}'
   duplicate: Already shooed above
   duplicateLabel: 'Shoo: already removed above, Rule: {rule}'

@@ -1,9 +1,11 @@
 // Rule model, refs, colours and pipeline stages 1-4. Source of truth: docs/spec/architecture.md
 // Sections 5 and 8 ("Refs"), docs/spec/requirements.md §4, docs/spec/ui-design.md "Rule colour codes".
+import { channelIdSite } from './channel';
 import type { CompiledExact } from './exact';
 import { newId } from './ids';
 import { validateRegex } from './regex';
-import { RULE_KINDS, type ColourCode, type NativeAction, type Polarity, type Rule, type RuleKind, type RuleParams, type TileFacts } from './types';
+import { SITE_IDS } from './sites';
+import { RULE_KINDS, type ColourCode, type Exception, type NativeAction, type Polarity, type Rule, type RuleKind, type RuleParams, type SiteId, type TileFacts } from './types';
 
 export const REF_RE = /^([RK])(\d+)$/;
 
@@ -85,17 +87,18 @@ export function trimName<T extends { name?: string }>(rule: T): T {
 }
 
 /**
- * Validates a Rule before it is saved or imported. Reasons: 'unknownKind', 'thumbnailKeep',
+ * Validates a Rule before it is saved or imported. Reasons: 'unknownKind', 'unknownSite', 'thumbnailKeep',
  * 'artistChannelRemove', 'skipSubscribedKeep' (a Keep rule with `skipSubscribed`), 'emptyText', 'textTooLong'
  * (over 500 characters), 'nameTooLong' (over 40), 'channelNameRequired', 'durationBounds', 'viewsBounds',
  * 'regexDisabled' (only when `regexEnabled` is false), or 'regex.<RegexCheck reason>'.
  */
 export function validateRuleInput(
-  input: { polarity: Polarity; kind: RuleKind; text: string; name?: string; params?: RuleParams; skipSubscribed?: boolean },
+  input: { polarity: Polarity; kind: RuleKind; text: string; name?: string; params?: RuleParams; skipSubscribed?: boolean; site?: SiteId },
   regexEnabled?: boolean,
 ): { ok: true } | { ok: false; reason: string } {
   const fail = (reason: string) => ({ ok: false as const, reason });
   if (!RULE_KINDS.includes(input.kind)) return fail('unknownKind');
+  if (input.site !== undefined && !SITE_IDS.includes(input.site)) return fail('unknownSite');
   if (input.kind === 'thumbnail' && input.polarity === 'keep') return fail('thumbnailKeep');
   if (input.kind === 'artistChannel' && input.polarity === 'remove') return fail('artistChannelRemove');
   if (input.skipSubscribed && input.polarity === 'keep') return fail('skipSubscribedKeep');
@@ -162,6 +165,44 @@ export function resolveRefCollisions(
 export const isBannedChannel = (r: Rule): boolean => r.kind === 'channel' && r.polarity === 'remove';
 export const isTopicKeep = (r: Rule): boolean => r.kind === 'topic' && r.polarity === 'keep';
 export const activeRules = (rules: Rule[]): Rule[] => rules.filter((r) => r.enabled && r.deletedAt === undefined);
+
+/**
+ * Kinds that match a format only one Site shows: Bilibili Tiles are never Shorts, live, members-only or from an Artist
+ * channel. Views is YouTube's too, because only YouTube's extractor reads a view count.
+ */
+const KIND_SITE: Partial<Record<RuleKind, SiteId>> = {
+  views: 'youtube',
+  short: 'youtube',
+  live: 'youtube',
+  membersOnly: 'youtube',
+  artistChannel: 'youtube',
+};
+
+/**
+ * The one Site a Rule works on, or undefined for every Site: its kind's, else the one stored, else for a channel Rule
+ * the Site its handle or id belongs to.
+ */
+export const ruleSite = (r: Pick<Rule, 'kind' | 'site' | 'params'>): SiteId | undefined =>
+  KIND_SITE[r.kind] ?? r.site ?? (r.kind === 'channel' ? channelIdSite(r.params) : undefined);
+
+/**
+ * Whether the user can choose where a Rule works: not for a kind bound to one Site, nor for a channel Rule that knows
+ * its channel's handle or id, which exist on one Site only.
+ */
+export const siteChoosable = (r: Pick<Rule, 'kind' | 'params'>): boolean =>
+  KIND_SITE[r.kind] === undefined && !(r.kind === 'channel' && channelIdSite(r.params) !== undefined);
+
+/** The Rules that work on a Site, the only ones its Tiles are judged against (ADR 0012). */
+export const rulesOn = (rules: Rule[], site: SiteId): Rule[] => rules.filter((r) => (ruleSite(r) ?? site) === site);
+
+/**
+ * Which Exceptions a Site's requests may show the model as kept examples: all but those kept from a Rule that works
+ * only on another Site, which that Site's requests never name.
+ */
+export function exampleOn(rules: Rule[], site: SiteId): (x: Exception) => boolean {
+  const elsewhere = new Set(rules.filter((r) => (ruleSite(r) ?? site) !== site).map((r) => r.id));
+  return (x) => x.ruleId === undefined || !elsewhere.has(x.ruleId);
+}
 
 /** Sorted copy: K refs before R refs, then by number. Unparseable refs last, then by ref text and id. */
 export function sortByRef(rules: Rule[]): Rule[] {

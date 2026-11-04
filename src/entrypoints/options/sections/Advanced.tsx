@@ -1,8 +1,7 @@
-// Advanced (docs/spec/ui-design.md Section 6, REQ-SET-1): Surfaces, Shelf dismissal, notification style,
-// Escalation, Daily cap, exact Filtering strength, regex Rules, import/export and Reset.
+// Advanced (docs/spec/ui-design.md Section 6, REQ-SET-1): notification style, Escalation, Daily cap, exact
+// Filtering strength, regex Rules, import/export and Reset. Sites and their Surfaces have their own section.
 import { useRef, useState } from 'preact/hooks';
-import type { Settings, ShelfId, SurfaceId } from '~/core/types';
-import { SHELF_IDS, SUPPORTED_SURFACES, SURFACE_IDS } from '~/core/types';
+import type { Settings } from '~/core/types';
 import { CUSTOM_CUTOFF_MAX, CUSTOM_CUTOFF_MIN, removeCutoff } from '~/core/verdict';
 import { t } from '~/i18n';
 import { sendMessage, type ImportPreview } from '~/messaging/protocol';
@@ -10,7 +9,6 @@ import { Button, Notice, Segmented, SkeletonRows, Switch } from '~/ui/components
 import { count } from '~/ui/pages/format';
 import { SectionHead, SettingRow, Status, SubHead, TextInput } from '~/ui/pages/parts';
 import type { SectionProps } from '../context';
-import { surfaceLabel } from './Activity';
 import { patchSettings } from './Connection';
 
 export function Advanced({ data }: SectionProps) {
@@ -30,11 +28,9 @@ export function Advanced({ data }: SectionProps) {
       ) : (
         <div class="grid gap-6">
           <Status tone="danger" class="empty:absolute">{failed ? t('connection.error.save') : ''}</Status>
-          <Surfaces settings={s} patch={patch} />
-          <Shelves settings={s} patch={patch} />
           <div>
             <SubHead title={t('advanced.behaviour')} />
-            <div class="border-t border-line-strong">
+            <div class="card px-5 [&>:last-child]:border-b-0">
               <SettingRow label={t('advanced.notification.label')} labelId="notify-label" hint={t('advanced.notification.hint')}>
                 <Segmented
                   label={t('advanced.notification.label')}
@@ -71,55 +67,6 @@ export function Advanced({ data }: SectionProps) {
         </div>
       )}
     </section>
-  );
-}
-
-function Surfaces({ settings, patch }: { settings: Settings; patch: (p: Partial<Settings>) => void }) {
-  return (
-    <div>
-      <SubHead title={t('settings.surfaces.title')} />
-      <div class="border-t border-line-strong">
-        {SURFACE_IDS.map((id: SurfaceId) => {
-          const supported = SUPPORTED_SURFACES.includes(id);
-          const labelId = `surface-${id}`;
-          return (
-            <SettingRow
-              key={id}
-              label={surfaceLabel(id)}
-              labelId={labelId}
-              hint={!supported ? t('settings.surfaces.unsupported') : id === 'shortsShelf' ? t('settings.surfaces.shortsNote') : undefined}
-            >
-              <Switch
-                checked={supported && settings.surfaces[id]}
-                disabled={!supported}
-                labelledBy={labelId}
-                onChange={(v) => patch({ surfaces: { ...settings.surfaces, [id]: v } })}
-              />
-            </SettingRow>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** Shelf dismissal per Shelf (youtube-integration.md Section 10). */
-function Shelves({ settings, patch }: { settings: Settings; patch: (p: Partial<Settings>) => void }) {
-  const on = settings.shelfDismissal ?? {};
-  return (
-    <div>
-      <SubHead title={t('settings.shelves.title')} hint={t('settings.shelves.hint')} />
-      <div class="border-t border-line-strong">
-        {SHELF_IDS.map((id: ShelfId) => {
-          const labelId = `shelf-${id}`;
-          return (
-            <SettingRow key={id} label={t(`settings.shelves.${id}`)} labelId={labelId} hint={t(`settings.shelves.${id}Hint`)}>
-              <Switch checked={on[id] === true} labelledBy={labelId} onChange={(v) => patch({ shelfDismissal: { ...on, [id]: v } })} />
-            </SettingRow>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -248,7 +195,7 @@ export function ImportExport() {
   return (
     <div>
       <SubHead title={t('advanced.data')} />
-      <div class="grid gap-3 border-t border-line-strong pt-4">
+      <div class="card grid gap-3 p-5">
         <p class="m-0 text-[13px] text-muted">{t('advanced.export.hint')}</p>
         <div class="flex flex-wrap gap-2">
           <Button onClick={() => void exportFile()}>{t('advanced.export.label')}</Button>
@@ -272,7 +219,7 @@ export function ImportExport() {
           )}
         </div>
         {state.kind === 'preview' && (
-          <div class="grid gap-2 rounded-[10px] bg-lit px-4 py-3">
+          <div class="grid gap-2 rounded-[14px] bg-lit px-4 py-3">
             <p class="m-0 font-semibold">{state.name}</p>
             <p class="num m-0">
               {t('advanced.import.preview', { add: count(state.preview.add), update: count(state.preview.update), renumber: count(state.preview.renumber) })}
@@ -324,10 +271,10 @@ export function Reset() {
   return (
     <div>
       <SubHead title={t('advanced.reset.label')} />
-      <div class="grid gap-3 border-t border-line-strong pt-4">
+      <div class="card grid gap-3 p-5">
         <p class="m-0 max-w-[64ch] text-[13px] text-muted">{t('advanced.reset.hint')}</p>
         {step === 'confirm' || step === 'busy' ? (
-          <div role="alert" class="grid gap-2 rounded-[10px] bg-lit px-4 py-3">
+          <div role="alert" class="grid gap-2 rounded-[14px] bg-lit px-4 py-3">
             <p class="m-0 font-semibold text-danger">{t('advanced.reset.confirm')}</p>
             <div class="flex flex-wrap gap-2">
               <Button variant="primary" disabled={step === 'busy'} onClick={() => void run()}>

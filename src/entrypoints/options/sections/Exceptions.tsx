@@ -1,8 +1,9 @@
-// Exceptions (docs/spec/ui-design.md Section 6): kept videos with title, channel, date and the Rule that
-// wanted them gone. Search and delete.
+// Exceptions (docs/spec/ui-design.md Section 6): kept videos with title, channel and Site, date and the Rule
+// that wanted them gone. Search and delete.
 import { Search } from 'lucide-preact';
 import { useMemo, useState } from 'preact/hooks';
 import { normalizeText } from '~/core/exact';
+import { SITE_NAMES, videoSite } from '~/core/sites';
 import { t } from '~/i18n';
 import { sendMessage } from '~/messaging/protocol';
 import { Button, Notice, RuleRef, SkeletonRows } from '~/ui/components';
@@ -45,11 +46,11 @@ export function Exceptions({ data }: SectionProps) {
       ) : !data.exceptions ? (
         <SkeletonRows rows={4} />
       ) : total === 0 ? (
-        <p class="m-0 border-t border-line-strong pt-4">{t('exceptions.empty')}</p>
+        <p class="card m-0 p-5">{t('exceptions.empty')}</p>
       ) : (
         <>
-          <label class="mb-4 flex h-9 max-w-sm items-center gap-2 rounded-[6px] border border-edge px-3 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
-            <Search size={16} strokeWidth={1.75} aria-hidden="true" class="shrink-0 text-muted" />
+          <label class="mb-4 flex h-9 max-w-sm items-center gap-2 rounded-[12px] border border-edge bg-paper px-3 hover:border-ink focus-within:border-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
+            <Search size={16} strokeWidth={2} aria-hidden="true" class="shrink-0 text-muted" />
             <span class="sr-only">{t('exceptions.search')}</span>
             <input
               type="search"
@@ -60,16 +61,17 @@ export function Exceptions({ data }: SectionProps) {
             />
           </label>
           {/* A container, so the Rule and date columns give way to the title in a narrow list. */}
-          <ul aria-labelledby="section-exceptions" class="@container m-0 list-none border-t border-line-strong p-0">
+          <ul aria-labelledby="section-exceptions" class="card @container m-0 list-none px-3 py-1 empty:hidden [&>:last-child]:border-b-0">
             {list.map((x) => {
               const rule = x.ruleId ? rules.get(x.ruleId) : undefined;
+              const site = videoSite(x.videoId);
               return (
                 <li key={x.videoId} class="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-b border-line p-2 @2xl:grid-cols-[minmax(0,1fr)_14rem_6rem_auto]">
                   <div class="min-w-0">
                     <div class="truncate font-medium" title={x.title}>
                       {x.title}
                     </div>
-                    {x.channelName && <div class="truncate text-[13px] text-muted">{x.channelName}</div>}
+                    <div class="truncate text-[13px] text-muted">{[x.channelName, site && SITE_NAMES[site]].filter(Boolean).join(' · ')}</div>
                   </div>
                   <div class="text-[13px] text-muted @max-2xl:hidden">
                     {rule && <RuleRef rule={rule} sentence={(label) => t('exceptions.wantedBy', { rule: label })} />}

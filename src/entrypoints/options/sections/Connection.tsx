@@ -96,7 +96,7 @@ function HostAccess({ settings, onGranted }: { settings: Settings; onGranted: ()
     );
   };
   return (
-    <div class="grid gap-2 rounded-[10px] bg-lit px-4 py-3">
+    <div class="grid gap-2 rounded-[14px] bg-lit px-4 py-3">
       <p class="m-0 font-semibold text-danger">{t('popup.state.hostRevoked')}</p>
       <p class="m-0 text-muted">{t('connection.access.body')}</p>
       <div>
@@ -126,7 +126,7 @@ function Providers({ data }: { data: PageData }) {
   return (
     <div>
       <SubHead title={t('connection.provider.title')} />
-      <div class="grid gap-4 border-t border-line-strong pt-4">
+      <div class="card grid gap-4 p-5">
         {s.engine !== 'openrouter' && <InUse settings={s} />}
         <ProviderPicker value={picked} inUse={inUse} onChange={setPicked} />
         {picked === 'openrouter' ? (
@@ -282,9 +282,9 @@ function OpenRouter({ data }: { data: PageData }) {
   };
 
   return (
-    <div>
+    <div class="border-t border-line pt-4">
       <SubHead title={t('connection.openrouter')} />
-      <div class="grid gap-3 border-t border-line-strong pt-4">
+      <div class="grid gap-3">
         {status === 'unknown' ? (
           <SkeletonRows rows={2} />
         ) : status === 'connected' ? (
@@ -334,7 +334,7 @@ function OpenRouter({ data }: { data: PageData }) {
             {t('connection.disconnectNote')}{' '}
             <a href={OPENROUTER_KEYS_URL} target="_blank" rel="noreferrer" class="inline-flex items-center gap-1 font-semibold text-ink underline underline-offset-[3px]">
               openrouter.ai/keys
-              <ExternalLink size={14} strokeWidth={1.75} aria-hidden="true" />
+              <ExternalLink size={14} strokeWidth={2} aria-hidden="true" />
             </a>
           </p>
         )}
@@ -406,7 +406,7 @@ function Consent({ data }: { data: PageData }) {
   return (
     <div>
       <SubHead title={t('connection.consent.title')} />
-      <div class="grid gap-3 border-t border-line-strong">
+      <div class="card grid gap-3 px-5 pb-5">
         <Disclosure compact class="border-b border-line" />
         <p class="m-0 text-[13px]">
           <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" class="inline-flex items-center gap-1 font-semibold text-ink underline underline-offset-[3px]">
@@ -476,7 +476,7 @@ function Models({ settings }: { settings: Settings }) {
   return (
     <div>
       <SubHead title={t('connection.models.label')} />
-      <div class="grid gap-3 border-t border-line-strong pt-4">
+      <div class="card grid gap-3 p-5">
         {list.loading ? (
           <SkeletonRows rows={2} />
         ) : (
@@ -514,8 +514,8 @@ function Strength({ settings }: { settings: Settings }) {
   const pick = (preset: StrengthPreset) => void patchSettings({ strength: { ...settings.strength, preset } }).then((ok) => setFailed(!ok));
   return (
     <fieldset class="m-0 min-w-0 border-0 p-0">
-      <legend class="mb-2 p-0 text-[15px] font-bold tracking-[-0.01em]">{t('connection.strength.label')}</legend>
-      <div class="border-t border-line-strong">
+      <legend class="mb-2 p-0 text-[20px] font-semibold tracking-[-0.01em]">{t('connection.strength.label')}</legend>
+      <div class="card px-3 [&>:last-child]:border-b-0">
         {presets.map((p) => (
           <label key={p} class="flex min-h-11 cursor-pointer items-start gap-3 border-b border-line px-2 py-3 hover:bg-tint">
             <input type="radio" name="strength" value={p} checked={settings.strength.preset === p} onChange={() => pick(p)} class="mt-1 size-4 shrink-0 cursor-pointer" />

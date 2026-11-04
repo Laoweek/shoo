@@ -53,6 +53,9 @@ export interface RulesVersionInputs {
 
 const isLive = (r: Rule) => r.enabled && r.deletedAt === undefined;
 
+/** A Site-only rule's tuple ends with its Site. Rules for every Site keep the tuple they had before Sites. */
+const withSite = (r: Rule, tuple: string[]): string[] => (r.site ? [...tuple, r.site] : tuple);
+
 function compareTuples(a: readonly string[], b: readonly string[]): number {
   const ka = JSON.stringify(a);
   const kb = JSON.stringify(b);
@@ -61,14 +64,14 @@ function compareTuples(a: readonly string[], b: readonly string[]): number {
 
 /**
  * Everything that changes what the model is asked (architecture.md Section 9): enabled, non-deleted
- * Topic and Thumbnail Rules (remove and Topic Keep) as sorted [ref, polarity, kind, text], both model
+ * Topic and Thumbnail Rules (remove and Topic Keep) as sorted [ref, polarity, kind, text, site?], both model
  * slugs, the text framing, the request shape version, and the direct or custom endpoint only when it is in use.
  * The parts are hashed as one JSON array so field boundaries cannot collide.
  */
 export function rulesVersion(i: RulesVersionInputs): string {
   const tuples = i.rules
     .filter((r) => isLive(r) && MODEL_KINDS.includes(r.kind))
-    .map((r) => [r.ref, r.polarity, r.kind, r.text])
+    .map((r) => withSite(r, [r.ref, r.polarity, r.kind, r.text]))
     .sort(compareTuples);
   const custom = i.engine === 'custom' && i.customEndpoint ? [i.customEndpoint.baseUrl, i.customEndpoint.model] : null;
   const parts: unknown[] = [tuples, i.models.text, i.models.image, i.textFraming, i.requestShapeVersion, custom];
@@ -90,8 +93,8 @@ function sortedParams(r: Rule): [string, unknown][] {
 export function exactVersion(rules: Rule[], regexEnabled: boolean): string {
   const tuples = rules
     .filter((r) => isLive(r) && EXACT_KINDS.includes(r.kind))
-    // skipSubscribed is appended only when set, so the exactVersion of Rules without it is unchanged.
-    .map((r) => [r.id, r.ref, r.polarity, r.kind, r.text, JSON.stringify(sortedParams(r)), ...(r.skipSubscribed ? ['skipSubscribed'] : [])])
+    // skipSubscribed and site are appended only when set, so the exactVersion of Rules without them is unchanged.
+    .map((r) => withSite(r, [r.id, r.ref, r.polarity, r.kind, r.text, JSON.stringify(sortedParams(r)), ...(r.skipSubscribed ? ['skipSubscribed'] : [])]))
     .sort(compareTuples);
   return fnv1a64(JSON.stringify([tuples, regexEnabled]));
 }

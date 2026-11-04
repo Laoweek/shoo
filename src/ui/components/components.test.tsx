@@ -92,7 +92,7 @@ describe('controls', () => {
     const buttons = [...el.querySelectorAll('button')];
     expect(buttons.map((b) => b.textContent)).toEqual(['Save', 'Not now', 'Undo']);
     expect(buttons.every((b) => b.type === 'button')).toBe(true);
-    expect(buttons[0]!.className).toContain('bg-ink');
+    expect(buttons[0]!.className).toContain('bg-action');
     expect(buttons[1]!.className).toContain('border-edge');
   });
 
@@ -129,17 +129,21 @@ describe('controls', () => {
 });
 
 describe('Rule display', () => {
-  it('Swatch is decorative and uses the Rule colour token, hollow for Keep rules', () => {
+  it('Swatch is decorative and uses the Rule colour token, hollow for Keep rules and switched-off Rules', () => {
     const el = mount(
       <>
         <Swatch colour="c4" />
         <Swatch />
+        <Swatch colour="c4" off />
       </>,
     );
-    const [a, b] = [...el.querySelectorAll('span')];
+    const [a, b, c] = [...el.querySelectorAll('span')];
     expect(a!.getAttribute('aria-hidden')).toBe('true');
-    expect(a!.getAttribute('style')).toContain('var(--c4)');
-    expect(b!.className).toContain('border-ink');
+    expect(a!.getAttribute('style')).toMatch(/background:\s*var\(--c4\)/);
+    expect(b!.getAttribute('style')).toBeNull();
+    // Off: a ring in the Rule's colour, no fill.
+    expect(c!.getAttribute('style')).toContain('var(--c4)');
+    expect(c!.getAttribute('style')).not.toContain('background');
   });
 
   const crypto = { ref: 'R2', colour: 'c2' as const, polarity: 'remove' as const, text: 'Cryptocurrency trading and coin price predictions' };
@@ -161,7 +165,7 @@ describe('Rule display', () => {
     expect(el.textContent).toBe('R2');
     act(() => render(<RuleRef rule={{ ref: 'K1', text: 'Speedruns', polarity: 'keep', colour: 'c3' }} />, el));
     expect(el.textContent).toBe('Speedruns');
-    expect(el.querySelector('[aria-hidden="true"]')!.className).toContain('border-ink');
+    expect(el.querySelector('[aria-hidden="true"]')!.getAttribute('style')).toBeNull();
   });
 
   it('RuleRef places the label inside a sentence, truncating only the label', () => {
@@ -184,10 +188,10 @@ describe('Rule display', () => {
   });
 
   it('VerdictPill reads Remove · 91%, Keep, or …, and names the Rule to screen readers', () => {
-    const el = mount(<VerdictPill outcome="remove" rule="Crypto" colour="c2" probability={0.912} />);
+    const el = mount(<VerdictPill outcome="remove" rule="Crypto" probability={0.912} />);
     expect(el.querySelector('.num')!.textContent).toBe('Remove · 91%');
     expect(el.firstElementChild!.getAttribute('aria-label')).toBe('Verdict: Remove, Rule: Crypto, 91 percent');
-    act(() => render(<VerdictPill outcome="remove" rule="Crypto" colour="c2" />, el));
+    act(() => render(<VerdictPill outcome="remove" rule="Crypto" />, el));
     expect(el.querySelector('.num')!.textContent).toBe('Remove');
     expect(el.firstElementChild!.getAttribute('aria-label')).toBe('Verdict: Remove, Rule: Crypto');
     act(() => render(<VerdictPill outcome="keep" />, el));

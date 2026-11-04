@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { queryActivity } from '~/store/local';
+import { InvalidInput } from '../router';
 import { banRule, contentSender, harness, tile } from '../testing';
 import { LIFT_WINDOW_MS } from './user-ban';
 
@@ -17,7 +18,7 @@ describe('banChannel', () => {
     expect(res).toEqual({ ruleId: expect.any(String), added: true });
     const ruleId = (res as { ruleId: string }).ruleId;
     expect(await live(h)).toEqual([
-      expect.objectContaining({ id: ruleId, polarity: 'remove', kind: 'channel', origin: 'user', params: { channelName: 'Jake Reacts', handle: '@jakereacts' } }),
+      expect.objectContaining({ id: ruleId, polarity: 'remove', kind: 'channel', origin: 'user', site: 'youtube', params: { channelName: 'Jake Reacts', handle: '@jakereacts' } }),
     ]);
     expect(await queryActivity(h.areas.local, { kinds: ['banned'] })).toEqual([
       expect.objectContaining({ videoId: 'aaaaaaaaaaa', title: 'Jake reacts to drama', surface: 'home', ruleId, channelName: 'Jake Reacts', nativeAction: 'dontRecommendChannel' }),
@@ -32,6 +33,7 @@ describe('banChannel', () => {
     const h = harness({ tabs: [{ id: 1, url: 'https://www.youtube.com/', incognito: false }, { id: 7, url: 'https://www.youtube.com/', incognito: true }] });
     expect(await h.call('banChannel', { tile: jake }, contentSender(7, true))).toEqual({ error: 'privateWindow' });
     expect(await h.call('banChannel', { tile: tile('ccccccccccc', 'No channel') }, contentSender())).toEqual({ error: 'noChannel' });
+    await expect(h.call('banChannel', { tile: { ...jake, videoId: 'BV1FIXTURE01', surface: 'bilibiliHome' } }, contentSender())).rejects.toBeInstanceOf(InvalidInput);
     await h.call('keepChannel', { channelName: 'Jake Reacts' });
     expect(await h.call('banChannel', { tile: jake }, contentSender())).toEqual({ error: 'keptChannel' });
     await h.call('updateSettings', { patch: { enabled: false } });

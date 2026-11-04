@@ -1,5 +1,6 @@
 // Escalation counting. Source of truth: docs/spec/requirements.md §9, docs/spec/architecture.md
 // Section 5 ("Counting") and Section 8 (`local:escalation`).
+import type { SiteId } from './sites';
 
 /** One channel's counts in `local:escalation`, keyed by ChannelKey. Days are local 'YYYY-MM-DD'. */
 export interface EscalationRecord {
@@ -11,12 +12,22 @@ export interface EscalationRecord {
   name?: string;
   handle?: string;
   id?: string;
+  /** The Site of the channel's first Topic removal: a ban from it matches that Site only. */
+  site?: SiteId;
 }
 
 export const ESCALATION_WINDOW_DAYS = 30;
 export const ESCALATION_MIN_REMOVALS = 3;
 export const ESCALATION_MIN_SHARE = 0.5;
 export const RESUGGEST_AFTER_REMOVALS = 3;
+
+/**
+ * The `local:escalation` key of a channel on a Site: its ChannelKey, with the Site in front except on YouTube, whose
+ * keys predate Sites. A same-named channel on each Site is counted, protected and banned apart (REQ-SITE-2).
+ */
+export function escalationKey(channelKey: string, site: SiteId): string {
+  return site === 'youtube' || !channelKey ? channelKey : `${site}:${channelKey}`;
+}
 
 const pad = (n: number) => String(n).padStart(2, '0');
 

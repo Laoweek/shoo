@@ -2,7 +2,8 @@
 // docs/spec/architecture.md Section 8 ("storage.sync"), REQ-RULE-6, REQ-RULE-10.
 import { fnv1a32 } from '~/core/ids';
 import { INITIAL_COUNTERS, resolveRefCollisions, type RefCounters } from '~/core/rules';
-import type { ColourCode, Exception, Polarity, Rule, RuleKind, RuleParams } from '~/core/types';
+import { SITE_IDS } from '~/core/sites';
+import type { ColourCode, Exception, Polarity, Rule, RuleKind, RuleParams, SiteId } from '~/core/types';
 import { channelKey } from '~/core/channel';
 import { getDefined, isRateLimitError, isRecord, itemBytes, type AreaLike } from './areas';
 import { withQuotaRetry } from './local';
@@ -61,6 +62,8 @@ export interface CompactRule {
   /** Rule name (REQ-RULE-11). Older versions keep it as an unknown field. */
   n?: string;
   pa?: RuleParams;
+  /** A Site-only rule's Site (ADR 0012). A Site this Shoo does not know stays an unknown field. */
+  s?: SiteId;
   c?: ColourCode;
   /** skipSubscribed (REQ-RULE-14), only when set. Older versions keep it as an unknown field. */
   ss?: 1;
@@ -97,6 +100,7 @@ export function toCompactRule(r: Rule, extras?: RuleExtras): CompactRule {
   const c: CompactRule = { ...(extras as object), i: r.id, r: r.ref, p: r.polarity, k: r.kind, t: r.text, e: r.enabled, o: r.origin, ca: r.createdAt, ua: r.updatedAt };
   if (r.name) c.n = r.name;
   if (r.params && Object.keys(r.params).length > 0) c.pa = r.params;
+  if (r.site) c.s = r.site;
   if (r.colour) c.c = r.colour;
   if (r.skipSubscribed) c.ss = 1;
   return c;
@@ -108,7 +112,7 @@ export const tombstone = (r: Rule, at: number): Rule => fromCompactRule(toCompac
 /** Undefined for a corrupt entry. Unknown `kind` values pass through untouched (Section 8). */
 export function fromCompactRule(raw: unknown): { rule: Rule; extras?: RuleExtras } | undefined {
   if (!isRecord(raw)) return undefined;
-  const { i, r, p, k, t, n, pa, c, ss, e, o, ca, ua, da } = raw;
+  const { i, r, p, k, t, n, pa, s, c, ss, e, o, ca, ua, da } = raw;
   if (typeof i !== 'string' || typeof r !== 'string' || typeof p !== 'string' || typeof k !== 'string' || typeof t !== 'string') return undefined;
   if (typeof ca !== 'number' || typeof ua !== 'number') return undefined;
   const rule: Rule = {
@@ -124,10 +128,11 @@ export function fromCompactRule(raw: unknown): { rule: Rule; extras?: RuleExtras
   };
   if (typeof n === 'string') rule.name = n;
   if (isRecord(pa)) rule.params = pa as RuleParams;
+  if ((SITE_IDS as readonly unknown[]).includes(s)) rule.site = s as SiteId;
   if (typeof c === 'string') rule.colour = c as ColourCode;
   if (ss === 1) rule.skipSubscribed = true;
   if (typeof da === 'number') rule.deletedAt = da;
-  const extraEntries = Object.entries(raw).filter(([key]) => !RULE_FIELDS.has(key));
+  const extraEntries = Object.entries(raw).filter(([key]) => !RULE_FIELDS.has(key) && !(key === 's' && rule.site));
   return extraEntries.length > 0 ? { rule, extras: Object.fromEntries(extraEntries) } : { rule };
 }
 

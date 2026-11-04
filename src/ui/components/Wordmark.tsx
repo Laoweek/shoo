@@ -22,14 +22,14 @@ export interface WordmarkProps extends Omit<EyesProps, 'width'> {
   class?: string;
 }
 
-/** The living wordmark: "Sh" in Bricolage Grotesque 800 followed by the two eyes (ui-design.md Section 3). */
+/** The living wordmark: "Sh" in Figtree 800 followed by the two eyes (ui-design.md Section 3). */
 export function Wordmark({ size = 26, status, class: cls, ...eyes }: WordmarkProps) {
   return (
     <span class={`inline-flex items-baseline ${cls ?? ''}`}>
       <span
         role="img"
         aria-label={t('common.wordmark')}
-        class="display inline-flex items-baseline leading-none font-extrabold tracking-[-0.03em] text-ink"
+        class="inline-flex items-baseline leading-none font-extrabold tracking-[-0.02em] text-ink"
         style={`font-size:${size}px`}
       >
         <span aria-hidden="true">Sh</span>

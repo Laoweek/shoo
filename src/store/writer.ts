@@ -6,7 +6,7 @@ import { dayKey, type EscalationRecord } from '~/core/escalation';
 import { newId as defaultNewId } from '~/core/ids';
 import { createRule, parseRef, resolveRefCollisions, sortByRef, trimName, validateRuleInput, type RefCounters } from '~/core/rules';
 import type { FailureState } from '~/core/runtime';
-import type { ActivityEvent, Exception, Rule, RuleOp, Settings, ShooExport } from '~/core/types';
+import { SUPPORTED_SURFACES, SURFACE_IDS, type ActivityEvent, type Exception, type Rule, type RuleOp, type Settings, type ShooExport } from '~/core/types';
 import { browserAreas, type Areas, type StorageChange } from './areas';
 import { parseImportFile, type ImportPreview } from './import';
 import {
@@ -69,7 +69,8 @@ export interface ExceptionInput {
 export type Writer = ReturnType<typeof createWriter>;
 
 const isPrivate = (ctx?: PrivacyContext): ctx is { incognitoTabId: number } => ctx?.incognitoTabId !== undefined;
-const LOCKED_SURFACES = { search: false, channel: false, endScreen: false } as const;
+/** Surfaces with no Native action stay off (REQ-SURF-1a). */
+const LOCKED_SURFACES = Object.fromEntries(SURFACE_IDS.filter((s) => !SUPPORTED_SURFACES.includes(s)).map((s) => [s, false]));
 
 /** Raises ref counters past every ref in use, so imported refs are never handed out again. */
 function countersCovering(rules: Rule[], counters: RefCounters): RefCounters {
@@ -187,8 +188,18 @@ export function createWriter(deps: WriterDeps = {}) {
     let counters = sync.counters();
     for (const [i, op] of ops.entries()) {
       if (op.op === 'add') {
-        const { polarity, kind, text, name, params, skipSubscribed, enabled, origin } = op.rule;
-        const input = trimName({ polarity, kind, text, name, enabled, origin, ...(params && { params }), ...(skipSubscribed === true && { skipSubscribed }) });
+        const { polarity, kind, text, name, params, site, skipSubscribed, enabled, origin } = op.rule;
+        const input = trimName({
+          polarity,
+          kind,
+          text,
+          name,
+          enabled,
+          origin,
+          ...(params && { params }),
+          ...(site && { site }),
+          ...(skipSubscribed === true && { skipSubscribed }),
+        });
         const check = validateRuleInput(input, settings.regexEnabled);
         if (!check.ok) return { error: `${i}:${check.reason}` };
         const created = createRule(input, rules, counters, at, newId());
@@ -207,9 +218,12 @@ export function createWriter(deps: WriterDeps = {}) {
           rules[index] = tombstone(current, changedAt);
           continue;
         }
-        const next: Rule = trimName({ ...current, ...op.patch, updatedAt: changedAt });
+        const { site, ...patch } = op.patch;
+        const next: Rule = trimName({ ...current, ...patch, updatedAt: changedAt });
         // Stored only when on, like the compact form, so switching it off leaves no field behind.
         if (next.skipSubscribed !== true) delete next.skipSubscribed;
+        if (site === null) delete next.site;
+        else if (site !== undefined) next.site = site;
         // Only a changed kind or text needs regex enabled. Switching a regex Rule off must always work.
         const touchesPattern = op.patch.kind !== undefined || op.patch.text !== undefined;
         // Only an edited name is checked, so a longer name synced from elsewhere never blocks switching the Rule off.
@@ -268,6 +282,7 @@ export function createWriter(deps: WriterDeps = {}) {
         const current = await getSettings(areas.local);
         const { generation: _ignored, ...rest } = patch;
         const next: Settings = { ...current, ...rest, generation: current.generation + 1 };
+        next.sites = { ...current.sites, ...rest.sites };
         next.surfaces = { ...current.surfaces, ...rest.surfaces, ...LOCKED_SURFACES };
         await setSettings(areas.local, next);
         return next;

@@ -14,8 +14,10 @@
 .num {
   font-variant-numeric: tabular-nums;
 }
-:focus-visible {
-  /* Transparent outline keeps a visible ring in forced-colours mode, which drops box-shadow. */
+:focus-visible,
+:host([data-dark]) :focus-visible {
+  /* Transparent outline keeps a visible ring in forced-colours mode, which drops box-shadow. The dark selector
+     outranks the dark chip's and panels' own box-shadow, so a focused chip or summary pill keeps its ring. */
   outline: 2px solid transparent;
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink);

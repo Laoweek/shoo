@@ -4,9 +4,9 @@
 
 Maßgeblich ist das [englische README](../../README.md), und diese Übersetzung kann ihm hinterherhinken.
 
-Shoo ist eine Erweiterung für Chrome und Firefox, die unerwünschte YouTube-Empfehlungen wegräumt. Du schreibst Regeln (Rules) in normaler Sprache, Shoo prüft jedes empfohlene Video daran, und wenn eines passt, nutzt Shoo YouTubes eigenes **Not interested** (Kein Interesse) oder **Don't recommend channel** (Kanal nicht empfehlen), damit YouTube daraus lernt. Jede Entfernung nennt die Regel, die sie ausgelöst hat. Solange du noch auf der Seite bist, macht ein Klick sie rückgängig, und Keep sorgt dafür, dass Shoo das Video nicht wieder entfernt.
+Shoo ist eine Erweiterung für Chrome und Firefox, die unerwünschte Empfehlungen auf YouTube und Bilibili wegräumt. Du schreibst Regeln (Rules) in normaler Sprache, Shoo prüft jedes empfohlene Video daran, und wenn eines passt, nutzt Shoo das eigene **Not interested** (Kein Interesse) oder **Don't recommend channel** (Kanal nicht empfehlen) der Website, damit die Website daraus lernt. Jede Entfernung nennt die Regel, die sie ausgelöst hat. Solange du noch auf der Seite bist, macht ein Klick sie rückgängig, und Keep sorgt dafür, dass Shoo das Video nicht wieder entfernt.
 
-Shoo steht in keiner Verbindung zu YouTube oder Google und wird von ihnen nicht unterstützt.
+Shoo steht in keiner Verbindung zu YouTube, Google oder Bilibili und wird von ihnen nicht unterstützt.
 
 <p align="center">
   <img src="../release/screenshots/mock-1-review-chip.png" alt="Ein Remove?-Chip an einem Video in der Seitenleiste der Wiedergabeseite, mit der passenden Regel und den Schaltflächen Remove und Keep" width="640">
@@ -22,7 +22,7 @@ Der obere Screenshot und „Was Shoo getan hat“ stammen von einer echten Wiede
 
 ```mermaid
 flowchart LR
-  T[Auf YouTube empfohlenes Video] --> K{Behalten-Regel oder Ausnahme?}
+  T[Auf YouTube oder Bilibili empfohlenes Video] --> K{Behalten-Regel oder Ausnahme?}
   K -- ja --> Keep[Keep]
   K -- nein --> E{Exakte Regel oder gesperrter Kanal?}
   E -- ja --> V[Remove]
@@ -30,25 +30,26 @@ flowchart LR
   M --> V
   M --> Keep
   V --> Mode{Modus}
-  Mode -- Auto --> A[YouTubes eigene Aktion]
+  Mode -- Auto --> A[Eigene Aktion der Website]
   Mode -- Review --> C[Chip am Video: Remove / Keep]
   Mode -- Dry-run --> L[Nur Markierung]
   C -- Remove --> A
 ```
 
-- **Regeln.** Eine Themenregel (Topic rule) ist ein einziger Satz in normaler Sprache, zum Beispiel „Reaction-Videos, in denen jemand andere Inhalte anschaut und darauf reagiert“. Eine Thumbnail-Regel (Thumbnail rule) beschreibt, was ein Thumbnail zeigt. Exakte Regeln (Exact rules) treffen auf deinem Gerät und ganz ohne Modell auf einen Kanal, ein Stichwort oder Muster im Titel, eine Länge, eine Aufrufzahl, Shorts oder Livestreams zu. Behalten-Regeln (Keep rules) schützen, was du immer sehen willst, und Keep (Behalten) bei einem einzelnen Video fügt eine Ausnahme (Exception) hinzu. Eine Entfernen-Regel lässt sich so einstellen, dass sie Kanäle überspringt, die du abonniert hast.
+- **Regeln.** Eine Themenregel (Topic rule) ist ein einziger Satz in normaler Sprache, zum Beispiel „Reaction-Videos, in denen jemand andere Inhalte anschaut und darauf reagiert“. Eine Thumbnail-Regel (Thumbnail rule) beschreibt, was ein Thumbnail zeigt. Exakte Regeln (Exact rules) treffen auf deinem Gerät und ganz ohne Modell auf einen Kanal, ein Stichwort oder Muster im Titel, eine Länge, eine Aufrufzahl, Shorts oder Livestreams zu. Behalten-Regeln (Keep rules) schützen, was du immer sehen willst, und Keep (Behalten) bei einem einzelnen Video fügt eine Ausnahme (Exception) hinzu. Eine Entfernen-Regel lässt sich so einstellen, dass sie YouTube-Kanäle überspringt, die du abonniert hast.
 - **Entscheidungsmodell.** Themen- und Thumbnail-Regeln beurteilt ein Entscheidungsmodell (Decision model), also ein Modell, das typisierte Fragen mit Wahrscheinlichkeiten beantwortet. Standardmäßig ist das `cloudflare/clef-flash` über die Decisions API von OpenRouter, mit deinem eigenen OpenRouter-Schlüssel. Du kannst stattdessen Cloudflare, TypeSafe oder Perplexity direkt mit deren Schlüssel ansprechen oder ein Entscheidungsmodell mit Ollama, llama.cpp oder LM Studio auf deinem Computer laufen lassen. Settings (Einstellungen) akzeptiert auch ein OpenAI-kompatibles Chat-Modell, das als weniger genau gekennzeichnet ist. Die Filterstärke (Filtering strength: Cautious, Balanced, Eager, also vorsichtig, ausgewogen, eifrig) legt fest, wie sicher sich das Modell sein muss, bevor eine Regel ein Video entfernt.
-- **YouTubes eigene Aktionen.** Shoo blendet nie etwas aus. Es öffnet das Menü des Videos und klickt auf Not interested, bei einem gesperrten Kanal (Banned channel) auf Don't recommend channel, wofür du bei YouTube angemeldet sein musst.
+- **Die eigenen Aktionen der Website.** Shoo blendet nie etwas aus. Es öffnet das Menü des Videos und klickt auf Not interested, bei einem gesperrten Kanal (Banned channel) auf Don't recommend channel, wofür du bei YouTube angemeldet sein musst. Auf Bilibili heißen sie 内容不感兴趣 und 不想看此UP主.
 - **Modi.** Review (Prüfen) fragt erst am Video nach. Auto (Automatisch) entfernt sofort. Dry-run (Probelauf) markiert nur, was es tun würde.
-- **Wo.** Auf der YouTube-Startseite, in der Seitenleiste der Wiedergabeseite und im Shorts-Regal, am Desktop. Zwei optionale Schalter sagen YouTube außerdem, dass es auf der Startseite weniger Shorts- und Spiele-Regale zeigen soll.
+- **Wo.** Auf der YouTube-Startseite, in der Seitenleiste der Wiedergabeseite und im Shorts-Regal sowie auf der Bilibili-Startseite, am Desktop. Du kannst jede der beiden Websites in Settings, Sites (Einstellungen, Websites) ausschalten. Zwei optionale Schalter sagen YouTube außerdem, dass es auf der Startseite weniger Shorts- und Spiele-Regale zeigen soll.
+- **Regeln gelten auf beiden Websites**, außer du beschränkst eine beim Hinzufügen oder später in ihrer Zeile auf YouTube oder Bilibili. Eine Kanalregel, die aus einem Video entsteht (Always keep this channel, also diesen Kanal immer behalten, oder eine von der Eskalation (Escalation) vorgeschlagene Sperre), gilt nur auf der Website dieses Videos, und Regeln für Shorts, Livestreams, Künstlerkanäle (Artist channel) und Aufrufzahlen gelten nur auf YouTube.
 
 Du bezahlst den Anbieter über deinen eigenen Schlüssel. Mit OpenRouter und clef-flash ergab die Kalibrierung mit 10 Themenregeln etwa 2,5 US-Cent pro 1.000 Videos, mit weniger Regeln weniger. Shoo merkt sich jede Antwort, sodass ein Video unter denselben Regeln nicht zweimal gesendet wird, und ein Tageslimit begrenzt, wie viele Videos an einem Tag an das Modell gehen.
 
 ## Datenschutz
 
-Nichts geht an einen Modellanbieter, bevor du auf dem ersten Bildschirm zustimmst, und „Use Exact rules only“ (Nur exakte Regeln verwenden) sendet überhaupt nichts an einen. Die einzige Anfrage, die Shoo von sich aus stellt, geht an YouTube selbst: Wenn eine Regel so eingestellt ist, dass sie Kanäle überspringt, die du abonniert hast, liest Shoo deine Abo-Seite, angemeldet als du, und behält die Liste auf deinem Gerät.
+Nichts geht an einen Modellanbieter, bevor du auf dem ersten Bildschirm zustimmst, und „Use Exact rules only“ (Nur exakte Regeln verwenden) sendet überhaupt nichts an einen. Außer den Anfragen an das Modell kontaktiert Shoo nur die Seiten, auf denen es arbeitet. Thumbnails lädt es von den Bildservern von YouTube und Bilibili, um sie mit einer Thumbnail-Regel zu prüfen und auf Shoos eigenen Seiten zu zeigen. Wenn eine Regel so eingestellt ist, dass sie Kanäle überspringt, die du abonniert hast, liest Shoo deine YouTube-Abo-Seite, angemeldet als du, und behält die Liste auf deinem Gerät.
 
-Nachdem du zugestimmt hast, sendet Shoo für jedes Video den Titel, den Kanalnamen, die Länge und die Stelle auf YouTube, an der es erschienen ist, und das Thumbnail nur, wenn du eine Thumbnail-Regel hast. Jede Anfrage enthält außerdem den Text deiner Themenregeln, Themen-Behalten-Regeln (Topic Keep rules) und Thumbnail-Regeln sowie die Titel und Kanalnamen von bis zu 10 Videos, die du behalten hast. Das geht an den Entscheidungsanbieter (Decision provider), den du gewählt hast: OpenRouter und den Modellanbieter, an den OpenRouter weiterleitet (standardmäßig Cloudflare, ersatzweise TypeSafe oder OpenAI, oder der Anbieter eines anderen Modells, das du auswählst), Cloudflare, TypeSafe oder Perplexity direkt, oder ein Modell auf deinem Computer, bei dem nichts das Gerät verlässt. Ein Chat-Modell, das du in Settings einrichtest, bekommt stattdessen dieselben Daten, ohne Thumbnails.
+Nachdem du zugestimmt hast, sendet Shoo für jedes Video den Titel, den Kanalnamen, die Länge und die Stelle auf YouTube oder Bilibili, an der es erschienen ist, und das Thumbnail nur, wenn du eine Thumbnail-Regel hast. Jede Anfrage enthält außerdem den Text deiner Themenregeln, Themen-Behalten-Regeln (Topic Keep rules) und Thumbnail-Regeln, die auf dieser Website gelten, sowie die Titel und Kanalnamen von bis zu 10 Videos, die du behalten hast. Das geht an den Entscheidungsanbieter (Decision provider), den du gewählt hast: OpenRouter und den Modellanbieter, an den OpenRouter weiterleitet (standardmäßig Cloudflare, ersatzweise TypeSafe oder OpenAI, oder der Anbieter eines anderen Modells, das du auswählst), Cloudflare, TypeSafe oder Perplexity direkt, oder ein Modell auf deinem Computer, bei dem nichts das Gerät verlässt. Ein Chat-Modell, das du in Settings einrichtest, bekommt stattdessen dieselben Daten, ohne Thumbnails.
 
 Shoo sendet einem Modellanbieter nie Webadressen, Video-IDs, Cookies, Wiedergabeverlauf, Kommentare oder Kontodaten. Nichts geht an den Entwickler, und es gibt keine Analyse-Tools. Die vollständige Liste, Speicherung und Aufbewahrung stehen in der [Datenschutzerklärung](https://laoweek.github.io/shoo/release/privacy-policy.html). Fragen: shoo@piran.xyz.
 
@@ -107,7 +108,7 @@ Das Kalibrierungs-Werkzeug in [`scripts/calibration/`](../../scripts/calibration
 | Lies | Für |
 |---|---|
 | [CONTEXT.md](../../CONTEXT.md) | Die Begriffe, die in Code, Doku und Oberfläche verwendet werden (Tile, Surface, Rule, Verdict, Exception…) |
-| [docs/spec/](../spec/) | Die Anforderungen und die Spezifikationen zu Architektur, Entscheidungs-Engine, YouTube-Integration, Oberfläche und Store-Releases. Die maßgebliche Quelle für das Verhalten |
+| [docs/spec/](../spec/) | Die Anforderungen und die Spezifikationen zu Architektur, Entscheidungs-Engine, YouTube- und Bilibili-Integration, Oberfläche und Store-Releases. Die maßgebliche Quelle für das Verhalten |
 | [docs/adr/](../adr/) | Warum die schwer umkehrbaren Entscheidungen so getroffen wurden |
 | [DESIGN.md](../../DESIGN.md) | Das visuelle System, aus dem Build erzeugt |
 | [PRODUCT.md](../../PRODUCT.md) | Für wen Shoo gedacht ist und was es verspricht |

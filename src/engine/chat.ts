@@ -3,7 +3,7 @@
 import { fitState } from '~/core/budget';
 import { questionId } from '~/core/ids';
 import type { Exception, ReasonCode, Rule, TileFacts } from '~/core/types';
-import { modelRules, TEST_TILE, videoFacts, type CachedText } from './decisions';
+import { modelRules, siteOf, TEST_TILE, videoFacts, type CachedText } from './decisions';
 import {
   fetchWithTimeout,
   isRecord,
@@ -45,8 +45,9 @@ export const RESPONSE_FORMAT = {
   },
 } as const;
 
-export const CHAT_INSTRUCTIONS = [
-  'You judge recommended YouTube videos for one viewer. The rules and examples follow as JSON.',
+/** The system prompt, naming the Site the request's Tiles come from (one tab, so one Site). */
+export const chatInstructions = (site: string) => [
+  `You judge recommended ${site} videos for one viewer. The rules and examples follow as JSON.`,
   'viewer_does_not_want maps rule refs to videos the viewer wants removed. viewer_always_wants maps rule refs to videos the viewer always wants to see. viewer_kept_anyway lists videos the viewer chose to keep, and similar videos should be kept.',
   'The user message is a JSON array of videos. Return exactly one result per video, with its id.',
   'If a video matches a rule in viewer_always_wants, set outcome to keep and rule to that ref.',
@@ -116,7 +117,7 @@ export function buildChatRequest(rules: Rule[], exceptions: Exception[], tiles: 
     model,
     ...budgetFields(baseUrl, model, tiles.length),
     messages: [
-      { role: 'system', content: `${CHAT_INSTRUCTIONS}\n\n${JSON.stringify(state)}` },
+      { role: 'system', content: `${chatInstructions(tiles[0] ? siteOf(tiles[0]) : 'YouTube')}\n\n${JSON.stringify(state)}` },
       { role: 'user', content: JSON.stringify(videos) },
     ],
     response_format: RESPONSE_FORMAT,

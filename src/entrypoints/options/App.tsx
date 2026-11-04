@@ -1,6 +1,6 @@
-// Settings (options page, opens in a tab). Two columns: a 200 px section index with the current section
-// ink-filled, and the main column (max 880 px). URL hash routing per section (docs/spec/ui-design.md
-// Section 6). Pages never write storage: every change is a message to the background.
+// Settings (options page, opens in a tab). Two columns: a 248 px section index on the bare ground, the current section
+// a raised paper pill, and the main column (max 960 px). URL hash routing per section (docs/spec/ui-design.md Section 6).
+// Pages never write storage: every change is a message to the background.
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { isBannedChannel } from '~/core/rules';
 import { t } from '~/i18n';
@@ -18,6 +18,7 @@ import { Connection } from './sections/Connection';
 import { Exceptions } from './sections/Exceptions';
 import { Keep } from './sections/Keep';
 import { Rules } from './sections/Rules';
+import { Sites } from './sections/Sites';
 
 const NAV_LABEL: Record<Section, () => string> = {
   rules: () => t('settings.nav.rules'),
@@ -25,11 +26,12 @@ const NAV_LABEL: Record<Section, () => string> = {
   banned: () => t('settings.nav.banned'),
   exceptions: () => t('settings.nav.exceptions'),
   activity: () => t('settings.nav.activity'),
+  sites: () => t('settings.nav.sites'),
   connection: () => t('settings.nav.connection'),
   advanced: () => t('settings.nav.advanced'),
 };
 
-const VIEWS = { rules: Rules, keep: Keep, banned: Banned, exceptions: Exceptions, activity: Activity, connection: Connection, advanced: Advanced };
+const VIEWS = { rules: Rules, keep: Keep, banned: Banned, exceptions: Exceptions, activity: Activity, sites: Sites, connection: Connection, advanced: Advanced };
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseHash(location.hash));
@@ -108,13 +110,12 @@ export function App() {
 
   return (
     <EyesControl.Provider value={eyes}>
-      <div class="mx-auto grid min-h-screen max-w-[1200px] grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)]">
-        {/* Item text sits 24 px in beside the content column, 16 px on narrow windows to line up with the content. */}
-        <nav aria-label={t('settings.nav.label')} class="flex flex-col gap-4 border-line px-3 pt-6 pb-4 max-md:border-b max-md:px-2 md:sticky md:top-0 md:h-screen md:border-r">
-          <a href="#rules" class="self-start rounded-[6px] px-3 no-underline max-md:px-2">
+      <div class="mx-auto grid min-h-screen max-w-[1280px] grid-cols-1 md:grid-cols-[248px_minmax(0,1fr)]">
+        <nav aria-label={t('settings.nav.label')} class="flex flex-col gap-6 px-4 pt-6 pb-2 md:sticky md:top-0 md:h-screen md:pt-8 md:pr-3 md:pb-6 md:pl-6">
+          <a href="#rules" class="self-start rounded-[8px] px-3.5 text-ink no-underline">
             <Wordmark state={runtime.data?.eye ?? 'watching'} track drift reading={reading} wide={wide} status />
           </a>
-          <ul class="m-0 flex list-none flex-col gap-1 p-0 max-md:flex-row max-md:flex-wrap">
+          <ul class="m-0 flex list-none flex-col gap-0.5 p-0 max-md:flex-row max-md:flex-wrap">
             {SECTIONS.map((id) => {
               const current = id === route.section;
               const n = counts[id];
@@ -123,24 +124,33 @@ export function App() {
                   <a
                     href={`#${id}`}
                     aria-current={current ? 'page' : undefined}
-                    class={`flex h-9 items-center justify-between gap-3 rounded-[6px] px-3 font-medium no-underline max-md:px-2 ${current ? 'bg-ink text-paper' : 'text-ink hover:bg-tint'}`}
+                    class={`press flex h-10 items-center gap-2.5 rounded-full pr-4 pl-3.5 text-[15px] text-ink no-underline max-md:h-9 ${
+                      current ? 'bg-paper font-semibold shadow-card' : 'font-medium hover:bg-tint'
+                    }`}
                   >
+                    <span aria-hidden="true" class={`size-[7px] shrink-0 rounded-full ${current ? 'bg-action' : ''}`} />
                     {NAV_LABEL[id]()}
-                    {n !== undefined && n > 0 && <span class={`num text-[12px] font-normal ${current ? 'text-paper/70' : 'text-muted'}`}>{n}</span>}
+                    {n !== undefined && n > 0 && <span class="num ml-auto text-[13px] text-muted">{n}</span>}
                   </a>
                 </li>
               );
             })}
           </ul>
           {s && (
-            <p class="mt-auto mb-0 border-t border-line px-3 pt-3 text-[12px] text-muted max-md:hidden">
-              {t('mode.label')} <b class="font-semibold text-ink">{t(`mode.${s.mode}`)}</b> · {t('connection.strength.label')}{' '}
-              <b class="font-semibold text-ink">{t(`connection.strength.${s.strength.preset}`)}</b>
-            </p>
+            <dl class="mt-auto mb-0 grid gap-1 border-t border-line-strong px-3.5 pt-3 text-[14px] max-md:hidden">
+              <div class="flex justify-between gap-3">
+                <dt class="text-muted">{t('mode.label')}</dt>
+                <dd class="m-0 font-semibold">{t(`mode.${s.mode}`)}</dd>
+              </div>
+              <div class="flex justify-between gap-3">
+                <dt class="text-muted">{t('connection.strength.label')}</dt>
+                <dd class="m-0 font-semibold">{t(`connection.strength.${s.strength.preset}`)}</dd>
+              </div>
+            </dl>
           )}
         </nav>
-        <main class="min-w-0 px-4 pt-6 pb-12 sm:px-8">
-          <div class="max-w-[880px]">
+        <main class="min-w-0 px-4 pt-6 pb-16 sm:px-8 md:pt-9 md:pr-12 md:pl-6">
+          <div class="max-w-[960px]">
             {onboardingOpen ? <SkeletonRows rows={4} /> : <View data={data} params={route.params} />}
           </div>
         </main>

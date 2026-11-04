@@ -1,29 +1,32 @@
-// The user's own Don't recommend channel becomes a Banned channel, and YouTube's Undo lifts it again. Source of
-// truth: docs/spec/requirements.md REQ-ACT-5, docs/spec/architecture.md Section 6.
+// The user's own Don't recommend channel becomes a Banned channel, and the Site's Undo lifts it again. Only a Site
+// whose content watches its own menu sends these (YouTube today). Source of truth: docs/spec/requirements.md
+// REQ-ACT-5, docs/spec/architecture.md Section 6.
 import { tileChannelIdentity } from '~/core/channel';
 import { newId } from '~/core/ids';
+import { SURFACE_SITE } from '~/core/sites';
 import { queryActivity } from '~/store/local';
 import { isNonEmpty, isRecord, isTileFacts, isVideoId } from '../guards';
-import type { Routes } from '../router';
+import { InvalidInput, type Routes } from '../router';
 import type { Services } from '../services';
 import { addedChannelRule, bannedRuleFor, channelRuleOp, keepRuleFor } from './escalation';
 import { truncateTitle } from './judging';
 
-/** YouTube's Undo can lift the ban only this long after it was added, like Activity's Undo routing. */
+/** The Site's Undo can lift the ban only this long after it was added, like Activity's Undo routing. */
 export const LIFT_WINDOW_MS = 3_600_000;
 
 export function userBanRoutes(s: Services): Pick<Routes, 'banChannel' | 'liftChannelBan'> {
   const { writer, state } = s;
   return {
     /**
-     * Adds the Banned channel (origin 'user') and records Activity 'banned'. An existing ban for the channel is
-     * returned with `added: false`. Nothing is added when Shoo is off or cannot run Exact rules, from a private
+     * Adds the Banned channel (origin 'user'), a Site-only rule for the Tile's Site, and records Activity 'banned'.
+     * An existing ban for the channel on that Site is returned with `added: false`. Nothing is added when Shoo is off or cannot run Exact rules, from a private
      * window (Rules sync, REQ-ACTV-3), or when a Keep rule covers the channel.
      */
     banChannel: {
       from: 'content',
       valid: (v) => isRecord(v) && isTileFacts(v.tile),
       async run({ tile }, sender) {
+        if (SURFACE_SITE[tile.surface] !== sender.site) throw new InvalidInput('banChannel');
         if (sender.incognito) return { error: 'privateWindow' as const };
         const identity = tileChannelIdentity(tile);
         const name = [tile.channelName, tile.channelHandle, tile.channelId].find(isNonEmpty)?.trim();
@@ -35,7 +38,7 @@ export function userBanRoutes(s: Services): Pick<Routes, 'banChannel' | 'liftCha
           const ban = bannedRuleFor(rules, identity);
           if (ban) return { ruleId: ban.id, added: false };
           if (keepRuleFor(rules, identity)) return { error: 'keptChannel' as const };
-          const res = await writer.mutateRules([channelRuleOp('remove', name, tile.channelHandle?.trim() || undefined, tile.channelId?.trim() || undefined, 'user')]);
+          const res = await writer.mutateRules([channelRuleOp('remove', name, tile.channelHandle?.trim() || undefined, tile.channelId?.trim() || undefined, 'user', identity.site)]);
           if ('error' in res) throw new Error(`banChannel ${res.error}`);
           const ruleId = addedChannelRule(rules, res.rules, 'remove', identity)!.id;
           const { videoId, surface } = tile;
@@ -50,7 +53,7 @@ export function userBanRoutes(s: Services): Pick<Routes, 'banChannel' | 'liftCha
 
     /**
      * Tombstones the Banned channel only when this video's 'banned' event added it within LIFT_WINDOW_MS, and
-     * records it as 'undone' (detail 'youtube'). Anything else changes nothing.
+     * records it as 'undone' with the Site's id as detail, like reportUndo via 'site'. Anything else changes nothing.
      */
     liftChannelBan: {
       from: 'content',
@@ -64,7 +67,7 @@ export function userBanRoutes(s: Services): Pick<Routes, 'banChannel' | 'liftCha
           if (!live || banned?.ruleId !== ruleId || s.now() - banned.at > LIFT_WINDOW_MS) return;
           await writer.mutateRules([{ op: 'delete', id: ruleId }]);
           const { seenAt: _seen, ...e } = banned;
-          await writer.recordActivity([{ ...e, id: newId(), kind: 'undone', at: s.now(), detail: 'youtube' }]);
+          await writer.recordActivity([{ ...e, id: newId(), kind: 'undone', at: s.now(), detail: sender.site ?? 'youtube' }]);
           await state.broadcastSettings({ force: true });
         });
       },

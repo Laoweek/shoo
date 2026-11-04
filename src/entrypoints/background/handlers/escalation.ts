@@ -6,13 +6,15 @@ import {
   dismissEscalation,
   emptyEscalation,
   ESCALATION_WINDOW_DAYS,
+  escalationKey,
   escalationStatus,
   recordTopicRemoval,
   type EscalationRecord,
 } from '~/core/escalation';
 import { newId } from '~/core/ids';
 import { isBannedChannel } from '~/core/rules';
-import type { Exception, Rule, RuleOp } from '~/core/types';
+import { videoSite } from '~/core/sites';
+import type { Exception, Rule, RuleOp, SiteId } from '~/core/types';
 import type { EscalationSuggestion } from '~/messaging/protocol';
 import { queryActivity } from '~/store/local';
 import { isNonEmpty, isRecord } from '../guards';
@@ -21,8 +23,13 @@ import type { Services } from '../services';
 
 const live = (rules: Rule[]) => rules.filter((r) => r.deletedAt === undefined);
 
-export const recordIdentity = (key: string, rec: EscalationRecord): ChannelIdentity =>
-  channelIdentity(rec.name ?? key, rec.handle, rec.id) ?? { key };
+/** A record stored before Sites has no Site and is YouTube's, as its key without a Site prefix says. */
+const recordSite = (rec: EscalationRecord): SiteId => rec.site ?? 'youtube';
+
+export const recordIdentity = (key: string, rec: EscalationRecord): ChannelIdentity => {
+  const identity = channelIdentity(rec.name ?? key, rec.handle, rec.id) ?? { key };
+  return { ...identity, site: recordSite(rec) };
+};
 
 export function bannedRuleFor(rules: Rule[], identity: ChannelIdentity): Rule | undefined {
   return live(rules).find((r) => isBannedChannel(r) && channelsMatch(ruleChannelIdentity(r) ?? {}, identity));
@@ -32,13 +39,24 @@ export function keepRuleFor(rules: Rule[], identity: ChannelIdentity): Rule | un
   return live(rules).find((r) => r.kind === 'channel' && r.polarity === 'keep' && channelsMatch(ruleChannelIdentity(r) ?? {}, identity));
 }
 
-/** REQ-ESC-3: any Keep rule for the channel (enabled or not) or any Exception with its ChannelKey. */
-export function isProtected(key: string, identity: ChannelIdentity, rules: Rule[], exceptions: Exception[]): boolean {
-  return keepRuleFor(rules, identity) !== undefined || exceptions.some((x) => x.channelKey === key);
+/** REQ-ESC-3: any Keep rule for the channel (enabled or not) or any Exception with its ChannelKey, on the channel's Site. */
+export function isProtected(identity: ChannelIdentity, rules: Rule[], exceptions: Exception[]): boolean {
+  const kept = (x: Exception) => x.channelKey === identity.key && (!identity.site || videoSite(x.videoId) === identity.site);
+  return keepRuleFor(rules, identity) !== undefined || exceptions.some(kept);
 }
 
-/** The add op for a channel Rule (Banned channel or Keep). The channel name doubles as the Rule text. */
-export function channelRuleOp(polarity: 'remove' | 'keep', name: string, handle: string | undefined, id: string | undefined, origin: Rule['origin']): RuleOp {
+/**
+ * The add op for a channel Rule (Banned channel or Keep). The channel name doubles as the Rule text. A Site, when
+ * the channel was seen on a Tile, makes it a Site-only rule, so it never matches a same-named channel elsewhere.
+ */
+export function channelRuleOp(
+  polarity: 'remove' | 'keep',
+  name: string,
+  handle: string | undefined,
+  id: string | undefined,
+  origin: Rule['origin'],
+  site?: SiteId,
+): RuleOp {
   return {
     op: 'add',
     rule: {
@@ -46,6 +64,7 @@ export function channelRuleOp(polarity: 'remove' | 'keep', name: string, handle:
       kind: 'channel',
       text: name,
       params: { channelName: name, ...(handle && { handle }), ...(id && { channelId: id }) },
+      ...(site && { site }),
       enabled: true,
       origin,
     },
@@ -71,9 +90,10 @@ async function topRuleByChannel(s: Services, rules: Rule[]): Promise<Map<string,
   const counts = new Map<string, Map<string, number>>();
   for (const e of events) {
     if (e.source !== 'model' || !e.channelKey || !e.ruleId) continue;
-    const perRule = counts.get(e.channelKey) ?? new Map<string, number>();
+    const key = escalationKey(e.channelKey, (e.videoId && videoSite(e.videoId)) || 'youtube');
+    const perRule = counts.get(key) ?? new Map<string, number>();
     perRule.set(e.ruleId, (perRule.get(e.ruleId) ?? 0) + 1);
-    counts.set(e.channelKey, perRule);
+    counts.set(key, perRule);
   }
   const out = new Map<string, string>();
   // Events come newest first and Map keeps insertion order, so `>` keeps the most recent Rule on a tie.
@@ -101,11 +121,12 @@ export function createEscalation(s: Services) {
     const existing = bannedRuleFor(rules, identity);
     if (existing) return existing.id;
     const name = rec.name ?? key;
-    const res = await writer.mutateRules([channelRuleOp('remove', name, rec.handle, rec.id, 'escalation')]);
+    const site = recordSite(rec);
+    const res = await writer.mutateRules([channelRuleOp('remove', name, rec.handle, rec.id, 'escalation', site)]);
     if ('error' in res) throw new Error(`escalation ${res.error}`);
     const rule = addedChannelRule(rules, res.rules, 'remove', identity)!;
     await writer.recordActivity([
-      { id: newId(), kind: 'escalated', at: s.now(), channelName: name, channelKey: key, ruleId: rule.id, detail, ...(batchId && { batchId }) },
+      { id: newId(), kind: 'escalated', at: s.now(), channelName: name, channelKey: channelKey(name), ruleId: rule.id, detail, site, ...(batchId && { batchId }) },
     ]);
     await writer.updateEscalation((all) => {
       const r = all[key];
@@ -130,14 +151,21 @@ export function createEscalation(s: Services) {
       channelName: string;
       channelHandle?: string;
       channelId?: string;
+      site?: SiteId;
       batchId?: string;
     }): Promise<{ ruleId: string; channelName: string } | undefined> {
-      const key = channelKey(c.channelName);
+      const key = escalationKey(channelKey(c.channelName), c.site ?? 'youtube');
       if (!key) return;
       const day = writer.today();
       const store = await writer.updateEscalation((all) => {
         let rec = recordTopicRemoval(all[key] ?? emptyEscalation(), day);
-        rec = { ...rec, name: rec.name ?? c.channelName, ...(c.channelHandle && !rec.handle && { handle: c.channelHandle }), ...(c.channelId && !rec.id && { id: c.channelId }) };
+        rec = {
+          ...rec,
+          name: rec.name ?? c.channelName,
+          ...(c.channelHandle && !rec.handle && { handle: c.channelHandle }),
+          ...(c.channelId && !rec.id && { id: c.channelId }),
+          site: c.site ?? 'youtube',
+        };
         return { ...all, [key]: rec };
       });
       const settings = await writer.getSettings();
@@ -146,7 +174,7 @@ export function createEscalation(s: Services) {
       const [rules, exceptions] = await Promise.all([writer.getRules(), writer.getExceptions()]);
       const identity = recordIdentity(key, rec);
       if (bannedRuleFor(rules, identity)) return;
-      const status = escalationStatus(rec, s.now(), isProtected(key, identity, rules, exceptions));
+      const status = escalationStatus(rec, s.now(), isProtected(identity, rules, exceptions));
       if (!status.qualifies) return;
       if (settings.escalationMode === 'automatic') {
         return { ruleId: await ban(key, rec, 'automatic', c.batchId), channelName: rec.name ?? key };
@@ -175,7 +203,7 @@ export function escalationRoutes(s: Services, esc: ReturnType<typeof createEscal
           if (rec.suggestedAt === undefined) continue;
           const identity = recordIdentity(key, rec);
           if (bannedRuleFor(rules, identity)) continue;
-          const status = escalationStatus(rec, s.now(), isProtected(key, identity, rules, exceptions));
+          const status = escalationStatus(rec, s.now(), isProtected(identity, rules, exceptions));
           if (!status.qualifies) continue;
           out.push({ channelKey: key, channelName: rec.name ?? key, removed: status.removed, judged: status.judged });
         }

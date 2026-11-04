@@ -1,0 +1,848 @@
+# Simplified Chinese catalogue. Mirrors en.yml key for key: same keys, same nesting, same order, no extras.
+# Placeholders keep their English names ({cap}, {host}, {count}), filled by t(key, { cap: 500 }).
+# Plurals keep both the 1 / n forms with the count as $1. The Chinese forms differ only in the number.
+# A key is either a message or a group, never both, so "error" groups hold one message per reason.
+extName: Shoo · 清除不想看的视频推荐
+extDescription: 写下你不想看的内容。Shoo 替你在 YouTube 和 Bilibili 点“不感兴趣”，还会告诉你是哪条规则做的。
+commandToggle: 开启或关闭 Shoo
+
+common:
+  wordmark: Shoo
+  loading: 加载中…
+  dismiss: 关闭
+  retry: 重试
+  cancel: 取消
+  save: 保存
+  add: 添加
+  delete: 删除
+  undo: 撤销
+  keep: 保留
+  new: 新
+  openSettings: 打开设置
+  keepChannel: 始终保留此频道
+  ruleRef: 规则 {ref}
+
+# Visually hidden status text beside the wordmark (ui-design.md Section 3, Accessibility).
+eyes:
+  status:
+    watching: Shoo 已开启
+    judging: Shoo 正在检查视频
+    review: Shoo 在等你确认
+    paused: Shoo 已暂停
+    error: Shoo 需要你处理
+
+mode:
+  label: 模式
+  auto: 自动
+  review: 确认
+  dryRun: 试运行
+  hint:
+    auto: Shoo 直接移除，每批只告诉你一次。
+    review: Shoo 先在视频上问你，再告诉网站。
+    dryRun: Shoo 只标出会移除的视频，网站什么也收不到。
+
+verdict:
+  remove: 移除
+  keep: 保留
+  pending: …
+  percent: '{p}%'
+  label:
+    remove: '判定：移除，规则：{rule}，百分之 {p}'
+    removeExact: '判定：移除，规则：{rule}'
+    keep: '判定：保留'
+    pending: 判定中…
+
+# label: the chip. text: the Rule the Decision model reads (calibrated, see docs/spec/decision-engine.md Section 2.3).
+starter:
+  reaction:
+    label: 反应视频
+    text: 反应视频，即有人观看其他内容并做出反应的视频
+  clickbait:
+    label: 标题党
+    text: '标题党：为了骗点击而夸大或误导的标题'
+  crypto:
+    label: 快速致富
+    text: '快速致富炒作：加密货币拉盘、晒交易收益、号称能快速赚钱的副业'
+  gossip:
+    label: 明星八卦
+    text: 明星八卦和风波
+  shorts:
+    label: Shorts
+    text: Shorts
+
+# ---------- Sites (Section 6) ----------
+sites:
+  title: 网站
+  lede: Shoo 工作的网站。每条规则都对所有网站生效，除非你把它限定在一个网站。
+  on: 在下方开启的位置，Shoo 都会在 {site} 上工作。
+  off: 已关闭。Shoo 不会在 {site} 上做任何事。
+  noAccess: Shoo 无权访问 {site}，权限已在浏览器设置中被收回。
+  denied: 浏览器没有授予 Shoo 访问 {site} 的权限。
+  allowAccess: 允许访问
+
+# ---------- Popup (Sections 5 and 8) ----------
+popup:
+  title: Shoo
+  switch: 启用 Shoo
+  on: 已开启
+  off: 已关闭
+  state:
+    loading: 正在加载今天的数据…
+    notOnSite: 打开 YouTube 或 Bilibili，看看 Shoo 怎么工作。
+    off: Shoo 已关闭。
+    siteOff: Shoo 在 {site} 上已关闭。
+    noSiteAccess: Shoo 无权访问 {site}。
+    noConsent: Shoo 只使用精确规则。
+    migrating: 正在更新 Shoo 的数据…
+    hostRevoked: Shoo 失去了 YouTube 或你的决策模型的访问权限。
+    noKey: 连接 OpenRouter 才能使用主题规则。
+    breakerSite: "Shoo 已暂停：{site} 的菜单变了。"
+    breakerModel: "Shoo 已暂停：OpenRouter 没有响应。"
+    # A direct Decision provider or a chat model is active: the copy names its host, not OpenRouter.
+    endpointRejected: '{host} 拒绝了 Shoo。请到设置的“连接”中检查。'
+    breakerEndpoint: "Shoo 已暂停：{host} 没有响应。"
+    noCreditsEndpoint: '{host} 表示此密钥的额度已用完。'
+    dailyCap: 已达每日上限 {cap} 个视频，午夜后恢复判定。
+    offline: 你已离线，精确规则仍然有效。
+    noCredits: OpenRouter 表示此密钥的额度已用完。
+  action:
+    turnOn: 开启
+    giveConsent: 同意发送
+    fixInSettings: 去设置中修复
+    connect: 连接
+    openSettings: 打开设置
+    retry: 重试
+    openOpenRouter: 打开 OpenRouter
+  today:
+    label: 今天
+    judged: 已判定
+    removed: 已移除
+    spent: 已花费
+    cap: '今天 {used} / {cap} 个视频'
+  waiting:
+    label: 等你处理
+  escalation:
+    removedBy: '{judged} 个中有 {removed} 个被 {rule} 移除'
+    removed: '{judged} 个中有 {removed} 个被主题规则移除'
+    ban: 屏蔽
+    notNow: 以后再说
+  addRule:
+    label: 添加规则
+    placeholder: 开箱和购物分享视频
+    hint: 描述视频，而不是下命令。
+    submit: 添加
+    added: 已添加规则
+    onlyHere: 仅在 {site} 生效
+  confirmAuto:
+    1: 现在移除这个被标记的视频？
+    n: 现在移除这 $1 个被标记的视频？
+  confirmAutoYes: 立即移除
+  confirmAutoNo: 暂不移除
+  error: 连不上 Shoo。关闭弹窗后再试一次。
+  footer:
+    connected: 已连接 OpenRouter
+    notConnected: 未连接 OpenRouter
+    custom: '已连接 {host}'
+    activity: 活动记录
+    settings: 设置
+
+# ---------- Settings (Sections 6 and 8) ----------
+options:
+  title: Shoo 设置
+settings:
+  nav:
+    label: 设置分区
+    rules: 规则
+    keep: 保留规则
+    banned: 屏蔽频道
+    exceptions: 例外
+    activity: 活动记录
+    sites: 网站
+    connection: 连接
+    advanced: 高级
+  surfaces:
+    # A Surface with its Site, where no Site heading is above it: "YouTube Home".
+    where: '{site} {surface}'
+    home: 首页
+    watchSidebar: 播放页侧栏
+    shortsShelf: Shorts 栏
+    search: 搜索
+    channel: 频道页
+    endScreen: 片尾画面
+    bilibiliHome: 首页
+    bilibiliVideoSidebar: 视频页
+    unsupported: '{site} 在这里没有“不感兴趣”'
+    shortsNote: Shorts 不显示频道，所以频道规则在这里无法匹配。Shoo 只用“不感兴趣”。
+  shelves:
+    title: 首页上的整栏
+    hint: 仅限自动和确认模式
+    shorts: Shorts 栏
+    shortsHint: Shoo 会替你点这一栏自己的“减少显示 Shorts”。
+    games: 游戏栏
+    gamesHint: Shoo 会替你点这一栏自己的“减少显示游戏”。
+  error:
+    load: 无法加载 Shoo 的数据。请刷新页面重试。
+
+rules:
+  title: 规则
+  lede: 你不想看的内容。Shoo 用这些规则检查每个视频，并替你告诉网站“不感兴趣”。规则对所有网站生效，除非你把它限定在一个网站，它的颜色在各处都跟着它。
+  yours: 你的规则
+  sorted: 按活跃度排序
+  add: 添加规则
+  added: '已添加规则：{rule}'
+  empty: 暂时没有要赶走的。添加一条规则，或从下面挑一条开始。
+  error:
+    save: 无法保存规则，请重试。
+    syncQuota: 浏览器同步存储已满。删除或缩短一条规则后再试。
+  disabled:
+    needsModel: 主题规则和封面规则需要你同意发送，并有一个决策模型。
+    needsKey: 需要 OpenRouter
+  kind:
+    label: 类型
+    topic: 主题
+    thumbnail: 封面
+    channel: 屏蔽频道
+    keyword: 标题关键词
+    pattern: 通配符
+    regex: 正则表达式
+    duration: 时长
+    views: 观看次数
+    short: Shorts
+    live: 直播
+    channelAction: 不推荐此频道
+    membersOnly: 会员专享
+    artistChannel: 艺人频道
+  # Where a Rule works (ADR 0012). Most work on all sites.
+  site:
+    label: 生效网站
+    all: 所有网站
+    only: '仅 {site}'
+    youtubeKind: Bilibili 视频不会匹配这种类型，所以它只在 YouTube 上生效。
+    channel: 这个频道在 {site} 上，所以这条规则只在那里生效。
+  placeholder:
+    channel: 频道名称
+    keep: 木工教程
+    keyword: 标题中的一个词
+    thumbnail: 一个人指着红色箭头
+  pattern:
+    hint: '* 匹配任意一串字符，? 匹配一个字符。'
+  artistChannel:
+    hint: 保留带有 YouTube 音符艺人徽章的频道的视频。Shorts 栏的视频不显示频道，所以永远不会匹配。
+  duration:
+    min: 至少（分钟）
+    max: 至多（分钟）
+    between: '{min} 到 {max} 分钟'
+    shorter: 短于 {max} 分钟
+    longer: 长于 {min} 分钟
+  views:
+    min: 至少（次观看）
+    max: 至多（次观看）
+    hint: 输入 10k 或 1.5m 表示千或百万。Shoo 只在 YouTube 使用英文时才能读到观看次数，直播不显示观看次数，所以这些视频永远不会匹配。
+    between: '{min} 到 {max} 次观看'
+    fewer: 少于 {max} 次观看
+    more: 多于 {min} 次观看
+  text:
+    counter: '{count} / {max}'
+    over: 规则越短，效果越好。
+    live: 直播
+    artistChannel: 艺人频道
+  # A remove Rule that never removes videos from Subscribed channels (REQ-RULE-14). The list stays on this computer.
+  skipSubscribed:
+    label: 永远不赶走我订阅的 YouTube 频道
+    note: 跳过已订阅的频道
+    hint: Shoo 大约每天从 YouTube 读取一次你的订阅，并保存在这台电脑上。Shorts 栏的视频不显示频道，所以这里永远不会跳过它们。
+    channels:
+      1: 1 个已订阅的频道
+      n: $1 个已订阅的频道
+    read: '跳过 {channels}，{time}从 YouTube 读取。'
+    pending: Shoo 下次检查视频时会从 YouTube 读取你的订阅。
+    unreadable: Shoo 无法从 YouTube 读取你的订阅。在读到之前，这条规则不会移除显示频道的 YouTube 视频。
+  # Rule name (REQ-RULE-11): the user's short label, shown instead of the Rule text. Never sent to a model.
+  name:
+    label: 名称
+    placeholder: 添加名称
+    hint: 在视频上代替整条规则显示。模型看不到它。
+  # Soft hints while typing a Topic rule (REQ-RULE-12). English patterns only, they never block saving.
+  hint:
+    order: 描述视频，而不是下命令，例如写“开箱视频”，而不是“不要开箱视频”。
+    negation: Shoo 不太能理解“不”和“除了”。写要移除的内容，不想移除的部分另加一条保留规则。
+  # How to write a Rule (REQ-RULE-12). Evidence: docs/spec/decision-engine.md Section 13.
+  guide:
+    title: 如何写规则
+    lede: 对于主题规则，模型会读取每个视频的标题、频道名称、时长和出现位置。它看不到简介、评论，也看不到视频本身。
+    good: 试试
+    avoid: 别写
+    describe:
+      title: 描述视频
+      body: 写视频是什么，而不是下命令。
+      good: 开箱和购物分享视频
+      avoid: 不要开箱视频
+    one:
+      title: 一条规则一个意思
+      body: 混在一起的主题会判得很松。分开写还能让你知道是哪条规则移除了视频。
+      good: 日内交易
+      avoid: 汽车、体育或政治
+    is:
+      title: 说明视频是关于什么的
+      body: 只是报道、讲解或评测某个主题的视频，Shoo 会保留。如果这些也要移除，请写明。
+      good: 明星八卦，包括相关新闻
+      avoid: 任何提到明星的内容
+    concrete:
+      title: 写主题，不写评价
+      body: 具体的主题比“低质量”或“烦人”这类词匹配得更准。
+      good: 恶作剧视频
+      avoid: 粗制滥造的视频
+    noNot:
+      title: 不要写“不”和“除了”
+      body: 不想移除的部分放进保留规则。保留规则优先于一切，所以范围要写小。
+      good: 游戏视频，另加一条“速通”保留规则
+      avoid: 游戏视频，速通除外
+    exact:
+      title: 能用精确类型就用
+      body: 频道放进“屏蔽频道”。词语放进“标题关键词”，它也会匹配更长的词，所以“车”也会匹配“车厘子”。Shorts、直播和时长都有各自的类型。这些都不需要模型。
+    name:
+      title: 起个名字
+      body: 名称会显示在视频上和活动记录里。模型只读规则本身。
+    try: 可以用下方的“试一个标题”检查规则。
+  regex:
+    disabledNote: 已停用，因为“高级”中关闭了正则表达式规则
+    reason:
+      tooLong: 请不超过 200 个字符。
+      syntax: 这不是有效的正则表达式。
+      backreference: 不允许使用反向引用。
+      lookaround: 不允许使用先行断言和后行断言。
+      nestedQuantifier: 不允许重复中嵌套重复，那样可能卡死匹配。
+      adjacentQuantifier: 不允许两个无上限的重复紧挨在一起。
+      alternationInQuantifiedGroup: 不允许在重复的分组中使用多选分支。
+      flags: 不允许使用标志。Shoo 始终忽略大小写。
+  table:
+    label: 规则
+    more: 更多
+    rule: 规则
+    kind: 类型
+    text: 名称和描述
+    week: 本周
+    on: 启用
+  row:
+    text: '{ref} 描述'
+    name: '{ref} 名称'
+    delete: 删除 {ref}
+    on: '启用 {ref}'
+    expand: 展开 {ref}
+    collapse: 收起 {ref}
+    removedThisWeek: 本周已移除
+    keptThisWeek: 本周已保留
+    seeAll:
+      1: 在活动记录中查看
+      n: 在活动记录中查看全部 $1 个
+    allTime:
+      1: 累计 1 个
+      n: 累计 $1 个
+    lastHit: 最近命中 {time}
+  try:
+    label: 试一个标题
+    title: 视频标题
+    titlePlaceholder: 输入或粘贴视频标题
+    channel: 频道
+    site: 当作哪个网站的视频
+    url: YouTube 视频网址或封面网址（可选）
+    urlInvalid: 请使用 YouTube 视频网址或 i.ytimg.com 封面网址。
+    needsConsent: 同意发送后才能试标题
+    paused: Shoo 已暂停或暂时连不上 OpenRouter。请查看弹窗。
+    noCredits: OpenRouter 表示此密钥的额度已用完。
+    submit: 试试
+    idle: 判定会显示在这里。
+    decidedBy: '判定依据：{rule}'
+    decidedByNamed: '判定依据：{name}（{rule}）'
+    error:
+      noKey: 在“连接”中连接 OpenRouter 后才能试标题。
+      offline: 你已离线。恢复联网后再试。
+      dailyCap: 已达每日上限。午夜后再试。
+      model: OpenRouter 没有响应，请重试。
+      tooManyRules: 主题规则太多，此决策服务商处理不了。关闭一些，或在“连接”中换一个服务商。
+  # A direct Decision provider whose choice question takes fewer options (decision-engine.md Section 12.1).
+  tooManyRules: '{provider} 最多支持 {max} 条主题规则，现在开启了 {count} 条。在你关闭一些或在“连接”中换一个决策服务商之前，Shoo 不会按主题检查任何视频。'
+  escalation:
+    lead: '{channel} 老是出现。'
+    detail: '30 天内，{judged} 个已判定的视频中有 {removed} 个被 {rule} 移除。屏蔽这个频道吗？'
+    detailNoRule: '30 天内，{judged} 个已判定的视频中有 {removed} 个被主题规则移除。屏蔽这个频道吗？'
+    ban: 屏蔽频道
+    notNow: 以后再说
+  budget:
+    label: 阅读预算
+    value: '你的规则和保留的视频已占用 {percent}%'
+    over: 你的规则和保留的视频超出了模型的阅读预算。请缩短或关闭一条规则。
+    truncated: 模型只能读到 {rule} 的前 160 个字符。
+    dropped:
+      1: 有 1 个保留的视频放不下，已略去。
+      n: 有 $1 个保留的视频放不下，已略去。
+
+keep:
+  title: 保留规则
+  lede: 无论其他规则怎么说，它们始终优先。
+  yours: 你的保留规则
+  kind:
+    channel: 频道
+  add: 添加保留规则
+  empty: 还没有受保护的内容。保留规则始终优先。
+  error:
+    save: 无法保存保留规则，请重试。
+  liftBan:
+    question: 同时解除对 {channel} 的屏蔽吗？
+    yes: 解除屏蔽
+    no: 保持屏蔽
+
+banned:
+  title: 屏蔽频道
+  lede: 对这些频道的每个视频，Shoo 都会替你告诉网站“不推荐此频道”（Bilibili 上是“不想看此UP主”）。
+  table:
+    channel: 频道
+    site: 网站
+    origin: 来源
+    removed: 已移除
+  removeLabel: 从屏蔽频道中移除 {channel}
+  empty: 没有屏蔽频道。可以在视频标签、活动记录或升级屏蔽提示中屏蔽频道。
+  error:
+    save: 无法更新屏蔽频道，请重试。
+  origin:
+    you: 由你添加
+    escalation: '{date} 升级屏蔽'
+  removed:
+    1: 已移除 1 个视频
+    n: 已移除 $1 个视频
+  remove: 从列表中移除
+
+exceptions:
+  title: 例外
+  lede: 你选择保留的视频。Shoo 不会再判定它们。
+  deleteLabel: 删除 {title} 的例外
+  noMatch: 没有匹配的例外。
+  empty: 还没有例外。你保留的视频会显示在这里。
+  search: 搜索例外
+  wantedBy: '{rule} 想移除它'
+  error:
+    load: 无法加载例外。请刷新页面重试。
+    save: 无法删除例外，请重试。
+
+activity:
+  title: 活动记录
+  lede: 最近 30 天里 Shoo 做了什么，以及为什么。
+  noMatch: 没有符合搜索的内容。
+  more: 显示更多
+  kept: 已保留 · 不会再问
+  renumbered: '规则已重新编号：{detail}'
+  unseen: 新
+  undoLabel: 撤销对 {title} 的移除
+  keepLabel: 保留 {title}
+  keepChannelLabel: 始终保留 {channel}
+  undo:
+    done: 已在 {site} 上撤销
+    expired: "{site} 对这个视频的撤销已过期。点“保留”，以免它再被移除。"
+  empty: 暂时很安静。Shoo 一有动作就会显示在这里。
+  day: '{day} · 赶走 {count} 个'
+  today: 今天
+  yesterday: 昨天
+  search: 搜索活动记录
+  kind:
+    removed: 已移除
+    kept: 已保留
+    keptByRule: 由保留规则保留
+    wouldRemove: 会移除
+    failed: 失败
+    escalated: 已升级屏蔽
+    banned: 屏蔽频道
+    undone: 已撤销
+    renumbered: 已重新编号
+    shelfDismissed: 已关掉整栏
+  shelf:
+    shorts: Shorts 栏
+    games: 游戏栏
+  filter:
+    rule: 规则
+    kind: 类型
+    batch: 批次
+    site: 网站
+    allSites: 所有网站
+    allRules: 所有规则
+    allKinds: 所有类型
+    batchOn: 仅显示一个批次
+    clearBatch: 显示全部活动记录
+  view:
+    list: 列表
+    label: 视图
+    wall: 封面墙
+  error:
+    load: 无法加载活动记录。请刷新页面重试。
+
+connection:
+  title: 连接
+  lede: Shoo 如何连接决策模型，以及可以发送什么。
+  openrouter: OpenRouter
+  reconnect: 重新连接
+  reconnectConfirm: 仍然重新连接
+  error:
+    save: 无法保存，请重试。
+  access:
+    body: 重新允许访问，Shoo 才能在 YouTube 上工作并连接 OpenRouter。
+    allow: 允许访问
+    denied: 未允许访问。在允许之前，Shoo 会保持暂停。
+  headless:
+    label: 来自 openrouter.ai 的代码
+    expired: 代码已过期，请重新连接。
+  connect: 连接 OpenRouter
+  paste: 粘贴密钥
+  connecting: 正在连接…
+  connected: 已于 {date} 连接 · {label}
+  usage: '已用 {usage}，上限 {limit}'
+  noLimit: '已用 {usage}，未设上限'
+  usageToday: '今天已用 {usage}'
+  disconnect: 断开连接
+  disconnectNote: '在此设备上忘记密钥。请到 OpenRouter 撤销它：'
+  reconnectWarning: 重新连接会创建新密钥。请到 openrouter.ai/keys 撤销旧密钥。
+  offline: 你已离线。恢复联网后再连接。
+  oauth:
+    cancelled: 已取消连接，没有任何更改。
+    failed: OpenRouter 没有完成连接。请重试或粘贴密钥。
+  key:
+    label: OpenRouter 密钥
+    save: 保存密钥
+    invalid: OpenRouter 拒绝了这个密钥。
+  consent:
+    title: Shoo 会发送什么
+    give: 同意发送
+    given: 你已于 {date} 同意。
+    givenHost: 你已于 {date} 同意发送到 {host}。
+    withdraw: 撤回同意
+    policy: 隐私政策
+    declined: 没有任何更改。Shoo 继续只使用精确规则。
+  models:
+    label: 模型
+    images: 能看封面
+    text: 标题用的模型
+    image: 封面用的模型
+    price: '{price}/百万 token'
+    error: 无法加载模型列表，将使用 clef-flash。
+  strength:
+    label: 过滤强度
+    cautious: 谨慎
+    balanced: 均衡
+    eager: 积极
+    custom: 自定义
+    cutoff: 达到 {p}% 及以上即移除
+    hint:
+      cautious: 只在决策模型非常确定时才移除视频。
+      balanced: 在决策模型比较确定时移除视频。
+      eager: 移除更多视频，但也会多判错几个。
+      custom: 在“高级”中用滑块设置。
+  # Shared by a direct Decision provider and the chat model (consent names the host, ui-design.md Section 6).
+  custom:
+    baseUrl: 基础 URL
+    model: 模型
+    permissionDenied: Shoo 需要访问 {host} 的权限才能使用它。
+    consent: Shoo 会把“Shoo 会发送什么”中列出的内容发送到 {host}，而不是 OpenRouter。
+    urlInvalid: 请使用 https 地址，只有 localhost 可以用 http。
+    activeDirect: '正在使用 {provider}（{host}）上的 {model}。'
+    activeLocal: '正在使用本机上的 {model}（{host}）。'
+    activeChat: '正在使用 {host} 上的聊天模型 {model}。'
+    reconsent: 切回 OpenRouter 时需要重新同意。
+    saved: 已保存。Shoo 现在发送到 {host}。
+    error: "无法保存：{detail}"
+  # The chat model, Settings only (decision-engine.md Section 6).
+  chat:
+    title: 聊天模型
+    badge: 准确度较低
+    lede: 任何兼容 OpenAI 的聊天模型，用来代替决策模型。聊天模型会给自己的回答打分，而过滤强度没有针对这种打分调校，所以移除得没那么可靠。
+    textOnly: 只看标题。封面规则需要能读图的决策模型。
+    fill: '本机：'
+    keyOptional: 密钥（可选）
+    modelHint: 支持 JSON schema 输出的聊天模型。
+    use: 使用此聊天模型
+  # Decision providers (CONTEXT.md, ui-design.md Sections 6 and 7). Provider names are brand names in code.
+  provider:
+    title: Shoo 在哪里检查视频
+    legend: Shoo 把视频发送到哪里
+    online: 在线
+    local: 在本机上，最私密
+    recommended: 推荐
+    inUse: 使用中
+    openrouter:
+      hint: 一键连接。能看封面。
+    cloudflare:
+      hint: 你自己的 Cloudflare 账户。能看封面。
+      how: 在 Cloudflare 控制台中打开 Workers AI，选择“Use REST API”。页面会显示你的账户 ID，并创建一个令牌。
+      open: 打开 Workers AI
+      account: 账户 ID
+      accountInvalid: 账户 ID 由 32 个字母和数字组成。
+      token: Cloudflare API 令牌
+      model: 模型 {model}，过滤强度就是基于它调校的。
+    typesafe:
+      hint: 需要 TypeSafe API 密钥。只看标题。
+    perplexity:
+      hint: 需要 Perplexity API 密钥。能看封面。
+    ollama:
+      hint: 免费应用，无需密钥。
+      pull: '安装 Ollama 0.35.1 或更高版本，然后下载模型：'
+      origins: '允许 Shoo 访问 Ollama，然后退出并重新打开 Ollama：'
+      originsLinux: '允许 Shoo 访问 Ollama。这会重启 Ollama 服务：'
+      pullWhat: 下载模型的命令
+      originsWhat: 允许 Shoo 访问 Ollama 的命令
+      faq: 其他设置方法
+    llamacpp:
+      hint: 免费的开源服务器，无需密钥。
+      start: '安装 llama.cpp，然后用 clef-flash 启动它的服务器：'
+      startWhat: 启动 llama.cpp 服务器的命令
+    lmstudio:
+      hint: 免费桌面应用，无需密钥。
+      load: 在 LM Studio 中下载并加载一个决策模型，例如 clef-flash。
+      serve: 在“开发者”（Developer）标签页中启动服务器，然后在下方输入模型的 API 标识符。
+      modelPlaceholder: 模型的 API 标识符
+    sendsTo: Shoo 发送到 {host}。
+    sendsToLocal: Shoo 发送到本机上的 {host}。
+    images: 能看封面，所以封面规则也能用。
+    textOnly: 只看标题。封面规则需要能读图的模型。
+    tooManyRules: '{provider} 最多支持 {max} 条主题规则，现在开启了 {count} 条。关闭一些之前，主题规则不会生效。'
+    tunedLocal: 过滤强度是基于 Cloudflare 上的 clef-flash 调校的。本机上的副本打分可能略有不同。
+    untuned: 过滤强度是基于 clef-flash 调校的，所以 {model} 移除的视频可能更多或更少。
+    address: 地址
+    keyLabel: '{provider} API 密钥'
+    keyKeep: 留空则保留已保存的密钥。
+    howKey: 如何获取密钥
+    modelSuggested: 推荐。此服务商提供的任何决策模型都可以。
+    modelHint: 决策模型在此服务器上的名称。
+    use: 使用 {provider}
+    saveChanges: 保存更改
+    checking: 正在检查 {provider}…
+    copy: 复制
+    copied: 已复制。
+    copyFailed: 无法复制。请选中文字后手动复制。
+    missing:
+      url: 输入 https 地址（localhost 可用 http）后继续。
+      local: 输入本机上的地址（例如 http://localhost）后继续。
+      key: 粘贴你的 {provider} API 密钥后继续。
+      token: 粘贴你的 Cloudflare API 令牌后继续。
+      account: 输入你的 Cloudflare 账户 ID 后继续。
+      model: 输入模型后继续。
+    consentLocal: '{host} 就是本机，数据不会离开这台电脑。'
+    error:
+      unreachable: 无法连接 {host}。请检查 {provider} 是否正在运行。
+      ollamaOrigins: Ollama 拒绝了 Shoo。请运行第二条命令，重启 Ollama，然后再试。
+      refused: '{host} 拒绝了请求。请检查它的设置后重试。'
+      noModel: "{host} 上没有 {model}。请先下载，或输入其他模型。"
+      format: "{host} 有回应，但格式不是 Shoo 需要的（{detail}）。"
+
+advanced:
+  title: 高级
+  lede: Shoo 如何告诉你、做到什么程度，以及你的数据。
+  behaviour: 行为
+  data: 你的数据
+  notification:
+    label: 提醒方式
+    summary: 批次汇总
+    perRemoval: 每次移除都提醒
+    silent: 静默（仅工具栏角标）
+    silentShort: 静默
+    hint: 静默只在工具栏图标上显示数量。
+  escalation:
+    label: 升级屏蔽
+    off: 关闭
+    suggest: 建议
+    automatic: 自动
+    hint:
+      'off': Shoo 从不建议屏蔽频道。
+      suggest: 频道的视频总被移除时，Shoo 会建议屏蔽它。
+      automatic: 频道的视频总被移除时，Shoo 会屏蔽它并告诉你。
+  dailyCap:
+    label: 每日上限
+    hint: 每天发送给决策模型的视频数。
+  strength:
+    label: 过滤强度微调
+    hint: 当前为“{preset}”预设。拖动滑块会切换到“自定义”。
+    hintCustom: 自定义。在“连接”中选一个预设即可恢复。
+    value: 达到 {p}% 即移除
+  regex:
+    label: 正则表达式规则
+    hint: 添加“正则表达式”类型。表达式只在此设备上运行。
+  export:
+    label: 导出
+    hint: 一个 JSON 文件，包含你的规则、保留规则、屏蔽频道和例外。密钥永远不会导出。
+    error: 无法导出，请重试。
+  import:
+    label: 导入
+    checking: 正在检查文件…
+    error: 这个文件不是 Shoo 导出的，或者来自更新的版本。
+    details: 详情
+    merge: 与我的规则合并
+    replace: 替换我的规则
+    preview: '新增 {add}，更新 {update}，重新编号 {renumber}'
+    invalid:
+      1: 跳过 1 个条目
+      n: 跳过 $1 个条目
+    replaceNote: 合并会保留你现有的内容。替换会先删除你的规则和例外。
+    previewReplace: 预览替换
+    previewMerge: 预览合并
+    removes: '替换会先删除你当前的规则（{rules}）和例外（{exceptions}）。'
+    syncQuota: 浏览器同步存储放不下这些内容，导入会失败。请先删除一些规则或例外。
+    done: 已导入。
+  reset:
+    label: 重置
+    hint: 删除所有规则、保留规则、屏蔽频道、例外、设置、密钥、活动记录和缓存的判定。
+    confirm: 删除 Shoo 存储的所有内容？你的规则、保留规则、屏蔽频道和例外也会从与此浏览器同步的其他浏览器中消失。此操作无法撤销。
+    button: 重置 Shoo
+    done: Shoo 存储的所有内容已删除。
+    error: 无法重置，请重试。
+    confirmButton: 全部删除
+
+# ---------- Onboarding (Sections 7 and 8) ----------
+onboarding:
+  title: 欢迎使用 Shoo
+  progress: 第 {step} 步，共 {total} 步
+  resumed: 欢迎回来。你回到了上次离开的那一步。
+  stepDone: 已完成
+  next: 继续
+  error: 无法保存，请重试。
+  what:
+    title: Shoo 做什么
+    heading: 把你不想看的视频赶走
+    does:
+      check: Shoo 用你的规则检查 YouTube 和 Bilibili 推荐的视频。
+      act: '对于你不想看的视频，它会通过网站自己的菜单告诉网站“不感兴趣”。'
+      undo: 你总能看到是哪条规则出的手。还在这个页面时可以撤销，也可以保留这个视频，让 Shoo 不再管它。
+    sendsTitle: Shoo 会发送什么
+    sends:
+      perVideo:
+        title: Shoo 检查的每个视频
+        videoTitle: 标题
+        channel: 频道名称
+        length: 时长
+        surface: "出现的位置：YouTube 的首页、播放页侧栏或 Shorts 栏，或 Bilibili 的首页"
+        thumbnail: 封面图片，仅在你创建封面规则时发送
+      request:
+        title: 每次请求还包括
+        rules: 开启中的主题规则、封面规则和用一句话写的保留规则的文字
+        kept: 最多 10 个你选择保留的视频的标题和频道名称
+      recipients:
+        title: 谁会收到
+        openRouter: OpenRouter
+        openRouterWhen: （openrouter.ai，会转交给模型提供方）
+        cloudflare: Cloudflare
+        cloudflareWhen: （默认，使用模型 cloudflare/clef-flash）
+        typeSafe: TypeSafe
+        typeSafeWhen: （Shoo 回退到模型 typesafe/jev-1.13 时）
+        openAi: OpenAI
+        openAiWhen: （封面检查回退到 openai/gpt-6-luna-decisions 时）
+        otherModel: 另一个模型的提供方
+        otherModelWhen: （如果你在设置中选了它）
+        instead: 不经过 OpenRouter
+        insteadWhen: （仅当你选择其中之一，而且 Shoo 会先说出它的地址）
+        direct: Cloudflare、TypeSafe 或 Perplexity
+        directWhen: （用你自己的密钥直接连接）
+        local: 这台电脑上的模型
+        localWhen: （Ollama、llama.cpp 或 LM Studio，所以数据不会离开你的设备）
+        custom: 你自己的接口
+        customWhen: （如果你设置了）
+      never:
+        title: 从不发送
+        urls: 网址
+        ids: 视频 ID，包括 Bilibili 的 BV 号
+        history: 你的观看记录
+        cookies: Cookie
+        comments: 评论
+        page: 页面的 HTML
+        account: 你的 YouTube 或 Bilibili 账户信息
+    agree: 同意并继续
+    exactOnly: 只用精确规则
+    later: 之后可以在设置的“连接”中更改。
+  connect:
+    title: 连接
+    heading: 选择 Shoo 在哪里检查视频
+    body: 主题规则需要决策模型来判定每个视频。你可以一键连接 OpenRouter、直接使用某个服务商，或在本机上运行模型。
+    openRouter: 连接后会在你的 OpenRouter 账户中为 Shoo 创建一个密钥。
+    failed: OpenRouter 没有完成连接。请重试或粘贴密钥。
+    button: 连接 OpenRouter
+    paste: 粘贴密钥
+    cost: 每一千个视频只要几美分。
+    cancelled: 已取消连接。请重试或粘贴密钥。
+    invalidKey: OpenRouter 拒绝了这个密钥。请检查后重新粘贴。
+    offline: 你已离线。之后可以在设置中连接。
+    skip: 暂时跳过
+  rules:
+    title: 首批规则
+    body: 点一条入门规则，或自己写一条。之后随时可以在设置中修改。
+    fieldKeyword: 标题中你不想看到的一个词
+    field: 描述你不想看的视频
+    tip: 描述视频，比如“开箱和购物分享视频”。一条规则一个意思。
+    needsConsent: 需要同意发送
+  mode:
+    title: 模式
+    body: 你随时可以在工具栏中切换模式。
+    start: 开始
+    openYouTube: 打开 YouTube
+    openBilibili: 打开 Bilibili
+
+# ---------- Notices (architecture.md Section 7, ui-design.md Section 4) ----------
+# Before a category trips the copy never says "paused".
+notice:
+  label: Shoo 提示
+  keyRejected: OpenRouter 拒绝了密钥。请在“连接”中重新连接。
+  breakerNativeAction: "Shoo 已暂停：{site} 的菜单变了。"
+  breakerMarkup: "Shoo 已暂停：{site} 的页面变了。"
+  breakerModel: "Shoo 已暂停：OpenRouter 没有响应。"
+  creditsExhausted: "Shoo 已暂停：OpenRouter 表示此密钥的额度已用完。"
+  failureModel: Shoo 连不上 OpenRouter，正在重试。
+  failureNativeAction:
+    1: 无法把 1 个视频告诉 {site}，它会继续显示。
+    n: 无法把 $1 个视频告诉 {site}，它们会继续显示。
+  action:
+    openSettings: 打开设置
+    retry: 重试
+    openOpenRouter: 打开 OpenRouter
+
+# ---------- In-page UI on YouTube and Bilibili (Section 4) ----------
+chip:
+  question: 移除？
+  remove: 移除
+  keep: 保留
+  removeLabel: 移除这个视频
+  keepLabel: 保留这个视频
+  label: 'Shoo：移除？规则：{rule}，百分之 {p}'
+  labelExact: 'Shoo：移除？规则：{rule}'
+  kept:
+    note: 已保留 · 不会再问
+    session: 本次会话已保留
+    short: 已保留
+
+dryRun:
+  wouldRemove: 会移除 ·
+  label: 'Shoo 会移除这个视频，规则：{rule}'
+
+annotation:
+  shooedBy: 赶走它的是
+  channelShooedBy: 赶走此频道的是
+  label: 'Shoo：已移除，规则：{rule}'
+  titledLabel: 'Shoo：已移除 {title}，规则：{rule}'
+  titledChannelLabel: 'Shoo：已移除 {channel} 的 {title}，规则：{rule}'
+  channelLabel: "Shoo：{site} 不会再推荐这个频道，规则：{rule}"
+  channelNamedLabel: "Shoo：已移除 {title}，{site} 也不会再推荐 {channel}，规则：{rule}"
+  channelOnlyLabel: "Shoo：{site} 不会再推荐 {channel}，规则：{rule}"
+  channelTitledLabel: "Shoo：已移除 {title}，{site} 也不会再推荐这个频道，规则：{rule}"
+  nameAndContext: '{name} · {context}'
+  duplicate: 上方已赶走过
+  duplicateLabel: 'Shoo：上方已移除过，规则：{rule}'
+
+summary:
+  label: Shoo
+  shooed:
+    1: 赶走了 1 个视频
+    n: 赶走了 $1 个视频
+  times: ×{count}
+  more:
+    1: 另有 1 条规则
+    n: 另有 $1 条规则
+  review: 查看
+  undoAll: 全部撤销
+  expand: 展开汇总
+  announce:
+    1: 'Shoo 移除了 1 个视频：{list}。'
+    n: 'Shoo 移除了 $1 个视频：{list}。'
+  announceItem: '{rule} {count} 个'
+  escalated: 同时屏蔽了 {channels}

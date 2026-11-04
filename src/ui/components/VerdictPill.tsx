@@ -1,20 +1,26 @@
-import type { ColourCode } from '~/core/types';
 import { t } from '~/i18n';
 import { percent } from '../format';
-import { Swatch } from './Swatch';
 
 export interface VerdictPillProps {
   outcome: 'remove' | 'keep' | 'pending';
   /** The deciding Rule's label (its name, or its text when it has none), for the accessible name. */
   rule?: string;
-  colour?: ColourCode;
   /** P(remove) from 0 to 1 for model Verdicts. Omitted for Exact rules. */
   probability?: number;
   class?: string;
 }
 
-/** `Remove · 91%`, `Keep`, or `…` while judging. Ink-filled pill, the swatch names the Rule. */
-export function VerdictPill({ outcome, rule, colour, probability, class: cls }: VerdictPillProps) {
+const FILL = {
+  remove: 'bg-remove-bg text-remove-fg',
+  keep: 'bg-keep-bg text-keep-fg',
+  pending: 'bg-tint text-muted',
+} as const;
+
+/**
+ * `Remove · 91%` in red on pale red, `Keep` in green on pale green, or `…` while judging. Pale grounds, so a Verdict never
+ * looks like a button. The line under the pill names the Rule with its swatch.
+ */
+export function VerdictPill({ outcome, rule, probability, class: cls }: VerdictPillProps) {
   const p = probability === undefined ? undefined : percent(probability);
   const name =
     outcome === 'pending'
@@ -28,9 +34,8 @@ export function VerdictPill({ outcome, rule, colour, probability, class: cls }: 
     <span
       role="img"
       aria-label={name}
-      class={`inline-flex h-[34px] items-center gap-2 rounded-full bg-ink pr-3 pl-2.5 font-semibold whitespace-nowrap text-paper ${cls ?? ''}`}
+      class={`inline-flex h-9 items-center rounded-full px-4 text-[16px] font-bold whitespace-nowrap ${FILL[outcome]} ${cls ?? ''}`}
     >
-      {outcome === 'remove' && <Swatch colour={colour} class="outline-2 -outline-offset-1 outline-paper" />}
       <span aria-hidden="true" class="num">
         {outcome === 'pending'
           ? t('verdict.pending')

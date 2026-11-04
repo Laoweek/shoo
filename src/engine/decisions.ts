@@ -5,6 +5,7 @@ import { fitState, MAX_QUESTIONS_PER_REQUEST, MAX_TILES_PER_BATCH, textBatchSize
 import { keepQuestionId, questionId } from '~/core/ids';
 import { directProvider, directUrl, type ImageFormat } from '~/core/providers';
 import { activeRules, isTopicKeep, sortByRef } from '~/core/rules';
+import { SITE_NAMES, SURFACE_SITE } from '~/core/sites';
 import type { DirectEndpoint, Exception, ReasonCode, Rule, SurfaceId, TileFacts } from '~/core/types';
 import { deriveChoiceAnswer, deriveKeepAnswers, deriveNoulAnswers, type TextModelResult, type ThumbModelResult } from '~/core/verdict';
 import {
@@ -103,10 +104,15 @@ export interface BuiltRequest {
   fit?: { droppedExceptions: number; truncatedRefs: string[]; usedTokens: number; budget: number };
 }
 
-export const CHOICE_TASK =
-  'Which rule in viewer_does_not_want does this recommended YouTube video clearly match? Choose keep if it matches none or only shares words with a rule. Videos similar to viewer_kept_anyway should be kept.';
+// The tasks name the Tile's Site. For YouTube the words are exactly the ones Filtering strength was calibrated on
+// (REQUEST_SHAPE_VERSION covers them), so Bilibili's wording never changes a YouTube request.
+export const choiceTask = (site: string) =>
+  `Which rule in viewer_does_not_want does this recommended ${site} video clearly match? Choose keep if it matches none or only shares words with a rule. Videos similar to viewer_kept_anyway should be kept.`;
+export const CHOICE_TASK = choiceTask('YouTube');
 export const KEEP_CRITERION = "Matches none of the rules, including videos that only explain, report on, review or sit near a rule's topic";
-export const ruleTask = (text: string) => `Does this recommended YouTube video match this rule: ${text}?`;
+export const ruleTask = (text: string, site = 'YouTube') => `Does this recommended ${site} video match this rule: ${text}?`;
+/** The Tile's Site as the tasks name it. */
+export const siteOf = (t: TileFacts): string => SITE_NAMES[SURFACE_SITE[t.surface]];
 export const thumbnailTask = (text: string) => `The thumbnail image shows: ${text}`;
 
 const SURFACE_LABELS: Record<SurfaceId, string> = {
@@ -116,6 +122,8 @@ const SURFACE_LABELS: Record<SurfaceId, string> = {
   search: 'search results',
   channel: 'channel page',
   endScreen: 'end screen',
+  bilibiliHome: 'home page',
+  bilibiliVideoSidebar: 'video page sidebar',
 };
 
 /** Duration as YouTube shows it: 18:42, 1:02:05. */
@@ -180,22 +188,23 @@ export function buildTextRequest(rules: Rule[], exceptions: Exception[], tiles: 
 
   tiles.forEach((t, i) => {
     const video = videoFacts(t);
+    const site = siteOf(t);
     if (!keepOnly[i] && topicRemove.length > 0) {
       if (framing === 'choice') {
         const id = questionId(i);
-        body.questions[id] = { type: 'choice', instructions: { task: CHOICE_TASK, video }, criteria: { keep: KEEP_CRITERION, ...removeTexts } };
+        body.questions[id] = { type: 'choice', instructions: { task: choiceTask(site), video }, criteria: { keep: KEEP_CRITERION, ...removeTexts } };
         questions.set(id, { kind: 'choice', tile: i, options: ['keep', ...Object.keys(removeTexts)] });
       } else {
         for (const [ref, text] of Object.entries(removeTexts)) {
           const id = keepQuestionId(i, ref);
-          body.questions[id] = { type: 'noul', instructions: { task: ruleTask(text), video } };
+          body.questions[id] = { type: 'noul', instructions: { task: ruleTask(text, site), video } };
           questions.set(id, { kind: 'rule', tile: i, ref });
         }
       }
     }
     for (const [ref, text] of Object.entries(keepTexts)) {
       const id = keepQuestionId(i, ref);
-      body.questions[id] = { type: 'noul', instructions: { task: ruleTask(text), video } };
+      body.questions[id] = { type: 'noul', instructions: { task: ruleTask(text, site), video } };
       questions.set(id, { kind: 'keep', tile: i, ref });
     }
   });

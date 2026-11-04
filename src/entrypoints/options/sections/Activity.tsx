@@ -7,13 +7,14 @@ import { Search, X } from 'lucide-preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { dayKey } from '~/core/escalation';
 import { isBannedChannel } from '~/core/rules';
-import type { ActivityEvent, ActivityKind, Rule, SurfaceId } from '~/core/types';
+import { SITE_IDS, SITE_NAMES, siteOfVideo } from '~/core/sites';
+import type { ActivityEvent, ActivityKind, Rule, SiteId } from '~/core/types';
 import { t } from '~/i18n';
 import { sendMessage } from '~/messaging/protocol';
 import { readActivity, readCounters, watchActivity, watchCounters } from '~/store/read';
 import { Button, Notice, RuleRef, Segmented, SkeletonRows, ruleLabel } from '~/ui/components';
 import { Escalations } from '~/ui/pages/Escalations';
-import { clock, dayLabel, thumbUrl } from '~/ui/pages/format';
+import { clock, dayLabel, thumbUrl, whereLabel } from '~/ui/pages/format';
 import { useAsync, useNow } from '~/ui/pages/hooks';
 import { useKeepChannel } from '~/ui/pages/keep-channel';
 import { SectionHead, Select, Status } from '~/ui/pages/parts';
@@ -29,13 +30,13 @@ export const SEEN_AFTER_MS = 1000;
 
 const KINDS: ActivityKind[] = ['removed', 'kept', 'keptByRule', 'wouldRemove', 'failed', 'escalated', 'banned', 'undone', 'renumbered', 'shelfDismissed'];
 export const activityKindLabel = (k: ActivityKind): string => t(`activity.kind.${k}`);
-export const surfaceLabel = (s: SurfaceId): string => t(`settings.surfaces.${s}`);
 
 export function Activity({ data, params }: SectionProps) {
   const now = useNow();
   const [text, setText] = useState('');
   const [ruleId, setRuleId] = useState(params.get('rule') ?? '');
   const [kind, setKind] = useState<ActivityKind | ''>('');
+  const [site, setSite] = useState<SiteId | ''>('');
   const [batchId, setBatchId] = useState(params.get('batch') ?? '');
   const [view, setView] = useState<'list' | 'wall'>('list');
   const [limit, setLimit] = useState(PAGE);
@@ -56,22 +57,23 @@ export function Activity({ data, params }: SectionProps) {
         ...(ruleId ? { ruleId } : {}),
         ...(batchId ? { batchId } : {}),
         ...(kinds ? { kinds } : {}),
+        ...(site ? { site } : {}),
         limit,
       }),
     [watchActivity],
-    [text, ruleId, kind, batchId, view, limit],
+    [text, ruleId, kind, site, batchId, view, limit],
   );
   const rules = byId(data.rules);
   const list = events.data ?? [];
-  const filtered = !!(text.trim() || ruleId || kind || batchId);
+  const filtered = !!(text.trim() || ruleId || kind || site || batchId);
 
   return (
     <section aria-labelledby="section-activity">
       <SectionHead id="section-activity" title={t('activity.title')} lede={t('activity.lede')} />
       <Escalations rules={data.rules} variant="strip" class="mb-6" />
       <div class="mb-4 flex flex-wrap items-center gap-2">
-        <label class="flex h-9 min-w-[12rem] flex-1 items-center gap-2 rounded-[6px] border border-edge px-3 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
-          <Search size={16} strokeWidth={1.75} aria-hidden="true" class="shrink-0 text-muted" />
+        <label class="flex h-9 min-w-[12rem] flex-1 items-center gap-2 rounded-[12px] border border-edge bg-paper px-3 hover:border-ink focus-within:border-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
+          <Search size={16} strokeWidth={2} aria-hidden="true" class="shrink-0 text-muted" />
           <span class="sr-only">{t('activity.search')}</span>
           <input
             type="search"
@@ -114,6 +116,17 @@ export function Activity({ data, params }: SectionProps) {
             </Select>
           </>
         )}
+        <label class="sr-only" for="activity-site">
+          {t('activity.filter.site')}
+        </label>
+        <Select id="activity-site" class="w-auto" value={site} onChange={(e) => setSite(e.currentTarget.value as SiteId | '')}>
+          <option value="">{t('activity.filter.allSites')}</option>
+          {SITE_IDS.map((s) => (
+            <option key={s} value={s}>
+              {SITE_NAMES[s]}
+            </option>
+          ))}
+        </Select>
         <Segmented
           label={t('activity.view.label')}
           value={view}
@@ -125,7 +138,7 @@ export function Activity({ data, params }: SectionProps) {
         />
       </div>
       {batchId && (
-        <p class="mt-0 mb-4 inline-flex items-center gap-2 rounded-full border border-line-strong py-1 pr-1 pl-3 text-[13px]">
+        <p class="mt-0 mb-4 inline-flex items-center gap-2 rounded-full bg-paper py-1 pr-1 pl-3 text-[13px] shadow-card">
           {t('activity.filter.batchOn')}
           <button
             type="button"
@@ -136,7 +149,7 @@ export function Activity({ data, params }: SectionProps) {
             }}
             class="grid size-6 cursor-pointer place-items-center rounded-full hover:bg-tint"
           >
-            <X size={16} strokeWidth={1.75} aria-hidden="true" />
+            <X size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         </p>
       )}
@@ -148,15 +161,17 @@ export function Activity({ data, params }: SectionProps) {
       ) : events.loading ? (
         <SkeletonRows rows={6} />
       ) : list.length === 0 ? (
-        <p class="m-0 border-t border-line-strong pt-4">{filtered ? t('activity.noMatch') : t('activity.empty')}</p>
+        <p class="card m-0 p-5">{filtered ? t('activity.noMatch') : t('activity.empty')}</p>
       ) : view === 'wall' ? (
         <ThumbWall
           label={t('activity.view.wall')}
-          class="border-t border-line-strong pt-4"
-          items={list.filter((e) => e.videoId).map((e) => ({ id: e.id, videoId: e.videoId!, title: e.title ?? '', colour: e.ruleId ? rules.get(e.ruleId)?.colour : undefined }))}
+          class="card p-4"
+          items={list
+            .filter((e) => e.videoId)
+            .map((e) => ({ id: e.id, videoId: e.videoId!, cover: e.cover, title: e.title ?? '', colour: e.ruleId ? rules.get(e.ruleId)?.colour : undefined }))}
         />
       ) : (
-        <ActivityList events={list} rules={rules} now={now} onKeepChannel={(name) => void channel.keep({ channelName: name })} />
+        <ActivityList events={list} rules={rules} now={now} onKeepChannel={(name, site) => void channel.keep({ channelName: name, site })} />
       )}
       {list.length >= limit && (
         <Button class="mt-4" onClick={() => setLimit((l) => l + PAGE)}>
@@ -177,7 +192,17 @@ const ruleGroups = (rules: Rule[]): [string, Rule[]][] => [
   [t('banned.title'), rules.filter(isBannedChannel)],
 ];
 
-export function ActivityList({ events, rules, now, onKeepChannel }: { events: ActivityEvent[]; rules: Map<string, Rule>; now: number; onKeepChannel: (name: string) => void }) {
+export function ActivityList({
+  events,
+  rules,
+  now,
+  onKeepChannel,
+}: {
+  events: ActivityEvent[];
+  rules: Map<string, Rule>;
+  now: number;
+  onKeepChannel: (name: string, site?: SiteId) => void;
+}) {
   const days = useMemo(() => {
     const out = new Map<string, ActivityEvent[]>();
     for (const e of events) {
@@ -190,7 +215,7 @@ export function ActivityList({ events, rules, now, onKeepChannel }: { events: Ac
 
   // A container, so a row goes on one line only where the list (not the window) is wide enough.
   return (
-    <div class="@container border-t border-line-strong">
+    <div class="card @container px-3 pb-1">
       {days.map(([day, rows]) => (
         <section key={day} aria-label={dayLabel(day, now)}>
           <DayGuide day={day} now={now} />
@@ -230,21 +255,25 @@ function ActivityRow({
   rule?: Rule;
   now: number;
   observe: (el: Element | null, id: string, unseen: boolean) => void;
-  onKeepChannel: (name: string) => void;
+  onKeepChannel: (name: string, site?: SiteId) => void;
 }) {
   const [state, setState] = useState<RowState>({ kind: 'idle' });
   const unseen = e.seenAt === undefined;
   const canUndo = e.kind === 'removed' && !!e.videoId && now - e.at < UNDO_WINDOW_MS;
   const canKeep = (e.kind === 'removed' || e.kind === 'wouldRemove') && !!e.videoId;
   const canKeepChannel = (e.kind === 'removed' || e.kind === 'wouldRemove' || e.kind === 'kept' || e.kind === 'undone') && !!e.channelName;
+  const site = siteOfVideo(e);
+  // Undo is offered only for a Removal, whose video ID names its Site.
+  const siteName = SITE_NAMES[site ?? 'youtube'];
 
   const undo = async () => {
     setState({ kind: 'busy' });
     try {
       const res = await sendMessage('undoFromActivity', { videoId: e.videoId! });
-      setState(res.ok ? { kind: 'note', text: t('activity.undo.done'), tone: 'plain' } : { kind: 'note', text: t('activity.undo.expired'), tone: 'danger' });
+      const text = res.ok ? t('activity.undo.done', { site: siteName }) : t('activity.undo.expired', { site: siteName });
+      setState({ kind: 'note', text, tone: res.ok ? 'plain' : 'danger' });
     } catch {
-      setState({ kind: 'note', text: t('activity.undo.expired'), tone: 'danger' });
+      setState({ kind: 'note', text: t('activity.undo.expired', { site: siteName }), tone: 'danger' });
     }
   };
   const keep = async () => {
@@ -269,6 +298,7 @@ function ActivityRow({
       : e.kind === 'shelfDismissed' && e.shelf
         ? t(`activity.shelf.${e.shelf}`)
         : (e.title ?? '');
+  const thumb = e.videoId ? thumbUrl(e.videoId, e.cover) : undefined;
   // One line where the list is at least 48rem wide: time, thumbnail, title, Rule, actions. Narrower, the
   // Rule and the actions each take a line under the title, so neither squeezes the title.
   return (
@@ -282,14 +312,14 @@ function ActivityRow({
         {unseen && <span class="sr-only">{t('activity.unseen')}</span>}
         {clock(e.at)}
       </time>
-      <span class="relative h-[30px] w-[54px] overflow-hidden rounded-[4px] bg-tint @max-lg:hidden" aria-hidden="true">
-        {e.videoId && <img src={thumbUrl(e.videoId)} alt="" width={54} height={30} loading="lazy" decoding="async" class="block h-[30px] w-[54px] object-cover" />}
+      <span class="relative h-[30px] w-[54px] overflow-hidden rounded-[6px] bg-tint @max-lg:hidden" aria-hidden="true">
+        {thumb && <img src={thumb} alt="" width={54} height={30} loading="lazy" decoding="async" referrerpolicy="no-referrer" class="block h-[30px] w-[54px] object-cover" />}
       </span>
       <div class="min-w-0">
         <div class="truncate font-medium" title={title}>
           {title}
         </div>
-        <div class="truncate text-[13px] text-muted">{[e.channelName, e.surface ? surfaceLabel(e.surface) : undefined].filter(Boolean).join(' · ')}</div>
+        <div class="truncate text-[13px] text-muted">{[e.channelName, e.surface ? whereLabel(e.surface) : site && SITE_NAMES[site]].filter(Boolean).join(' · ')}</div>
       </div>
       {/* The Rule's name over the Activity kind, like the title over the channel. */}
       <div class="col-start-2 inline-flex min-w-0 items-center gap-2 text-[13px] @lg:col-start-3 @3xl:col-start-auto @3xl:flex-col @3xl:items-start @3xl:gap-0">
@@ -314,7 +344,7 @@ function ActivityRow({
               </Button>
             )}
             {canKeepChannel && (
-              <Button variant="text" disabled={state.kind === 'busy'} aria-label={t('activity.keepChannelLabel', { channel: e.channelName! })} onClick={() => onKeepChannel(e.channelName!)}>
+              <Button variant="text" disabled={state.kind === 'busy'} aria-label={t('activity.keepChannelLabel', { channel: e.channelName! })} onClick={() => onKeepChannel(e.channelName!, site)}>
                 {t('common.keepChannel')}
               </Button>
             )}
