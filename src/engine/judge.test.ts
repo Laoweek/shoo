@@ -10,6 +10,7 @@ import {
   VERDICT_RECORD_VERSION,
   type JudgeContext,
   type JudgeDeps,
+  type JudgeResult,
   type ModelOutcome,
   type VerdictCacheRecord,
   type VerdictPut,
@@ -109,6 +110,13 @@ function harness(opts: {
 }
 
 const decisions = (h: Harness) => h.requests.filter((r) => r.url === DECISIONS_URL);
+
+/** A judgeTiles result with its `thumbnailPending` Tiles' later results in place, once the thumbnail pass is done. */
+async function settled(judging: Promise<JudgeResult>): Promise<JudgeResult> {
+  const out = await judging;
+  const late = new Map((await out.later ?? []).map((r) => [r.videoId, r]));
+  return { ...out, results: out.results.map((r) => late.get(r.videoId) ?? r) };
+}
 
 /** A Verdict cache record as the judge writes it for the harness's current Rules and settings. */
 const record = (h: Harness, parts: { text?: CachedText; thumb?: ThumbModelResult }): VerdictCacheRecord => {
@@ -423,7 +431,7 @@ describe('judgeTiles: Topic Keep rules and keep-only questions', () => {
       script: { [DECISIONS_URL]: [answerer({ noul: keepNoul }), answerer({ noul: () => 0.9 })], [YTIMG]: [IMG] },
     });
     const tiles = [tile(id(1), 'Rust tutorial'), tile(id(2), 'Gardening')];
-    const out = await createJudge(h.deps).judgeTiles(tiles, CTX);
+    const out = await settled(createJudge(h.deps).judgeTiles(tiles, CTX));
     collect(h, tiles);
     expect(decisions(h)[0]!.body.state).toEqual({ viewer_always_wants: { K2: 'Programming tutorials' } });
     expect(Object.keys(decisions(h)[0]!.body.questions)).toEqual(['t01_K2', 't02_K2']);
@@ -518,7 +526,7 @@ describe('judgeTiles: chunking, failures and cost accounting', () => {
   it('reports one model failure for a thumbnail outage across many Tiles', async () => {
     const down: Scripted = { status: 503 };
     const h = harness({ rules: [TH], script: { [YTIMG]: Array(6).fill(IMG), [DECISIONS_URL]: Array(12).fill(down) } });
-    const out = await createJudge(h.deps).judgeTiles([1, 2, 3, 4, 5, 6].map((n) => tile(id(n), `t${n}`)), CTX);
+    const out = await settled(createJudge(h.deps).judgeTiles([1, 2, 3, 4, 5, 6].map((n) => tile(id(n), `t${n}`)), CTX));
     expect(decisions(h)).toHaveLength(12);
     expect(out.results.every((r) => r.reason === 'modelError')).toBe(true);
     expect(h.outcomes).toEqual([{ ok: false, reason: 'modelError', countsAsFailure: true }]);
@@ -564,6 +572,30 @@ describe('judgeTiles: chunking, failures and cost accounting', () => {
 });
 
 describe('judgeTiles: thumbnail pass', () => {
+  it('answers the Tiles the text pass decided before its thumbnail checks end, and gives the rest in `later` with the bookkeeping done once', async () => {
+    const h = harness({ rules: [R1, TH], script: { [DECISIONS_URL]: [answerer({ choose }), answerer({ noul: () => 0.9 })] } });
+    let release = () => {};
+    const image = new Promise<void>((resolve) => (release = resolve));
+    const fetch = h.deps.fetch;
+    h.deps.fetch = async (url, init) => {
+      if (!url.startsWith(YTIMG)) return fetch(url, init);
+      await image;
+      return new Response(JPEG, { headers: { 'content-type': 'image/jpeg' } });
+    };
+    const out = await createJudge(h.deps).judgeTiles([tile(id(1), 'Reacting to X'), tile(id(2), 'Gardening')], CTX);
+    expect(out.results[0]!.verdict).toMatchObject({ outcome: 'remove', source: 'model', ruleRef: 'R1' });
+    expect(out.results[1]).toEqual({ videoId: id(2), status: 'undecided', reason: 'thumbnailPending' });
+    expect([h.costs, h.outcomes, h.puts]).toEqual([[], [], []]);
+    release();
+    expect(await out.later).toEqual([expect.objectContaining({ videoId: id(2), status: 'decided', verdict: expect.objectContaining({ outcome: 'remove', source: 'modelThumbnail', ruleRef: 'R5' }) })]);
+    expect(h.costs).toEqual([{ usd: 0.0002, judged: 2, requests: 2 }]);
+    expect(h.outcomes).toEqual([{ ok: true, fallback: false }, { ok: true, fallback: false, thumbnail: true }]);
+    expect(h.puts.flat().map((p) => [p.videoId, !!p.text, !!p.thumb])).toEqual([
+      [id(1), true, false],
+      [id(2), true, true],
+    ]);
+  });
+
   it('skips Tiles with a Topic rule match or a Topic Keep match and fetches only the rest', async () => {
     const h = harness({
       rules: [R1, K2, TH],
@@ -573,7 +605,7 @@ describe('judgeTiles: thumbnail pass', () => {
       },
     });
     const tiles = [tile(id(1), 'Reacting to X'), tile(id(2), 'Rust tutorial'), tile(id(3), 'Gardening', { channelName: 'Green' })];
-    const out = await createJudge(h.deps).judgeTiles(tiles, CTX);
+    const out = await settled(createJudge(h.deps).judgeTiles(tiles, CTX));
     collect(h, tiles);
     const thumbs = h.requests.filter((r) => r.url.startsWith(YTIMG));
     expect(thumbs.map((r) => r.url)).toEqual([`${YTIMG}${id(3)}/mqdefault.jpg`]);
@@ -594,7 +626,7 @@ describe('judgeTiles: thumbnail pass', () => {
     const h = harness({ rules: [R1, TH], script: { [DECISIONS_URL]: [answerer({ noul: () => 0.25 })], [YTIMG]: [IMG] } });
     const judge = createJudge(h.deps);
     h.cache.set(id(1), record(h, { text: { pRemove: 0.05, ref: 'R1', model: 'cloudflare/clef-flash' } }));
-    const out = await judge.judgeTiles([tile(id(1), 'Gardening')], CTX);
+    const out = await settled(judge.judgeTiles([tile(id(1), 'Gardening')], CTX));
     expect(decisions(h).map((r) => Object.keys(r.body.questions))).toEqual([['t01']]);
     const thumbV = computeAnswerVersions(h.rules, h.settings).thumb;
     expect(h.puts).toEqual([[{ videoId: id(1), rulesVersion: VERDICT_RECORD_VERSION, thumb: { p: 0.25, ref: 'R5', model: 'cloudflare/clef-flash', v: thumbV }, at: 1000 }]]);
@@ -608,13 +640,13 @@ describe('judgeTiles: thumbnail pass', () => {
     const judge = createJudge(h.deps);
     const asked = () => decisions(h).map((r) => (Array.isArray(r.body.state) ? 'thumbnail' : 'text'));
     const tiles = [tile(id(1), 'Gardening')];
-    await judge.judgeTiles(tiles, CTX);
+    await settled(judge.judgeTiles(tiles, CTX));
     expect(asked()).toEqual(['text', 'thumbnail']);
     h.rules = [rule('R1', 'Reaction videos and livestreams'), TH];
-    await judge.judgeTiles(tiles, CTX);
+    await settled(judge.judgeTiles(tiles, CTX));
     expect(asked()).toEqual(['text', 'thumbnail', 'text']);
     h.rules = [h.rules[0]!, rule('R5', 'Red arrows', { kind: 'thumbnail' })];
-    const out = await judge.judgeTiles(tiles, CTX);
+    const out = await settled(judge.judgeTiles(tiles, CTX));
     expect(asked()).toEqual(['text', 'thumbnail', 'text', 'thumbnail']);
     expect(out.results[0]!.verdict).toMatchObject({ outcome: 'keep', source: 'model' });
   });
@@ -624,7 +656,7 @@ describe('judgeTiles: thumbnail pass', () => {
       rules: [TH],
       script: { [YTIMG]: [{ status: 404 }, IMG], [DECISIONS_URL]: [fromFixture(fixture('error-422-image-too-large'))] },
     });
-    const out = await createJudge(h.deps).judgeTiles([tile(id(1), 'a'), tile(id(2), 'b')], CTX);
+    const out = await settled(createJudge(h.deps).judgeTiles([tile(id(1), 'a'), tile(id(2), 'b')], CTX));
     expect(out.results.map((r) => [r.status, r.verdict?.outcome])).toEqual([
       ['decided', 'keep'],
       ['decided', 'keep'],
@@ -739,7 +771,7 @@ describe('judgeTiles: a Decision provider reached directly (§12)', () => {
       script: { [OLLAMA]: [noCost, noCost], [YTIMG]: [IMG] },
     });
     h.deps.getDirectKey = async () => '';
-    const out = await createJudge(h.deps).judgeTiles([tile(id(2), 'Bread at home')], CTX);
+    const out = await settled(createJudge(h.deps).judgeTiles([tile(id(2), 'Bread at home')], CTX));
     expect(h.requests.map((r) => r.url.startsWith(YTIMG) ? 'ytimg' : r.url)).toEqual([OLLAMA, 'ytimg', OLLAMA]);
     expect(h.requests.filter((r) => r.url === OLLAMA).every((r) => !('Authorization' in (r.init!.headers as object)))).toBe(true);
     const thumb = h.requests[2]!.body;
@@ -903,7 +935,7 @@ describe('judgeTiles: Rules that skip Subscribed channels (REQ-RULE-14)', () => 
     const noul = (_t: string | undefined, q: string) => (q === 'R6' ? 0.95 : 0.7);
     const h = harness({ rules: [TH, SKIP_TH], subscriptions: () => SUBS, script: { [DECISIONS_URL]: [answerer({ noul }), answerer({ noul })], [YTIMG]: [IMG, IMG] } });
     const tiles = [tile(id(1), 'Live concert', { channelHandle: '@sub' }), tile(id(2), 'Live concert', { channelName: 'Other' })];
-    const { results } = await createJudge(h.deps).judgeTiles(tiles, CTX);
+    const { results } = await settled(createJudge(h.deps).judgeTiles(tiles, CTX));
     expect(decisions(h).map((r) => Object.keys(Object.values<any>(r.body.questions)[0].criteria)).sort()).toEqual([
       ['keep', 'R5'],
       ['keep', 'R5', 'R6'],

@@ -4,10 +4,11 @@
 // background for the RuntimeSnapshot and start the pipeline. Content never writes storage and never subscribes
 // to storage.onChanged: the background's broadcasts carry every later change.
 import type { RuntimeSnapshot } from '~/core/types';
+import type { ToContent } from './messaging';
 import { createPipeline, worksOn, type Pipeline, type PipelineDeps } from './pipeline';
 import { withRetry, type Data, type Reply } from './send';
 
-type Listen = <K extends 'runtimeStateChanged' | 'settingsChanged' | 'undoRemoval'>(
+type Listen = <K extends ToContent>(
   type: K,
   cb: (data: Data<K>) => Reply<K> | Promise<Reply<K>>,
 ) => () => void;
@@ -40,7 +41,12 @@ export async function boot(deps: BootDeps): Promise<Booted> {
   function ensure(): Pipeline {
     if (pipeline) return pipeline;
     const p = createPipeline(deps);
-    offs.push(deps.listen('undoRemoval', (req) => (typeof req?.videoId === 'string' ? p.undoRemoval(req) : { ok: false, reason: 'notFound' })));
+    offs.push(
+      deps.listen('undoRemoval', (req) => (typeof req?.videoId === 'string' ? p.undoRemoval(req) : { ok: false, reason: 'notFound' })),
+      deps.listen('tileVerdicts', (req) => {
+        if (typeof req?.batchId === 'string' && Array.isArray(req.results)) p.tileVerdicts(req);
+      }),
+    );
     return (pipeline = p);
   }
 

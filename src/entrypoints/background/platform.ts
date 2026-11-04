@@ -10,7 +10,7 @@ import { sendWire } from '~/messaging/wire';
 import { browserAreas, type Areas } from '~/store/areas';
 
 /** Background → content messages, sent to one tab. */
-export type ToTab = 'runtimeStateChanged' | 'settingsChanged' | 'undoRemoval';
+export type ToTab = 'runtimeStateChanged' | 'settingsChanged' | 'undoRemoval' | 'tileVerdicts';
 export type TabReq<K extends ToTab> = Parameters<ProtocolMap[K]>[0];
 export type TabRes<K extends ToTab> = ReturnType<ProtocolMap[K]>;
 

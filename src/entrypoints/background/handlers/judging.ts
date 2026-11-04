@@ -1,5 +1,6 @@
-// judgeTiles, tryTitle, getRuntimeState and the content reports that feed RuntimeState (reviewPending,
-// reportMarkupCheck) or Activity (recordWouldRemove). judgeTiles also records Rescues by Keep rules in Activity.
+// judgeTiles with its tileVerdicts push and tileVerdictsPending, tryTitle, getRuntimeState and the content reports that feed RuntimeState
+// (reviewPending, reportMarkupCheck) or Activity (recordWouldRemove). judgeTiles also records Rescues by Keep rules
+// in Activity.
 // Source of truth: docs/spec/architecture.md Sections 5 (pipeline, Counting), 6 and 7,
 // docs/spec/decision-engine.md Sections 7.5 and 8.3.
 import { channelKey } from '~/core/channel';
@@ -43,8 +44,13 @@ export function ruleDisplay(results: TileResult[], rules: Rule[]): Record<string
   return out;
 }
 
-export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'judgeTiles' | 'tryTitle' | 'recordWouldRemove' | 'reviewPending' | 'reportMarkupCheck'> {
+export function judgingRoutes(
+  s: Services,
+): Pick<Routes, 'getRuntimeState' | 'judgeTiles' | 'tileVerdictsPending' | 'tryTitle' | 'recordWouldRemove' | 'reviewPending' | 'reportMarkupCheck'> {
   const { writer, state } = s;
+  // `<tabId> <batchId>` of each batch whose tileVerdicts push has not gone out yet. Memory only: a background that
+  // stopped holds none, so content then sends those Tiles again.
+  const pushing = new Set<string>();
   // Rule hits are counted at judge time (Counting, Section 5), once per Rule, video and day. A rescan after
   // settingsChanged re-sends the same Tiles, so this memo keeps them from counting twice. Memory only: a
   // background restart can count a video again, which only nudges the hit count.
@@ -158,16 +164,22 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
 
     judgeTiles: {
       from: 'content',
-      valid: (v) => isRecord(v) && isTileList(v.items) && isNum(v.settingsGeneration),
-      async run({ items }, sender) {
+      valid: (v) => isRecord(v) && isTileList(v.items) && isNum(v.settingsGeneration) && optional(v.batchId, isShortId),
+      async run({ items, batchId }, sender) {
         // The judge takes a batch's Rules from its Site, so every Tile must come from the sender's Site.
         if (items.some((t) => SURFACE_SITE[t.surface] !== sender.site)) throw new InvalidInput('judgeTiles');
         await s.ensureInit();
         const base = await state.gather();
         const before = state.forTab(base, sender.tabId);
         let results: TileResult[];
+        let later: Promise<TileResult[]> | undefined;
         let rulesVersion = before.rulesVersion;
-        const undecided = (reason: ReasonCode): TileResult[] => items.map((t) => ({ videoId: t.videoId, status: 'undecided', reason }));
+        const undecided = (reason: ReasonCode, list: { videoId: string }[] = items): TileResult[] => list.map((t) => ({ videoId: t.videoId, status: 'undecided', reason }));
+        // Storage threw (judge side effects after paid calls are already guarded inside the judge).
+        const failed = (e: unknown, list?: { videoId: string }[]) => {
+          s.platform.log?.('judgeFailed', { name: e instanceof Error ? e.name : 'unknown' });
+          return undecided('modelError', list);
+        };
         if (!before.stages.exact) {
           // Off, migrating, youtube.com revoked or the markup breaker: nothing is judged.
           results = undecided(before.reason as ReasonCode);
@@ -177,36 +189,55 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
             const out = await s.judge.judgeTiles(items, s.judgeContext(sender));
             results = out.results;
             rulesVersion = out.rulesVersion;
+            const waiting = results.filter((r) => r.reason === 'thumbnailPending');
+            // The tab shows 'judging' until the thumbnail checks end.
+            later = out.later?.catch((e: unknown) => failed(e, waiting)).finally(end);
           } catch (e) {
-            // Storage threw (judge side effects after paid calls are already guarded inside the judge).
-            s.platform.log?.('judgeFailed', { name: e instanceof Error ? e.name : 'unknown' });
-            results = undecided('modelError');
+            results = failed(e);
           } finally {
-            end();
+            if (!later) end();
           }
         }
-        // The reply waits for none of the bookkeeping, only for a fresh snapshot (a breaker may have tripped).
-        const done = countJudged(results, items, sender, base.settings)
-          .catch(() => s.platform.log?.('countJudgedFailed'))
-          .then(() => state.refresh(sender.tabId))
-          .then(
-            () => undefined,
-            () => s.platform.log?.('refreshFailed'),
-          );
-        bookkeeping.set(s, Promise.all([judgingSettled(s), done]).then(() => undefined));
-        const rules = await writer.getRules();
-        const runtime = await state.snapshot(sender.tabId);
-        return {
-          results,
+        const reply = async (list: TileResult[]) => ({
+          results: list,
           rulesVersion,
           // The generation the results were judged under, so content drops this reply after a settings
           // change made while it was in flight.
           settingsGeneration: base.settings.generation,
-          runtime,
-          rules: ruleDisplay(results, rules),
+          runtime: await state.snapshot(sender.tabId),
+          rules: ruleDisplay(list, await writer.getRules()),
           private: sender.incognito,
-        };
+        });
+        // Neither the reply nor the tileVerdicts push waits for the bookkeeping, only for a fresh snapshot (a
+        // breaker may have tripped). Each Tile's result is in the reply or in the push, never both.
+        const count = (list: TileResult[]) =>
+          countJudged(list, items, sender, base.settings)
+            .catch(() => s.platform.log?.('countJudgedFailed'))
+            .then(() => state.refresh(sender.tabId))
+            .then(
+              () => undefined,
+              () => s.platform.log?.('refreshFailed'),
+            );
+        const key = `${sender.tabId} ${batchId}`;
+        if (later && batchId !== undefined) pushing.add(key);
+        // A tab that closed or navigated away has nothing waiting for it.
+        const push = (list: TileResult[]) =>
+          batchId === undefined
+            ? undefined
+            : reply(list)
+                .then((r) => s.platform.sendToTab('tileVerdicts', { batchId, ...r }, sender.tabId!))
+                .catch(() => undefined)
+                .finally(() => pushing.delete(key));
+        const done = Promise.all([count(results), later?.then((list) => Promise.all([count(list), push(list)]))]);
+        bookkeeping.set(s, Promise.all([judgingSettled(s), done]).then(() => undefined));
+        return reply(results);
       },
+    },
+
+    tileVerdictsPending: {
+      from: 'content',
+      valid: (v) => isRecord(v) && isShortId(v.batchId),
+      run: async ({ batchId }, sender) => pushing.has(`${sender.tabId} ${batchId}`),
     },
 
     tryTitle: {

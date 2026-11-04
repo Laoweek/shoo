@@ -11,7 +11,10 @@
 // (watcher.rescan({ all })), in a hidden tab once it is shown again. A judgeTiles reply is dropped when its
 // settingsGeneration is older than the latest seen, or when it was sent before the latest settingsChanged: Exact rule
 // and Exception edits do not change rulesVersion, so the versions alone cannot tell such a reply apart. The Tiles it
-// held are re-sent by that rescan.
+// held are re-sent by that rescan. A Tile the reply leaves `thumbnailPending` stays in flight until its batch's
+// tileVerdicts push, checked and applied like a reply. Every VERDICTS_WAIT_MS without a push, content asks
+// tileVerdictsPending. Once the background no longer holds the batch, the Tiles go back to the rescan path, so a
+// background that stopped after its reply never leaves them waiting.
 //
 // Undo ownership. The background is the one owner of the `undone` Activity event and the Exception, recorded when
 // it receives reportUndo({ via }). Content never calls addException for an Undo that happened:
@@ -24,7 +27,7 @@
 // that Tile sends liftChannelBan for a ban it added, never reportUndo: the Removal was the user's, so no Exception.
 import { SURFACE_SITE } from '~/core/sites';
 import { SHELF_IDS, type Mode, type RuntimeSnapshot, type ShelfId, type SiteId, type SurfaceId, type TileFacts, type TileResult, type Verdict } from '~/core/types';
-import type { RuleDisplay } from '~/messaging/protocol';
+import type { JudgedBatch, RuleDisplay } from '~/messaging/protocol';
 import { surfaceOf, type ShelfWatcher, type Site } from '~/sites/site';
 import type { MomentSource, SummaryRule } from '~/ui/in-page';
 import { createActionQueue, type ActionJob, type ActionOutcome, type NativeActionQueue } from './actions';
@@ -40,6 +43,12 @@ export const SUMMARY_SPAN_MS = 36_000;
 export const STALE_RETRY_MS = 1000;
 /** A chip or label whose Tile shows no video while the site re-renders it is looked at once more after this pause. */
 export const REMOUNT_RETRY_MS = 500;
+/**
+ * How long Tiles left `thumbnailPending` wait for their tileVerdicts push before content asks whether the background
+ * still holds their batch, and again after each yes. Both browsers stop an idle background after 30 s
+ * (architecture.md Section 11).
+ */
+export const VERDICTS_WAIT_MS = 30_000;
 
 export interface PipelineDeps {
   doc: Document;
@@ -58,6 +67,7 @@ export interface PipelineDeps {
 export interface Pipeline {
   apply(snapshot: RuntimeSnapshot): void;
   settingsChanged(req: { settingsGeneration: number; rulesVersion: string; actOnShowingChips?: boolean }): void;
+  tileVerdicts(req: JudgedBatch & { batchId: string }): void;
   undoRemoval(req: { videoId: string }): Promise<{ ok: true } | { ok: false; reason: 'expired' | 'notFound' }>;
   /** Tear everything down (extension context invalidated). */
   dispose(): void;
@@ -70,6 +80,17 @@ interface Judged {
   rulesVersion: string;
   settingsGeneration: number;
   epoch: number;
+}
+
+/** A judgeTiles batch until its reply and, when the reply left Tiles `thumbnailPending`, their push. */
+interface Waiting {
+  epoch: number;
+  run: number;
+  /** The `thumbnailPending` Tiles, once the reply came. */
+  ids?: string[];
+  /** A push that came before its reply. */
+  push?: JudgedBatch;
+  timer?: ReturnType<typeof setTimeout>;
 }
 
 interface SummaryState {
@@ -124,6 +145,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
   let shelves: ShelfWatcher | null = null; // only while a Shelf dismissal is on and the Mode acts
   let rescanOnShow = false; // a settingsChanged came while the tab was hidden
   const inflight = new Map<string, number>(); // videoId → epoch it was sent in
+  const waiting = new Map<string, Waiting>(); // batchId → batch
 
   // Per page: reset on navigation.
   let actingByVideo = new Map<string, Promise<ActionOutcome['status']>>(); // Auto: once per videoId per page
@@ -641,27 +663,86 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     for (const it of items) if (inflight.get(it.facts.videoId) !== sentEpoch) unique.set(it.facts.videoId, it.facts);
     if (unique.size === 0) return;
     for (const v of unique.keys()) inflight.set(v, sentEpoch);
-    const reply = await quiet(send('judgeTiles', { items: [...unique.values()], settingsGeneration: latest.gen }));
+    const batchId = newId();
+    const w: Waiting = { epoch: sentEpoch, run: thisRun };
+    waiting.set(batchId, w);
+    const reply = await quiet(send('judgeTiles', { items: [...unique.values()], settingsGeneration: latest.gen, batchId }));
     for (const v of unique.keys()) if (inflight.get(v) === sentEpoch) inflight.delete(v);
     // A second failure leaves the Tiles 'pending': the next rescan sends them again.
-    if (!reply || thisRun !== run) return;
-    if (sentEpoch !== epoch) return; // stale: dropped, the settingsChanged rescan re-sent these Tiles
-    if (reply.settingsGeneration < latest.gen) {
-      watcher?.rescan(); // a newer generation came by runtimeStateChanged alone: send the pending Tiles again
-      return;
+    if (!reply || stale(reply, w, unique.keys())) return void waiting.delete(batchId);
+    w.ids = reply.results.filter((r) => r.reason === 'thumbnailPending').map((r) => r.videoId);
+    for (const v of w.ids) inflight.set(v, sentEpoch);
+    accept(reply);
+    if (w.ids.length === 0) waiting.delete(batchId);
+    else if (w.push) settle(batchId, w, w.push);
+    else awaitPush(batchId, w);
+  }
+
+  /**
+   * Waits VERDICTS_WAIT_MS for the push, then asks whether the background still holds the batch: a slow thumbnail
+   * pass waits on, and a background that stopped (or cannot be reached) gets the Tiles sent again.
+   */
+  function awaitPush(batchId: string, w: Waiting): void {
+    w.timer = setTimeout(() => void askPending(batchId, w), VERDICTS_WAIT_MS);
+  }
+
+  async function askPending(batchId: string, w: Waiting): Promise<void> {
+    if (waiting.get(batchId) !== w) return;
+    const pending = await quiet(send('tileVerdictsPending', { batchId }));
+    if (waiting.get(batchId) !== w) return;
+    if (pending) awaitPush(batchId, w);
+    else settle(batchId, w);
+  }
+
+  /** The push for a batch's `thumbnailPending` Tiles, or none once the background no longer holds the batch. */
+  function settle(batchId: string, w: Waiting, push?: JudgedBatch): void {
+    waiting.delete(batchId);
+    clearTimeout(w.timer);
+    for (const v of w.ids!) if (inflight.get(v) === w.epoch) inflight.delete(v);
+    if (push) {
+      if (!stale(push, w, w.ids!)) accept(push);
+    } else if (w.run === run && w.epoch === epoch) resend(w.ids!);
+  }
+
+  /** A reply or push for a batch sent before the latest start, stop or settingsChanged. */
+  function stale(batch: JudgedBatch, w: Waiting, ids: Iterable<string>): boolean {
+    if (w.run !== run || w.epoch !== epoch) return true; // the settingsChanged rescan re-sent these Tiles
+    if (batch.settingsGeneration >= latest.gen) return false;
+    resend(ids); // a newer generation came by runtimeStateChanged alone
+    return true;
+  }
+
+  /**
+   * Sends these Tiles again. A plain rescan re-sends only 'pending' Tiles, and a Tile re-sent by a settingsChanged
+   * keeps the chip, label or Keep the older Rules gave it until its new result comes.
+   */
+  function resend(ids: Iterable<string>): void {
+    for (const v of ids) {
+      for (const el of elementsOf(v)) {
+        const state = decor(el)?.state;
+        if (state !== 'chip' && state !== 'label' && state !== 'none') continue;
+        if (state !== 'none') clearUi(el);
+        setDecor(el, 'pending');
+      }
     }
-    if (reply.settingsGeneration > latest.gen) latest = { gen: reply.settingsGeneration, rulesVersion: reply.rulesVersion };
-    // The reply's snapshot first, so its Tiles are gated in the Mode the background judged them for.
-    apply(reply.runtime);
+    watcher?.rescan();
+  }
+
+  function accept(batch: JudgedBatch): void {
+    const thisRun = run;
+    if (batch.settingsGeneration > latest.gen) latest = { gen: batch.settingsGeneration, rulesVersion: batch.rulesVersion };
+    // The batch's snapshot first, so its Tiles are gated in the Mode the background judged them for.
+    apply(batch.runtime);
     if (thisRun !== run) return;
-    for (const [id, r] of Object.entries(reply.rules ?? {})) rules.set(id, r);
-    privateWindow = reply.private === true;
+    for (const [id, r] of Object.entries(batch.rules ?? {})) rules.set(id, r);
+    privateWindow = batch.private === true;
 
     let modelFailed = false;
     let modelOk = false;
-    for (const result of reply.results) {
+    for (const result of batch.results) {
+      if (result.reason === 'thumbnailPending') continue; // stays in flight until the push
       const prev = judged.get(result.videoId);
-      judged.set(result.videoId, { result, rulesVersion: reply.rulesVersion, settingsGeneration: reply.settingsGeneration, epoch });
+      judged.set(result.videoId, { result, rulesVersion: batch.rulesVersion, settingsGeneration: batch.settingsGeneration, epoch });
       if (result.status === 'undecided' && result.reason && MODEL_FAILURE_REASONS.has(result.reason)) modelFailed = true;
       if (result.verdict?.source === 'model' || result.verdict?.source === 'modelThumbnail') modelOk = true;
       for (const el of elementsOf(result.videoId)) gate(el, isRemove(prev?.result));
@@ -806,6 +887,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     actions?.dispose(); // cancels queued jobs; a job already clicking finishes on its own
     actions = null;
     inflight.clear();
+    waiting.clear();
     actingByVideo = new Map();
     summary = null;
     wouldBuffer = [];
@@ -859,6 +941,12 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       if (level !== 'run') return;
       batcher?.clear(); // queued items are sent again by the rescan, with the new generation
       rejudgeAll();
+    },
+    tileVerdicts({ batchId, ...push }) {
+      const w = waiting.get(batchId);
+      if (!w) return; // stale, timed out, or from before a reload
+      if (w.ids) settle(batchId, w, push);
+      else w.push = push;
     },
     async undoRemoval({ videoId }) {
       if (!actions) return { ok: false, reason: 'expired' };
