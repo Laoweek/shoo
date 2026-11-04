@@ -21,3 +21,8 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      # TypeScript 7 does not export the compiler API that scripts/calibration/requests.test.ts uses.
+      # Held from 2026-11-05 for about a week. Remove this entry to take the major update.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
