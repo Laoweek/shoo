@@ -62,6 +62,23 @@ jobs:
       - run: pnpm zip
       # Also writes the sources zip that Firefox Add-ons reviewers rebuild from (README-SOURCES.md).
       - run: pnpm zip:firefox
+      # Rebuilds outside the checkout, where wxt.config.ts finds no .git, as an AMO reviewer does.
+      # Sorting under LC_ALL=C keeps the file order the same on Linux and macOS.
+      - name: Firefox package rebuilds file for file from the sources zip
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          amo="$RUNNER_TEMP/amo"
+          mkdir -p "$amo/src" "$amo/shipped" "$amo/rebuilt"
+          unzip -q ".output/shoo-$VERSION-sources.zip" -d "$amo/src"
+          (cd "$amo/src" && pnpm install --frozen-lockfile && pnpm zip:firefox)
+          unzip -q ".output/shoo-$VERSION-firefox.zip" -d "$amo/shipped"
+          unzip -q "$amo/src/.output/shoo-$VERSION-firefox.zip" -d "$amo/rebuilt"
+          for side in shipped rebuilt; do
+            (cd "$amo/$side" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$amo/$side.sha256"
+          done
+          diff "$amo/shipped.sha256" "$amo/rebuilt.sha256"
+          echo "Rebuilt $(wc -l < "$amo/rebuilt.sha256") files, all match"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: .output/shoo-${{ steps.version.outputs.version }}-chrome.zip
