@@ -76,7 +76,7 @@ English. The extension also ships a Simplified Chinese UI (`_locales/zh_CN`), wh
 
 ### Screenshots
 
-All 1280×800 PNG, no alpha, from the built extension in a fresh Chrome profile with "Use Exact rules only" and Exact rules written for the capture. No OpenRouter key, no real user data. All five were captured on 2026-11-04 from the current build (Chrome for Testing 150, puppeteer-core). Screenshots 1, 2, 3 and 4 come from one run on the fixture pages (`test/fixtures/youtube/page-watch.html`, `page-home.html`) served at youtube.com, with synthetic titles, channels and generated thumbnails and a minimal page style of our own, so no third-party thumbnails or titles appear. Screenshot 5 was captured at 1680×1050 and scaled to 1280×800.
+All 1280×800 PNG, no alpha, from the built extension in a fresh Chrome profile with "Use Exact rules only" and Exact rules written for the capture. No OpenRouter key, no real user data. Screenshots 1 to 4 were captured on 2026-11-04 and screenshot 5 on 2026-11-05, from the current build (Chrome for Testing 150, puppeteer-core). Screenshots 1, 2, 3 and 4 come from one run on the fixture pages (`test/fixtures/youtube/page-watch.html`, `page-home.html`) served at youtube.com, with synthetic titles, channels and generated thumbnails and a minimal page style of our own, so no third-party thumbnails or titles appear. Screenshot 5 was captured at 1680×1050 and scaled to 1280×800.
 
 | # | File | Shows | Staged? |
 |---|---|---|---|
@@ -84,7 +84,7 @@ All 1280×800 PNG, no alpha, from the built extension in a fresh Chrome profile 
 | 2 | `screenshots/2-popup.png` | Toolbar popup: On, Mode switch (Review), today's counts, "Shoo only uses Exact rules", Add a rule | **Composite**: the popup page placed over screenshot 1 where the toolbar popup would open. The popup shows 0 judged when only Exact rules ran (the counter counts model-judged videos) |
 | 3 | `screenshots/3-settings-rules.png` | Settings, Rules: Try a title above the first four of five Exact rules (Shorts, and the keywords cartoon, episode and compilation, with for kids below the fold) | Synthetic Rules. Mode reads Dry-run because the capture switched Mode to fill Activity |
 | 4 | `screenshots/4-activity.png` | Activity: Would remove rows with the Rule that matched, Keep and Always keep this channel | Synthetic Rules, Dry-run results on the fixture pages |
-| 5 | `screenshots/5-onboarding-consent.png` | Onboarding step 1: what Shoo does, What Shoo sends, Agree and continue, Use Exact rules only | Real page, captured 2026-11-04 at 1680×1050 so the whole disclosure fits, then scaled to 1280×800 with no other edits. This is the in-product disclosure CWS asks for |
+| 5 | `screenshots/5-onboarding-consent.png` | Onboarding step 1: what Shoo does, What Shoo sends, Agree and continue, Use Exact rules only | Real page, captured 2026-11-05 at 1680×1050 so the whole disclosure fits, then scaled to 1280×800 with no other edits. This is the in-product disclosure CWS asks for |
 
 Branding check: the Shoo assets use no YouTube logo. Screenshots 1, 2 and 4 show a YouTube page only as rebuilt from fixtures, with no third-party artwork.
 
