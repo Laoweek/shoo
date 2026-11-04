@@ -19,6 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A tag can be moved to other code, a commit SHA cannot. Dependabot reads the comment to bump both.
+      - name: Every action is pinned to a full commit SHA with its version
+        run: |
+          if grep -rnE --include='*.yml' --include='*.yaml' '^[[:space:]-]*uses:' .github/ | grep -vE 'uses: [^@[:space:]]+@[0-9a-f]{40} # v[0-9]'; then
+            echo "::error::Pin each action above to a full commit SHA followed by its version comment"
+            exit 1
+          fi
       # Version from package.json packageManager
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
