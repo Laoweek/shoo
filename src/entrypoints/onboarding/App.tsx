@@ -19,6 +19,7 @@ import { StarterChips } from '~/ui/pages/StarterChips';
 export const STEPS = ['what', 'connect', 'rules', 'mode'] as const;
 const LAST = STEPS.length - 1;
 const YOUTUBE = 'https://www.youtube.com/';
+const BILIBILI = 'https://www.bilibili.com/';
 
 async function saveStep(step: number, done = false): Promise<void> {
   await sendMessage('updateSettings', { patch: { onboarding: { step, done } } });
@@ -65,34 +66,36 @@ export function App({ isFirefox }: { isFirefox?: boolean } = {}) {
   };
 
   return (
-    <div class="mx-auto min-h-screen max-w-[760px] px-5 pt-7 pb-16">
-      <header class="mb-5">
+    <div class="mx-auto min-h-screen max-w-[880px] px-5 pt-5 pb-16">
+      <header class="mb-4 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <Wordmark state="watching" track size={30} glanceKey={glance} glance={{ x: 0, y: 3 }} />
         <h1 class="sr-only">{t('onboarding.title')}</h1>
+        {resumed && <p class="m-0 text-[13px] text-muted">{t('onboarding.resumed')}</p>}
       </header>
       {step === undefined ? (
         <SkeletonRows rows={4} />
       ) : (
         <>
           <Progress step={step} />
-          {resumed && <p class="mt-0 mb-5 text-[13px] text-muted">{t('onboarding.resumed')}</p>}
-          {step === 0 && (
-            <WhatStep
-              headingRef={heading}
-              isFirefox={isFirefox}
-              onAgree={() => {
-                setConsent(true);
-                goTo(1);
-              }}
-              onExactOnly={() => {
-                setConsent(false);
-                goTo(2);
-              }}
-            />
-          )}
-          {step === 1 && <ConnectStep headingRef={heading} onNext={() => goTo(2)} />}
-          {step === 2 && <RulesStep headingRef={heading} consent={consent} onGlance={() => setGlance((g) => g + 1)} onNext={() => goTo(3)} />}
-          {step === 3 && <ModeStep headingRef={heading} initial={settings.data?.onboarding?.done ? settings.data.mode : 'review'} />}
+          <div class="card p-6 sm:px-8">
+            {step === 0 && (
+              <WhatStep
+                headingRef={heading}
+                isFirefox={isFirefox}
+                onAgree={() => {
+                  setConsent(true);
+                  goTo(1);
+                }}
+                onExactOnly={() => {
+                  setConsent(false);
+                  goTo(2);
+                }}
+              />
+            )}
+            {step === 1 && <ConnectStep headingRef={heading} onNext={() => goTo(2)} />}
+            {step === 2 && <RulesStep headingRef={heading} consent={consent} onGlance={() => setGlance((g) => g + 1)} onNext={() => goTo(3)} />}
+            {step === 3 && <ModeStep headingRef={heading} initial={settings.data?.onboarding?.done ? settings.data.mode : 'review'} />}
+          </div>
         </>
       )}
     </div>
@@ -101,14 +104,14 @@ export function App({ isFirefox }: { isFirefox?: boolean } = {}) {
 
 function Progress({ step }: { step: number }) {
   return (
-    <ol aria-label={t('onboarding.progress', { step: String(step + 1), total: String(STEPS.length) })} class="m-0 mb-7 grid list-none grid-cols-4 gap-2 p-0">
+    <ol aria-label={t('onboarding.progress', { step: String(step + 1), total: String(STEPS.length) })} class="m-0 mb-4 grid list-none grid-cols-4 gap-2 p-0">
       {STEPS.map((id, i) => {
         const done = i < step;
         return (
           <li key={id} aria-current={i === step ? 'step' : undefined} class="grid gap-1.5">
-            <span aria-hidden="true" class={`h-1 rounded-full ${i <= step ? 'bg-ink' : 'bg-line'}`} />
+            <span aria-hidden="true" class={`h-1.5 rounded-full ${i <= step ? 'bg-ink' : 'bg-line-strong'}`} />
             <span class={`inline-flex items-center gap-1 text-[12px] ${i === step ? 'font-semibold text-ink' : 'text-muted'}`}>
-              {done && <Check size={14} strokeWidth={2} aria-hidden="true" />}
+              {done && <Check size={16} strokeWidth={2} aria-hidden="true" />}
               {t(`onboarding.${id}.title`)}
               {done && <span class="sr-only">{t('onboarding.stepDone')}</span>}
             </span>
@@ -123,7 +126,7 @@ type HeadingRef = { current: HTMLHeadingElement | null };
 
 function StepHead({ headingRef, title }: { headingRef: HeadingRef; title: string }) {
   return (
-    <h2 ref={headingRef} tabIndex={-1} class="display mt-0 mb-3 text-[30px] leading-[1.1] font-bold tracking-[-0.025em] focus:outline-none">
+    <h2 ref={headingRef} tabIndex={-1} class="mt-0 mb-3 text-[36px] leading-[1.1] font-semibold tracking-[-0.025em] text-balance focus:outline-none">
       {title}
     </h2>
   );
@@ -141,7 +144,7 @@ export function WhatStep({ headingRef, isFirefox, onAgree, onExactOnly }: { head
   return (
     <section>
       <StepHead headingRef={headingRef} title={t('onboarding.what.heading')} />
-      <ul class="m-0 mb-7 grid list-none gap-1.5 p-0 text-[15px] leading-[1.5]">
+      <ul class="m-0 mb-5 grid list-none gap-1.5 p-0 text-[15px] leading-[1.5]">
         {(
           [
             [ListChecks, 'check'],
@@ -150,13 +153,13 @@ export function WhatStep({ headingRef, isFirefox, onAgree, onExactOnly }: { head
           ] as const
         ).map(([Icon, key]) => (
           <li key={key} class="flex items-start gap-2.5">
-            <Icon size={16} strokeWidth={1.75} aria-hidden="true" class="mt-[3px] shrink-0" />
+            <Icon size={16} strokeWidth={2} aria-hidden="true" class="mt-[3px] shrink-0" />
             {t(`onboarding.what.does.${key}`)}
           </li>
         ))}
       </ul>
-      <h3 class="m-0 mb-2 text-[15px] font-bold tracking-[-0.01em]">{t('onboarding.what.sendsTitle')}</h3>
-      <Disclosure class="mb-6 border-t border-line-strong" />
+      <h3 class="m-0 mb-2 text-[15px] font-semibold">{t('onboarding.what.sendsTitle')}</h3>
+      <Disclosure class="mb-5 border-t border-line-strong" />
       <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
         <div class="flex flex-wrap gap-2">
           <Button variant="primary" size="lg" onClick={agree}>
@@ -450,11 +453,11 @@ export function ModeStep({ headingRef, initial }: { headingRef: HeadingRef; init
         <legend class="sr-only">{t('mode.label')}</legend>
         <div class="border-t border-line-strong">
           {(['review', 'auto', 'dryRun'] as Mode[]).map((m) => (
-            <label key={m} class={`flex min-h-11 cursor-pointer items-start gap-3 border-b border-line px-2 py-3 ${mode === m ? 'bg-tint' : 'hover:bg-tint'}`}>
+            <label key={m} class={`flex min-h-11 cursor-pointer items-start gap-3 border-b border-line px-3 py-3 ${mode === m ? 'bg-tint' : 'hover:bg-tint'}`}>
               <input type="radio" name="mode" value={m} checked={mode === m} onChange={() => setMode(m)} class="mt-1 size-4 shrink-0 cursor-pointer" />
               <span>
                 <span class="font-semibold">{t(`mode.${m}`)}</span>
-                <span class="block text-[13.5px] text-muted">{t(`mode.hint.${m}`)}</span>
+                <span class="block text-[13px] text-muted">{t(`mode.hint.${m}`)}</span>
               </span>
             </label>
           ))}
@@ -473,6 +476,16 @@ export function ModeStep({ headingRef, initial }: { headingRef: HeadingRef; init
           }
         >
           {t('onboarding.mode.openYouTube')}
+        </Button>
+        <Button
+          variant="text"
+          onClick={() =>
+            void finish(() => {
+              location.href = BILIBILI;
+            })
+          }
+        >
+          {t('onboarding.mode.openBilibili')}
         </Button>
       </div>
       <Status tone="danger" class="mt-3">

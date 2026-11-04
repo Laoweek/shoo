@@ -1,10 +1,14 @@
 // Binding domain types. Source of truth: docs/spec/architecture.md, Sections 3, 6 and 8.
 // Every other layer imports these from core/.
 import type { DirectProviderId } from './providers';
+import type { SiteId } from './sites';
 
-export type SurfaceId = 'home' | 'watchSidebar' | 'shortsShelf' | 'search' | 'channel' | 'endScreen';
-export const SURFACE_IDS: readonly SurfaceId[] = ['home', 'watchSidebar', 'shortsShelf', 'search', 'channel', 'endScreen'];
-export const SUPPORTED_SURFACES: readonly SurfaceId[] = ['home', 'watchSidebar', 'shortsShelf'];
+export type { SiteId } from './sites';
+
+// YouTube's Surfaces keep their original ids, so stored settings and Activity stay valid. Bilibili's carry its name.
+export type SurfaceId = 'home' | 'watchSidebar' | 'shortsShelf' | 'search' | 'channel' | 'endScreen' | 'bilibiliHome' | 'bilibiliVideoSidebar';
+export const SURFACE_IDS: readonly SurfaceId[] = ['home', 'watchSidebar', 'shortsShelf', 'search', 'channel', 'endScreen', 'bilibiliHome', 'bilibiliVideoSidebar'];
+export const SUPPORTED_SURFACES: readonly SurfaceId[] = ['home', 'watchSidebar', 'shortsShelf', 'bilibiliHome'];
 
 /** A Shelf on Home that a Shelf dismissal can act on (youtube-integration.md Section 10). */
 export type ShelfId = 'shorts' | 'games';
@@ -65,6 +69,8 @@ export interface Rule {
   text: string; // the user's words, never rewritten (REQ-RULE-7)
   name?: string; // Rule name: the user's short label, shown instead of the text. Never sent to a model (REQ-RULE-11)
   params?: RuleParams;
+  /** The one Site the Rule works on, unset for every Site (Site-only rule, ADR 0012). A channel Rule made from a Tile has its Tile's Site. */
+  site?: SiteId;
   colour?: ColourCode; // remove Rules only
   skipSubscribed?: boolean; // remove Rules only: never removes a Tile from a Subscribed channel (REQ-RULE-14)
   enabled: boolean;
@@ -89,6 +95,8 @@ export interface TileFacts {
   isUpcoming: boolean;
   isMembersOnly: boolean;
   isArtistChannel?: boolean; // set only when YouTube shows the Official Artist Channel badge
+  /** Bilibili only: the cover image's path on Bilibili's image host (BILIBILI_COVER_PATH). Never sent to a model. */
+  cover?: string;
 }
 
 export type VerdictSource = 'keepRule' | 'exception' | 'exact' | 'model' | 'modelThumbnail';
@@ -139,6 +147,10 @@ export interface ActivityEvent {
   detail?: string;
   shelf?: ShelfId; // shelfDismissed only
   seenAt?: number;
+  /** Bilibili only: the cover path, so Activity can show a thumbnail (YouTube's is derived from the videoId). */
+  cover?: string;
+  /** The Site of an event about no video (an Escalation's channel). Events about a video take it from the video. */
+  site?: SiteId;
 }
 
 // Messages contract types (architecture.md Section 6)
@@ -194,6 +206,8 @@ export interface RuntimeSnapshot {
   surfaces: Record<SurfaceId, boolean>;
   notificationStyle?: Settings['notificationStyle']; // content applies summary / perRemoval / silent
   shelfDismissal?: Settings['shelfDismissal']; // content starts the Shelf watcher only while one is on
+  /** The Site whose failures tripped the breaker in `reason` (breakerNativeAction, breakerMarkup), when known. */
+  site?: SiteId;
 }
 
 export interface TileResult {
@@ -205,7 +219,8 @@ export interface TileResult {
 
 export type RuleOp =
   | { op: 'add'; rule: Omit<Rule, 'id' | 'ref' | 'colour' | 'createdAt' | 'updatedAt'> }
-  | { op: 'update'; id: string; patch: Partial<Pick<Rule, 'text' | 'name' | 'params' | 'enabled' | 'kind' | 'skipSubscribed'>> } // name '' clears it
+  // name '' clears it. site null makes the Rule work on every Site again.
+  | { op: 'update'; id: string; patch: Partial<Pick<Rule, 'text' | 'name' | 'params' | 'enabled' | 'kind' | 'skipSubscribed'>> & { site?: SiteId | null } }
   | { op: 'delete'; id: string };
 
 export type StrengthPreset = 'cautious' | 'balanced' | 'eager' | 'custom';
@@ -220,6 +235,8 @@ export interface Settings {
   generation: number; // +1 on every change, drives settingsGeneration
   enabled: boolean;
   mode: Mode;
+  /** Sites Shoo works on. A Site that is off has no active Surfaces. */
+  sites: Record<SiteId, boolean>;
   surfaces: Record<SurfaceId, boolean>;
   notificationStyle: 'summary' | 'perRemoval' | 'silent';
   dailyCap: number;

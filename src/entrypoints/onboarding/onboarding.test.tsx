@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import '~/ui/test/catalogue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CONSENT_VERSION } from '~/store/schema';
 import { replies, resetMessages, sendMessage, sent } from '~/ui/pages/testing/messages';
 import { expectDisclosure } from '~/ui/pages/testing/disclosure';
 import { fake, reset } from '~/ui/pages/testing/read';
 import { button, click, hasButton, mount, radio, settle, snapshot, text, type, unmountAll } from '~/ui/pages/testing/render';
 import { App, ConnectStep, RulesStep, WhatStep } from './App';
-import { CONSENT_VERSION } from '~/store/schema';
 
 vi.mock('~/messaging/protocol', () => import('~/ui/pages/testing/messages'));
 vi.mock('~/store/read', () => import('~/ui/pages/testing/read'));
@@ -40,8 +40,8 @@ describe('onboarding resume', () => {
     await settle();
     expect(el.querySelector('h2')!.textContent).toBe("Shoo the videos you don't want");
     expect([...el.querySelectorAll('section > ul:first-of-type li')].map(text)).toEqual([
-      'Shoo checks the videos YouTube recommends against your Rules.',
-      'For the ones you don\'t want, it tells YouTube "Not interested" through YouTube\'s own menu.',
+      'Shoo checks the videos YouTube and Bilibili recommend against your Rules.',
+      'For the ones you don\'t want, it tells the site "Not interested" through the site\'s own menu.',
       'You always see which Rule acted. Undo it while you\'re on the page, or Keep the video so Shoo leaves it alone.',
     ]);
     expect(el.querySelector('h3')!.textContent).toBe('What Shoo sends');

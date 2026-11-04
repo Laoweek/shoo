@@ -9,7 +9,7 @@ export const MOMENT_MS = 560;
 export const MOMENT_STAGGER_MS = 40;
 export const MOMENT_MAX_SQUARES = 12;
 const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
-const SQUARE = 8;
+const SQUARE = 10;
 const ARC_STEPS = 8;
 
 export interface MomentSource {

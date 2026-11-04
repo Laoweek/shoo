@@ -11,7 +11,7 @@ import { RuleTag, ruleLabel, type RuleNaming } from './parts';
 export const KEPT_NOTE_MS = 4000;
 
 export interface ChipProps extends RuleNaming {
-  /** full when the thumbnail anchor is at least 320 px wide, compact below that (COMPACT_BELOW_PX in src/youtube/mount.ts). */
+  /** full when the thumbnail anchor is at least 320 px wide, compact below that (COMPACT_BELOW_PX in src/content/mount.ts). */
   variant: 'full' | 'compact';
   colour?: ColourCode;
   /** P(remove) 0..1 for model Verdicts. Omitted for Exact rules. */

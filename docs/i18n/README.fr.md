@@ -4,9 +4,9 @@
 
 La version de référence est le [README en anglais](../../README.md), et cette traduction peut avoir du retard sur lui.
 
-Shoo est une extension pour Chrome et Firefox qui fait le ménage dans les recommandations YouTube dont vous ne voulez pas. Vous écrivez des règles (Rules) en langage courant, Shoo compare chaque vidéo recommandée à ces règles et, quand l'une d'elles correspond, utilise les options de YouTube lui-même, **Not interested** (Pas intéressé) ou **Don't recommend channel** (Ne pas recommander la chaîne), pour que YouTube en tienne compte. Chaque retrait indique la règle qui l'a provoqué. Tant que vous êtes encore sur la page, un clic l'annule, et Keep empêche Shoo de retirer à nouveau cette vidéo.
+Shoo est une extension pour Chrome et Firefox qui fait le ménage dans les recommandations YouTube et Bilibili dont vous ne voulez pas. Vous écrivez des règles (Rules) en langage courant, Shoo compare chaque vidéo recommandée à ces règles et, quand l'une d'elles correspond, utilise les options du site lui-même, **Not interested** (Pas intéressé) ou **Don't recommend channel** (Ne pas recommander la chaîne), pour que le site en tienne compte. Chaque retrait indique la règle qui l'a provoqué. Tant que vous êtes encore sur la page, un clic l'annule, et Keep empêche Shoo de retirer à nouveau cette vidéo.
 
-Shoo n'est ni affilié à YouTube ou à Google, ni approuvé par eux.
+Shoo n'est ni affilié à YouTube, à Google ou à Bilibili, ni approuvé par eux.
 
 <p align="center">
   <img src="../release/screenshots/mock-1-review-chip.png" alt="Une pastille Remove? sur une vidéo de la barre latérale de la page de lecture, avec la règle qui correspond et les boutons Remove et Keep" width="640">
@@ -22,7 +22,7 @@ La capture du haut et « Ce que Shoo a fait » ont été prises sur une vraie pa
 
 ```mermaid
 flowchart LR
-  T[Vidéo recommandée sur YouTube] --> K{Règle de conservation ou exception ?}
+  T[Vidéo recommandée sur YouTube ou Bilibili] --> K{Règle de conservation ou exception ?}
   K -- oui --> Keep[Keep]
   K -- non --> E{Règle exacte ou chaîne bannie ?}
   E -- oui --> V[Remove]
@@ -30,25 +30,26 @@ flowchart LR
   M --> V
   M --> Keep
   V --> Mode{Mode}
-  Mode -- Auto --> A[Action propre à YouTube]
+  Mode -- Auto --> A[Action propre au site]
   Mode -- Review --> C[Pastille sur la vidéo : Remove / Keep]
   Mode -- Dry-run --> L[Étiquette seulement]
   C -- Remove --> A
 ```
 
-- **Règles.** Une règle de sujet (Topic rule) est une seule phrase en langage courant, par exemple « Les vidéos de réaction, où quelqu'un regarde d'autres contenus et y réagit ». Une règle de miniature (Thumbnail rule) décrit ce que montre une miniature. Les règles exactes (Exact rules) ciblent une chaîne, un mot-clé ou un motif dans le titre, une durée, un nombre de vues, les Shorts ou les directs, sur votre appareil et sans aucun modèle. Les règles de conservation (Keep rules) protègent ce que vous voulez toujours voir, et Keep (Garder) sur une vidéo précise ajoute une exception (Exception). Une règle de retrait peut être réglée pour ignorer les chaînes auxquelles vous êtes abonné.
+- **Règles.** Une règle de sujet (Topic rule) est une seule phrase en langage courant, par exemple « Les vidéos de réaction, où quelqu'un regarde d'autres contenus et y réagit ». Une règle de miniature (Thumbnail rule) décrit ce que montre une miniature. Les règles exactes (Exact rules) ciblent une chaîne, un mot-clé ou un motif dans le titre, une durée, un nombre de vues, les Shorts ou les directs, sur votre appareil et sans aucun modèle. Les règles de conservation (Keep rules) protègent ce que vous voulez toujours voir, et Keep (Garder) sur une vidéo précise ajoute une exception (Exception). Une règle de retrait peut être réglée pour ignorer les chaînes YouTube auxquelles vous êtes abonné.
 - **Modèle de décision.** Les règles de sujet et de miniature sont évaluées par un modèle de décision (Decision model), c'est-à-dire un modèle qui répond à des questions typées par des probabilités. Par défaut, il s'agit de `cloudflare/clef-flash` via la Decisions API d'OpenRouter, avec votre propre clé OpenRouter. Vous pouvez aussi joindre directement Cloudflare, TypeSafe ou Perplexity avec leur clé, ou faire tourner un modèle de décision sur votre ordinateur avec Ollama, llama.cpp ou LM Studio. Settings (Paramètres) accepte aussi un modèle de chat compatible OpenAI, signalé comme moins précis. La force du filtrage (Filtering strength : Cautious, Balanced, Eager, soit prudent, équilibré, zélé) fixe le degré de certitude que doit avoir le modèle avant qu'une règle retire une vidéo.
-- **Les actions propres à YouTube.** Shoo ne masque jamais rien. Il ouvre le menu de la vidéo et clique sur Not interested, ou sur Don't recommend channel pour une chaîne bannie (Banned channel), ce qui demande d'être connecté à YouTube.
+- **Les actions propres au site.** Shoo ne masque jamais rien. Il ouvre le menu de la vidéo et clique sur Not interested, ou sur Don't recommend channel pour une chaîne bannie (Banned channel), ce qui demande d'être connecté à YouTube. Sur Bilibili, ce sont 内容不感兴趣 et 不想看此UP主.
 - **Modes.** Review (Vérifier) vous pose d'abord la question sur la vidéo. Auto (Automatique) retire aussitôt. Dry-run (Essai à blanc) se contente d'étiqueter ce qu'il ferait.
-- **Où.** Sur la page d'accueil de YouTube, dans la barre latérale de la page de lecture et dans la rangée de Shorts, sur ordinateur. Deux interrupteurs facultatifs demandent aussi à YouTube d'afficher moins de rangées de Shorts et de jeux sur la page d'accueil.
+- **Où.** Sur la page d'accueil de YouTube, dans la barre latérale de la page de lecture et dans la rangée de Shorts, ainsi que sur la page d'accueil de Bilibili, sur ordinateur. Vous pouvez désactiver l'un ou l'autre site dans Settings, Sites (Paramètres, Sites). Deux interrupteurs facultatifs demandent aussi à YouTube d'afficher moins de rangées de Shorts et de jeux sur la page d'accueil.
+- **Les règles s'appliquent aux deux sites**, sauf si vous en limitez une à YouTube ou à Bilibili en l'ajoutant, ou plus tard depuis sa ligne. Une règle de chaîne créée depuis une vidéo (Always keep this channel, c'est-à-dire toujours garder cette chaîne, ou un bannissement proposé par une escalade (Escalation)) ne s'applique qu'au site de cette vidéo, et les règles sur les Shorts, les directs, les chaînes d'artiste (Artist channel) et le nombre de vues ne s'appliquent qu'à YouTube.
 
 Vous payez le fournisseur via votre propre clé. Avec OpenRouter et clef-flash, un étalonnage avec 10 règles de sujet a mesuré environ 2,5 cents américains pour 1 000 vidéos, et moins avec moins de règles. Shoo mémorise chaque réponse, si bien qu'une vidéo n'est pas envoyée deux fois avec les mêmes règles, et un plafond quotidien limite le nombre de vidéos envoyées au modèle en une journée.
 
 ## Confidentialité
 
-Rien ne part chez un fournisseur de modèle tant que vous n'avez pas donné votre accord sur le premier écran, et « Use Exact rules only » (Utiliser seulement les règles exactes) n'envoie rien du tout à aucun d'eux. La seule requête que Shoo fait de lui-même s'adresse à YouTube : quand une règle est réglée pour ignorer les chaînes auxquelles vous êtes abonné, Shoo lit votre page d'abonnements, connecté sous votre compte, et garde la liste sur votre appareil.
+Rien ne part chez un fournisseur de modèle tant que vous n'avez pas donné votre accord sur le premier écran, et « Use Exact rules only » (Utiliser seulement les règles exactes) n'envoie rien du tout à aucun d'eux. En dehors des requêtes au modèle, Shoo ne contacte que les sites sur lesquels il fonctionne. Il charge les miniatures depuis les serveurs d'images de YouTube et de Bilibili, pour les vérifier avec une règle de miniature et pour les afficher dans les pages de Shoo. Quand une règle est réglée pour ignorer les chaînes auxquelles vous êtes abonné, Shoo lit votre page d'abonnements YouTube, connecté sous votre compte, et garde la liste sur votre appareil.
 
-Une fois votre accord donné, Shoo envoie pour chaque vidéo son titre, le nom de la chaîne, sa durée et l'endroit de YouTube où elle est apparue, et la miniature seulement si vous avez une règle de miniature. Chaque requête contient aussi le texte de vos règles de sujet, de vos règles de conservation de sujet (Topic Keep rules) et de vos règles de miniature, ainsi que les titres et noms de chaîne de 10 vidéos au plus que vous avez gardées. Le tout part chez le fournisseur de décision (Decision provider) que vous avez choisi : OpenRouter et le fournisseur du modèle vers lequel OpenRouter redirige la requête (Cloudflare par défaut, TypeSafe ou OpenAI en solution de repli, ou le fournisseur d'un autre modèle que vous choisissez), Cloudflare, TypeSafe ou Perplexity en direct, ou un modèle sur votre ordinateur, auquel cas rien ne quitte l'appareil. Un modèle de chat configuré dans Settings reçoit alors les mêmes données à la place, sans les miniatures.
+Une fois votre accord donné, Shoo envoie pour chaque vidéo son titre, le nom de la chaîne, sa durée et l'endroit de YouTube ou de Bilibili où elle est apparue, et la miniature seulement si vous avez une règle de miniature. Chaque requête contient aussi le texte de vos règles de sujet, de vos règles de conservation de sujet (Topic Keep rules) et de vos règles de miniature qui s'appliquent à ce site, ainsi que les titres et noms de chaîne de 10 vidéos au plus que vous avez gardées. Le tout part chez le fournisseur de décision (Decision provider) que vous avez choisi : OpenRouter et le fournisseur du modèle vers lequel OpenRouter redirige la requête (Cloudflare par défaut, TypeSafe ou OpenAI en solution de repli, ou le fournisseur d'un autre modèle que vous choisissez), Cloudflare, TypeSafe ou Perplexity en direct, ou un modèle sur votre ordinateur, auquel cas rien ne quitte l'appareil. Un modèle de chat configuré dans Settings reçoit alors les mêmes données à la place, sans les miniatures.
 
 Shoo n'envoie jamais à un fournisseur de modèle d'adresses web, d'identifiants de vidéo, de cookies, d'historique de visionnage, de commentaires ni d'informations de compte. Rien ne part chez le développeur, et il n'y a aucun outil d'analyse d'audience. La liste complète, le stockage et la durée de conservation figurent dans la [politique de confidentialité](https://laoweek.github.io/shoo/release/privacy-policy.html). Questions : shoo@piran.xyz.
 
@@ -107,7 +108,7 @@ L'outil d'étalonnage dans [`scripts/calibration/`](../../scripts/calibration/RE
 | À lire | Pour |
 |---|---|
 | [CONTEXT.md](../../CONTEXT.md) | Les termes employés dans le code, la documentation et l'interface (Tile, Surface, Rule, Verdict, Exception…) |
-| [docs/spec/](../spec/) | Les exigences et les spécifications de l'architecture, du moteur de décision, de l'intégration YouTube, de l'interface et des publications sur les boutiques. La référence pour le comportement |
+| [docs/spec/](../spec/) | Les exigences et les spécifications de l'architecture, du moteur de décision, de l'intégration YouTube et Bilibili, de l'interface et des publications sur les boutiques. La référence pour le comportement |
 | [docs/adr/](../adr/) | Pourquoi les décisions difficilement réversibles ont été prises |
 | [DESIGN.md](../../DESIGN.md) | Le système visuel, généré à partir du build |
 | [PRODUCT.md](../../PRODUCT.md) | À qui s'adresse Shoo et ce qu'il promet |

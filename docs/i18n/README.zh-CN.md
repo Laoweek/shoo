@@ -4,12 +4,12 @@
 
 以[英文版 README](../../README.md) 为准，本译文可能滞后于英文版。
 
-Shoo 是一款 Chrome 和 Firefox 扩展，用来清除你不想看的 YouTube 推荐。你用日常语言写下规则（Rule），Shoo 会拿每个推荐视频去对照这些规则，一旦命中，就使用 YouTube 自带的 **Not interested**（不感兴趣）或 **Don't recommend channel**（不推荐此频道），让 YouTube 从中学习。每一次移除都会写明是哪条规则导致的。只要你还在该页面上，一键即可撤销，点 Keep 则 Shoo 不会再移除这个视频。
+Shoo 是一款 Chrome 和 Firefox 扩展，用来清除你不想看的 YouTube 和 Bilibili 推荐。你用日常语言写下规则（Rule），Shoo 会拿每个推荐视频去对照这些规则，一旦命中，就使用网站自带的 **Not interested**（不感兴趣）或 **Don't recommend channel**（不推荐此频道），让网站从中学习。每一次移除都会写明是哪条规则导致的。只要你还在该页面上，一键即可撤销，点 Keep 则 Shoo 不会再移除这个视频。
 
-Shoo 与 YouTube 或 Google 没有任何关联，也未获得其认可。
+Shoo 与 YouTube、Google 或 Bilibili 没有任何关联，也未获得其认可。
 
 <p align="center">
-  <img src="../release/screenshots/mock-1-review-chip.png" alt="观看页侧栏中一个视频上的 Remove? 提示标签，写明命中的规则，并带有 Remove 和 Keep 按钮" width="640">
+  <img src="../release/screenshots/mock-1-review-chip.png" alt="播放页侧栏中一个视频上的 Remove? 提示标签，写明命中的规则，并带有 Remove 和 Keep 按钮" width="640">
 </p>
 
 | 你的规则 | Shoo 做了什么 | 首次运行 |
@@ -22,33 +22,34 @@ Shoo 与 YouTube 或 Google 没有任何关联，也未获得其认可。
 
 ```mermaid
 flowchart LR
-  T[YouTube 上推荐的视频] --> K{保留规则或例外？}
+  T[YouTube 或 Bilibili 上推荐的视频] --> K{保留规则或例外？}
   K -- 是 --> Keep[Keep]
   K -- 否 --> E{精确规则或屏蔽频道？}
   E -- 是 --> V[Remove]
-  E -- 否 --> M[判定模型<br/>先主题规则，再缩略图规则]
+  E -- 否 --> M[决策模型<br/>先主题规则，再封面规则]
   M --> V
   M --> Keep
   V --> Mode{模式}
-  Mode -- Auto --> A[YouTube 自带的操作]
+  Mode -- Auto --> A[网站自带的操作]
   Mode -- Review --> C[视频上的提示标签：Remove / Keep]
   Mode -- Dry-run --> L[仅标注]
   C -- Remove --> A
 ```
 
-- **规则。** 主题规则（Topic rule）是一句日常语言，例如“反应视频，即有人观看其他内容并做出反应”。缩略图规则（Thumbnail rule）描述缩略图里显示的内容。精确规则（Exact rule）在你的设备上按频道、标题关键词或模式、时长、观看次数、Shorts 或直播来匹配，不需要任何模型。保留规则（Keep rule）保护你始终想看的内容，而对单个视频点 Keep（保留）会添加一个例外（Exception）。移除类规则可以设置为跳过你已订阅的频道。
-- **判定模型。** 主题规则和缩略图规则由判定模型（Decision model）来判断，这是一种用概率回答类型化问题的模型。默认使用 OpenRouter 的 Decisions API 上的 `cloudflare/clef-flash`，使用你自己的 OpenRouter 密钥。你也可以用各自的密钥直接连接 Cloudflare、TypeSafe 或 Perplexity，或者用 Ollama、llama.cpp 或 LM Studio 在自己的电脑上运行判定模型。Settings（设置）中也可以填入兼容 OpenAI 的聊天模型，它会被标为准确度较低。过滤强度（Filtering strength，可选 Cautious、Balanced、Eager，即谨慎、平衡、积极）决定模型要有多大把握，规则才会移除一个视频。
-- **YouTube 自带的操作。** Shoo 从不隐藏任何内容。它会打开视频的菜单并点击 Not interested，对于屏蔽频道（Banned channel）则点击 Don't recommend channel，这需要你已登录 YouTube。
-- **模式。** Review（审核）会先在视频上询问你。Auto（自动）会立即移除。Dry-run（试运行）只标注它会怎么做。
-- **适用位置。** 桌面版 YouTube 的首页、观看页侧栏和 Shorts 栏。另有两个可选开关，可以让 YouTube 在首页少显示 Shorts 栏和游戏栏。
+- **规则。** 主题规则（Topic rule）是一句日常语言，例如“反应视频，即有人观看其他内容并做出反应”。封面规则（Thumbnail rule）描述封面里显示的内容。精确规则（Exact rule）在你的设备上按频道、标题关键词或模式、时长、观看次数、Shorts 或直播来匹配，不需要任何模型。保留规则（Keep rule）保护你始终想看的内容，而对单个视频点 Keep（保留）会添加一个例外（Exception）。移除类规则可以设置为跳过你已订阅的 YouTube 频道。
+- **决策模型。** 主题规则和封面规则由决策模型（Decision model）来判断，这是一种用概率回答类型化问题的模型。默认使用 OpenRouter 的 Decisions API 上的 `cloudflare/clef-flash`，使用你自己的 OpenRouter 密钥。你也可以用各自的密钥直接连接 Cloudflare、TypeSafe 或 Perplexity，或者用 Ollama、llama.cpp 或 LM Studio 在自己的电脑上运行决策模型。Settings（设置）中也可以填入兼容 OpenAI 的聊天模型，它会被标为准确度较低。过滤强度（Filtering strength，可选 Cautious、Balanced、Eager，即谨慎、均衡、积极）决定模型要有多大把握，规则才会移除一个视频。
+- **网站自带的操作。** Shoo 从不隐藏任何内容。它会打开视频的菜单并点击 Not interested，对于屏蔽频道（Banned channel）则点击 Don't recommend channel，这需要你已登录 YouTube。在 Bilibili 上，对应的是“内容不感兴趣”和“不想看此UP主”。
+- **模式。** Review（确认）会先在视频上询问你。Auto（自动）会立即移除。Dry-run（试运行）只标注它会怎么做。
+- **适用位置。** 桌面版 YouTube 的首页、播放页侧栏和 Shorts 栏，以及桌面版 Bilibili 的首页。你可以在设置中的“网站”里关闭其中任一网站。另有两个可选开关，可以让 YouTube 在首页少显示 Shorts 栏和游戏栏。
+- **规则在两个网站上都生效**，除非你在添加时或之后在它所在的行里把它限定为 YouTube 或 Bilibili。从某个视频创建的频道规则（Always keep this channel，即始终保留此频道，或升级屏蔽（Escalation）建议的屏蔽）只在该视频所在的网站上生效，而 Shorts、直播、艺人频道（Artist channel）和观看次数规则只在 YouTube 上生效。
 
 费用由你通过自己的密钥付给服务商。使用 OpenRouter 和 clef-flash 时，用 10 条主题规则做校准测得的费用约为每 1,000 个视频 2.5 美分，规则越少费用越低。Shoo 会记住每一次回答，所以在规则不变的情况下同一个视频不会被发送两次，另有每日上限限制每天最多有多少视频发送给模型。
 
 ## 隐私
 
-在你于第一个页面上同意之前，任何数据都不会发送给模型服务商，而选择 “Use Exact rules only”（仅使用精确规则）则完全不会向它们发送任何内容。Shoo 唯一主动发出的请求是发给 YouTube 本身的：当某条规则设置为跳过你已订阅的频道时，Shoo 会以你的登录身份读取你的订阅页面，并把订阅列表保存在你的设备上。
+在你于第一个页面上同意之前，任何数据都不会发送给模型服务商，而选择 “Use Exact rules only”（只用精确规则）则完全不会向它们发送任何内容。除了发给模型的请求，Shoo 只和它工作的网站通信。它会从 YouTube 和 Bilibili 的图片服务器加载封面，用于按封面规则检查，以及在 Shoo 自己的页面上显示。当某条规则设置为跳过你已订阅的频道时，Shoo 会以你的登录身份读取你的 YouTube 订阅页面，并把订阅列表保存在你的设备上。
 
-在你同意之后，Shoo 会为每个视频发送它的标题、频道名称、时长以及它出现在 YouTube 上的位置，只有当你设有缩略图规则时才会发送缩略图。每次请求还会附带你的主题规则、主题保留规则（Topic Keep rule）和缩略图规则的文字，以及最多 10 个你保留过的视频的标题和频道名称。这些数据会发送给你选择的判定服务商（Decision provider）：OpenRouter 及其转发到的模型服务商（默认是 Cloudflare，备用为 TypeSafe 或 OpenAI，或者你选择的其他模型的服务商），直接连接的 Cloudflare、TypeSafe 或 Perplexity，或者你电脑上的模型，此时任何数据都不会离开设备。如果你在 Settings 中设置了聊天模型，则改由它接收同样的数据，但不包括缩略图。
+在你同意之后，Shoo 会为每个视频发送它的标题、频道名称、时长以及它出现在 YouTube 或 Bilibili 上的位置，只有当你设有封面规则时才会发送封面。每次请求还会附带你在该网站上生效的主题规则、主题保留规则（Topic Keep rule）和封面规则的文字，以及最多 10 个你保留过的视频的标题和频道名称。这些数据会发送给你选择的决策服务商（Decision provider）：OpenRouter 及其转发到的模型服务商（默认是 Cloudflare，备用为 TypeSafe 或 OpenAI，或者你选择的其他模型的服务商），直接连接的 Cloudflare、TypeSafe 或 Perplexity，或者你电脑上的模型，此时任何数据都不会离开设备。如果你在 Settings 中设置了聊天模型，则改由它接收同样的数据，但不包括封面。
 
 Shoo 从不向模型服务商发送网址、视频 ID、Cookie、观看记录、评论或账号信息。没有任何数据发送给开发者，也没有任何分析统计。完整清单以及存储和保留方式见[隐私政策](https://laoweek.github.io/shoo/release/privacy-policy.html)。如有疑问请联系：shoo@piran.xyz。
 
@@ -57,7 +58,7 @@ Shoo 从不向模型服务商发送网址、视频 ID、Cookie、观看记录、
 预发布版本，版本号 0.2.0。Shoo 尚未上架 Chrome 应用商店或 Firefox 附加组件网站，因此请从源码安装。
 
 - Connect OpenRouter（通过 OAuth 登录）尚未经过真实环境测试。你可以改为粘贴 OpenRouter 密钥。
-- 直接连接的判定服务商是用模拟服务器测试的，这些服务器遵循各服务商公开文档中的规则，并未使用真实密钥测试。
+- 直接连接的决策服务商是用模拟服务器测试的，这些服务器遵循各服务商公开文档中的规则，并未使用真实密钥测试。
 
 ## 从源码构建和安装
 
@@ -100,14 +101,14 @@ pnpm check            # what CI runs on every pull request and push
 
 在线测试需要主动开启，会花费少量 OpenRouter 额度（每次运行最多约 0.01 美元）。把 `OPENROUTER_API_KEY=...` 写入 `.env.local`（该文件已被 git 忽略），然后运行 `pnpm test:live`。切勿提交密钥。
 
-[`scripts/calibration/`](../../scripts/calibration/README.md) 中的校准工具用来衡量一个判定模型和一种请求形式在一组固定的、已标注的虚构视频上判断得有多准。它的结果决定了过滤强度的各个预设。它的在线运行同样会花费额度，但不会超过你设定的上限。
+[`scripts/calibration/`](../../scripts/calibration/README.md) 中的校准工具用来衡量一个决策模型和一种请求形式在一组固定的、已标注的虚构视频上判断得有多准。它的结果决定了过滤强度的各个预设。它的在线运行同样会花费额度，但不会超过你设定的上限。
 
 ## 文档
 
 | 阅读 | 用途 |
 |---|---|
 | [CONTEXT.md](../../CONTEXT.md) | 代码、文档和界面中使用的术语（Tile、Surface、Rule、Verdict、Exception…） |
-| [docs/spec/](../spec/) | 需求文档，以及架构、判定引擎、YouTube 集成、界面和商店发布的规格说明。行为以此为准 |
+| [docs/spec/](../spec/) | 需求文档，以及架构、判定引擎、YouTube 和 Bilibili 集成、界面和商店发布的规格说明。行为以此为准 |
 | [docs/adr/](../adr/) | 那些难以撤回的决定是出于什么原因做出的 |
 | [DESIGN.md](../../DESIGN.md) | 视觉体系，根据构建结果生成 |
 | [PRODUCT.md](../../PRODUCT.md) | Shoo 面向谁，以及它做出哪些承诺 |

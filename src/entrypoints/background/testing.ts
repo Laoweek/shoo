@@ -6,12 +6,12 @@ import { DECISIONS_URL } from '~/engine/decisions';
 import { KEY_URL } from '~/engine/key';
 import type { FetchLike } from '~/engine/net';
 import { answerer, type RecordedRequest, type Scripted } from '~/engine/testing';
+import { CONSENT_VERSION } from '~/store/schema';
 import { setOpenRouterKey } from '~/store/secret';
 import { createMemoryArea } from '~/store/testing/quota-storage';
 import { createBackground } from './app';
 import type { Platform, TabInfo } from './platform';
 import type { Inbound, RawSender, Req } from './router';
-import { CONSENT_VERSION } from '~/store/schema';
 
 export const EXT_ID = 'test-extension-id';
 export const EXT_ORIGIN = `chrome-extension://${EXT_ID}/`;
@@ -84,7 +84,11 @@ export function harness(opts: { fetch?: FetchLike; tabs?: TabInfo[]; hosts?: Rec
     tabs: {
       query: async (q) => {
         const all = [...tabs.values()];
-        if (q.url) return all.filter((t) => t.url?.startsWith('https://www.youtube.com/'));
+        if (q.url) {
+          // Match patterns like 'https://www.youtube.com/*' by prefix, enough for the Sites' patterns.
+          const prefixes = [q.url].flat().map((p) => p.replace(/\*$/, ''));
+          return all.filter((t) => prefixes.some((p) => t.url?.startsWith(p)));
+        }
         return all.slice(0, 1);
       },
       get: async (id) => {

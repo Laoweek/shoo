@@ -27,12 +27,12 @@ The [README](README.md) explains how to load a build in Chrome and Firefox.
 - **Record hard-to-reverse decisions.** A change that makes a surprising or hard-to-reverse trade-off gets a short ADR in `docs/adr/`. Read the existing ADR before proposing to reverse one.
 - **What is sent stays canonical.** The data sent to models and its recipients are listed once in `docs/spec/decision-engine.md` Section 10. A change there also updates the onboarding consent, `PRODUCT.md`, the store packs in `docs/release/` and the privacy policy.
 
-[AGENTS.md](AGENTS.md) collects the gotchas that no config file shows. Read it before working on the content script, permissions or the model calls.
+[AGENTS.md](AGENTS.md) collects the gotchas that no config file shows. Read it before working on the content scripts, permissions or the model calls.
 
 ## Secrets and privacy
 
 - Keep API keys in `.env.local`, which is git-ignored, and out of commits, fixtures, logs, issues and screenshots.
-- Never send video IDs, URLs, channel IDs or handles to a model. The tests check request bodies for this.
+- Never send video IDs (including Bilibili BV ids), URLs, channel IDs (including Bilibili uids), handles or Bilibili cover paths to a model. The tests check request bodies for this.
 - Redact keys, response `id`s and `user_id`s from any recorded response you add to `test/fixtures/`.
 
 ## Reporting security problems

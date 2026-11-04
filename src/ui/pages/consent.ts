@@ -3,6 +3,7 @@
 // (docs/spec/cross-browser-and-stores.md Section 2). So every helper here calls
 // `browser.permissions.request` synchronously and returns its promise for the caller to await.
 import { hasConsent as coreHasConsent } from '~/core/runtime';
+import { SITE_HOSTS, type SiteId } from '~/core/sites';
 import type { ReasonCode, Settings } from '~/core/types';
 import { sendMessage, type KeyUsage } from '~/messaging/protocol';
 import { CONSENT_VERSION } from '~/store/schema';
@@ -10,7 +11,7 @@ import { CONSENT_VERSION } from '~/store/schema';
 /** Firefox data collection categories Shoo asks for when the user agrees (cross-browser-and-stores.md Section 1, "Data collection and consent"). */
 export const DATA_COLLECTION = ['websiteContent', 'authenticationInfo'] as const;
 
-/** The host permissions the manifest declares, asked for again from Settings after a revoke. */
+/** YouTube's and OpenRouter's hosts, which Connection checks and asks for again after a revoke. Each Site's hosts are handled in Settings, Sites. */
 export const REQUIRED_ORIGINS = ['https://www.youtube.com/*', 'https://openrouter.ai/*', 'https://i.ytimg.com/*'];
 
 type PermissionsWithDataCollection = { data_collection?: readonly string[]; origins?: string[] };
@@ -31,6 +32,29 @@ export const IS_FIREFOX = import.meta.env.BROWSER === 'firefox';
 /** Host access for one origin, e.g. a custom endpoint. Must be the first statement of a click handler. */
 export function requestOrigins(origins: string[]): Promise<boolean> {
   return browser.permissions.request({ origins });
+}
+
+/**
+ * Whether Shoo still has access to the Site's pages: the user can take it away in the browser's settings. Without
+ * the image host only Thumbnail rules lose their thumbnails, so it is not checked here.
+ */
+export function hasSiteAccess(site: SiteId): Promise<boolean> {
+  return browser.permissions.contains({ origins: [SITE_HOSTS[site][0]!] });
+}
+
+/** Asks for a Site's host access again. Must be the first statement of a click handler. */
+export function requestSiteAccess(site: SiteId): Promise<boolean> {
+  return browser.permissions.request({ origins: [...SITE_HOSTS[site]] });
+}
+
+/** Calls `cb` when any permission is added or removed (here, in the browser's settings, or by the background). */
+export function watchPermissions(cb: () => void): () => void {
+  browser.permissions.onAdded.addListener(cb);
+  browser.permissions.onRemoved.addListener(cb);
+  return () => {
+    browser.permissions.onAdded.removeListener(cb);
+    browser.permissions.onRemoved.removeListener(cb);
+  };
 }
 
 /**

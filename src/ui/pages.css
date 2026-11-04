@@ -7,23 +7,16 @@
 @import './eyes.css';
 
 @font-face {
-  font-family: 'Geist';
+  font-family: 'Figtree';
   font-style: normal;
-  font-weight: 100 900;
+  font-weight: 300 900;
   font-display: swap;
-  src: url('../../node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2') format('woff2-variations');
-}
-@font-face {
-  font-family: 'Bricolage Grotesque';
-  font-style: normal;
-  font-weight: 200 800;
-  font-display: swap;
-  src: url('../../node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-opsz-normal.woff2') format('woff2-variations');
+  src: url('../../node_modules/@fontsource-variable/figtree/files/figtree-latin-wght-normal.woff2') format('woff2-variations');
 }
 
 @theme {
-  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Bricolage Grotesque', 'Geist', sans-serif;
+  --font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+  --color-ground: var(--ground);
   --color-paper: var(--paper);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
@@ -34,42 +27,138 @@
   --color-tint: var(--tint);
   --color-lit: var(--lit);
   --color-danger: var(--danger);
-  --shadow-float: var(--shadow);
+  --color-action: var(--action);
+  --color-action-hover: var(--action-hover);
+  --color-on-action: var(--on-action);
+  --color-remove-bg: var(--remove-bg);
+  --color-remove-fg: var(--remove-fg);
+  --color-keep-bg: var(--keep-bg);
+  --color-keep-fg: var(--keep-fg);
+  --shadow-card: var(--shadow);
 }
 
 @layer base {
+  :root {
+    --eyes-bg: var(--ground);
+  }
   html {
-    background: var(--paper);
-    scrollbar-color: var(--stroke) transparent;
+    background: var(--ground);
+    scrollbar-color: var(--edge) transparent;
     scrollbar-width: thin;
   }
   body {
     margin: 0;
-    background: var(--paper);
+    background: var(--ground);
     color: var(--ink);
     font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
-    scrollbar-color: var(--stroke) transparent;
+    scrollbar-color: var(--edge) transparent;
     scrollbar-width: thin;
-    accent-color: var(--ink);
-    caret-color: var(--ink);
+    accent-color: var(--action);
+    caret-color: var(--action);
   }
   ::selection {
-    background: color-mix(in srgb, var(--ink) 18%, var(--paper));
+    background: rgb(228 87 47 / 0.24);
     color: var(--ink);
   }
   :focus-visible {
     outline: 2px solid var(--ink);
     outline-offset: 2px;
   }
+  /* Checkboxes and radios are things you press, so a checked one takes the action colour. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    appearance: none;
+    display: inline-grid;
+    place-content: center;
+    margin: 0;
+    border: 1.5px solid var(--edge);
+    background: var(--paper);
+    transition: background-color 120ms ease-out, border-color 120ms ease-out;
+  }
+  input[type='checkbox'] {
+    border-radius: 5px;
+  }
+  input[type='radio'] {
+    border-radius: 999px;
+  }
+  input[type='checkbox']:checked {
+    border-color: var(--action);
+    background: var(--action);
+  }
+  input[type='checkbox']:checked::before {
+    content: '';
+    width: 9px;
+    height: 5px;
+    margin-top: -2px;
+    border: solid var(--on-action);
+    border-width: 0 0 2px 2px;
+    transform: rotate(-45deg);
+  }
+  input[type='radio']:checked {
+    border-color: var(--action);
+  }
+  input[type='radio']:checked::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--action);
+  }
+  input[type='checkbox']:disabled,
+  input[type='radio']:disabled {
+    border-color: var(--stroke);
+  }
+  input[type='checkbox']:checked:disabled {
+    background: var(--stroke);
+  }
+  input[type='radio']:checked:disabled::before {
+    background: var(--stroke);
+  }
+  /* Forced colours drop backgrounds, which would hide the radio's dot: use the native controls there. */
+  @media (forced-colors: active) {
+    input[type='checkbox'],
+    input[type='radio'] {
+      appearance: auto;
+    }
+    input[type='checkbox']::before,
+    input[type='radio']::before {
+      content: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    input[type='checkbox'],
+    input[type='radio'] {
+      transition: none;
+    }
+  }
   .num {
     font-variant-numeric: tabular-nums;
   }
-  .display {
-    font-family: var(--font-display);
-    font-optical-sizing: auto;
-    letter-spacing: -0.025em;
+}
+
+@layer components {
+  /* A white card on the warm ground: one soft shadow, no border. */
+  .card {
+    border-radius: 16px;
+    background: var(--paper);
+    box-shadow: var(--shadow);
+  }
+  /* The soft press: things you can press sink a little and spring back. */
+  .press {
+    transition: transform 160ms var(--ease-spring), background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
+  }
+  .press:active:not(:disabled) {
+    transform: scale(0.96);
+    transition-duration: 80ms;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .press,
+    .press:active:not(:disabled) {
+      transform: none;
+      transition: none;
+    }
   }
 }

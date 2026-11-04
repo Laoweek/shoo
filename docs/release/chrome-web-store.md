@@ -9,7 +9,7 @@ Status of each field: **Ready** (paste as is), **Publisher** (needs a decision o
 | Item | Value | Status |
 |---|---|---|
 | Upload | `.output/shoo-0.2.0-chrome.zip` from `pnpm zip` | Ready (rebuild before upload) |
-| Manifest name | `__MSG_extName__` → "Shoo · Clear unwanted recommendations for YouTube" | Ready |
+| Manifest name | `__MSG_extName__` → "Shoo · Clear unwanted video recommendations" | Ready |
 | Manifest description (store summary) | `__MSG_extDescription__` | Ready |
 | Version | 0.2.0 | Ready |
 | Minimum Chrome | 120 (`minimum_chrome_version`) | Ready |
@@ -18,39 +18,41 @@ Status of each field: **Ready** (paste as is), **Publisher** (needs a decision o
 
 ### Name
 
-`Shoo · Clear unwanted recommendations for YouTube`
+`Shoo · Clear unwanted video recommendations`
 
-49 characters, limit 75. CWS takes the name from the manifest. "YouTube" appears only as "for YouTube", never as part of the product name (REQ-DIST-1).
+43 characters, limit 75. CWS takes the name from the manifest. The name names no site, because Shoo works on YouTube and Bilibili, and "YouTube" is never part of the product name (REQ-DIST-1).
 
 ### Summary
 
 ```
-Write what you don't want to see. Shoo tells YouTube "Not interested" for you, and shows which rule did it.
+Write what you don't want to see. Shoo tells YouTube and Bilibili "Not interested" for you, and shows which rule did it.
 ```
 
-107 characters, limit 132. CWS takes it from the manifest `description`.
+120 characters, limit 132. CWS takes it from the manifest `description`.
 
 ### Description
 
 No length limit is documented. Avoid keyword lists (Keyword spam policy).
 
 ```
-Shoo keeps your YouTube recommendations closer to what you actually want.
+Shoo keeps your YouTube and Bilibili recommendations closer to what you actually want.
 
-Write short rules like "reaction videos" or "crypto get-rich-quick". Shoo checks every recommendation on Home, the Watch sidebar and the Shorts shelf against them and, when one matches, tells YouTube "Not interested" through YouTube's own menu so YouTube learns from it. Shoo never hides anything.
+Write short rules like "reaction videos" or "crypto get-rich-quick". Shoo checks every recommendation on YouTube's Home, Watch sidebar and Shorts shelf, and on Bilibili's Home, against them and, when one matches, tells the site "Not interested" through the site's own menu so the site learns from it. Shoo never hides anything.
 
 - Review mode asks you on the video first. Auto mode just does it. Dry-run only shows what it would do.
 - Every removal says which rule caused it. Undo is one click while you're on the page, and Keep stops Shoo removing that video again.
 - Keep rules protect channels and topics you always want.
-- Exact rules for channels, keywords, video length, view count and Shorts run on your device, without any model.
-- A rule can be set to skip channels you're subscribed to.
+- Rules work on both sites, or on just one if you choose.
+- Exact rules for channels, keywords, video length, view count and Shorts run on your device, without any model. View count and Shorts rules work on YouTube only.
+- A rule can be set to skip YouTube channels you're subscribed to.
 - Optionally tells YouTube to show fewer Shorts and games shelves on Home.
 - Topic rules use a fast decision model through your own OpenRouter account. A few cents per thousand videos.
 - YouTube's "Not interested" needs you to be signed in to YouTube.
+- On Bilibili, Shoo uses Bilibili's own 内容不感兴趣 and 不想看此UP主. You can turn either site off in Settings.
 
-What Shoo sends, only after you agree: each video's title, channel name, length and where on YouTube it appeared, the thumbnail only if you create a Thumbnail rule, plus the text of your Topic and Thumbnail rules and of Keep rules written as a sentence, and the titles and channel names of up to 10 videos you kept. It goes to OpenRouter and the model provider it uses (Cloudflare by default, TypeSafe or OpenAI as fallbacks, or the provider of a model you pick), or, if you choose, straight to Cloudflare, TypeSafe or Perplexity, a model on your own computer, or your own endpoint. It never sends them web addresses, video IDs, cookies, watch history, comments, page HTML or your YouTube account details. Nothing is sent to the developer.
+What Shoo sends, only after you agree: each video's title, channel name, length and where on YouTube or Bilibili it appeared, the thumbnail only if you create a Thumbnail rule, plus the text of your Topic and Thumbnail rules and of Keep rules written as a sentence, and the titles and channel names of up to 10 videos you kept. It goes to OpenRouter and the model provider it uses (Cloudflare by default, TypeSafe or OpenAI as fallbacks, or the provider of a model you pick), or, if you choose, straight to Cloudflare, TypeSafe or Perplexity, a model on your own computer, or your own endpoint. It never sends them web addresses, video IDs, cookies, watch history, comments, page HTML or your YouTube or Bilibili account details. Nothing is sent to the developer.
 
-Shoo is not affiliated with or endorsed by YouTube or Google.
+Shoo is not affiliated with or endorsed by YouTube, Google or Bilibili.
 ```
 
 Notes on this text: the Exact rules line says "on your device", the Topic rules line names OpenRouter as needed for Topic rules only, a line says Not interested needs a signed-in YouTube account (observed: signed out, YouTube's menu has no Not interested), the "Never" list is the full REQ-PRIV-1 list, and the recipients include the provider of a model the user picks in Settings, which the build allows. "A few cents per thousand videos" follows the calibration harness, which measured about $0.025 per 1,000 with 10 Topic rules and 2 Topic Keep rules (`decision-engine.md` Section 2.3). The cost grows with the number of Rules.
@@ -61,7 +63,7 @@ Notes on this text: the Exact rules line says "on your device", the Topic rules 
 
 ### Language
 
-English.
+English. The extension also ships a Simplified Chinese UI (`_locales/zh_CN`), whose `extName` and `extDescription` give a Chinese name and summary (check how the dashboard shows them at submission). A Chinese listing description is not written yet.
 
 ### Graphic assets
 
@@ -74,7 +76,7 @@ English.
 
 ### Screenshots
 
-All 1280×800 PNG, no alpha, from the built extension in a fresh Chrome profile with "Use Exact rules only" and Exact rules written for the capture. No OpenRouter key, no real user data. Screenshot 3 was captured on 2026-10-10 (Chrome 155, puppeteer-core). Screenshot 5 was captured on 2026-11-04 (Chrome for Testing 150, puppeteer-core) at 1680×1050 and scaled to 1280×800. Screenshots 1, 2 and 4 were captured on 2026-11-04 (Chrome for Testing 150, puppeteer-core) on the fixture pages (`test/fixtures/youtube/page-watch.html`, `page-home.html`) served at youtube.com, with synthetic titles, channels and generated thumbnails and a minimal page style of our own, so no third-party thumbnails or titles appear.
+All 1280×800 PNG, no alpha, from the built extension in a fresh Chrome profile with "Use Exact rules only" and Exact rules written for the capture. No OpenRouter key, no real user data. Screenshot 3 was captured on 2026-10-10 (Chrome 155, puppeteer-core). Screenshot 5 was captured on 2026-11-04 (Chrome for Testing 150, puppeteer-core) at 1680×1050 and scaled to 1280×800. Screenshots 1, 2 and 4 were captured on 2026-11-04 (Chrome for Testing 150, puppeteer-core) on the fixture pages (`test/fixtures/youtube/page-watch.html`, `page-home.html`) served at youtube.com, with synthetic titles, channels and generated thumbnails and a minimal page style of our own, so no third-party thumbnails or titles appear. All five were taken before Bilibili support and the redesign, so they show the old look and screenshot 5 shows consent text that does not name Bilibili. All five are to be re-shot from the current build the same way before submission.
 
 | # | File | Shows | Staged? |
 |---|---|---|---|
@@ -99,7 +101,7 @@ Branding check: the Shoo assets use no YouTube logo. Screenshots 1, 2 and 4 show
 ### Single purpose
 
 ```
-Shoo tells YouTube which recommendations you don't want, using YouTube's own Not interested and Don't recommend channel actions, based on rules you write.
+Shoo tells YouTube and Bilibili which recommendations you don't want, using the site's own Not interested and Don't recommend channel actions, based on rules you write.
 ```
 
 ### Permission justifications
@@ -114,9 +116,11 @@ One field per permission in the built manifest. Paste as is.
 | Host `https://www.youtube.com/*` | Reads video titles, channel names and lengths on YouTube and tells YouTube Not interested or Don't recommend channel through YouTube's own menu. When one of your rules is set to skip channels you're subscribed to, it also reads your YouTube subscriptions page about once a day (sooner after a failed read) to know which channels those are. That list stays on your device. |
 | Host `https://openrouter.ai/*` | Sends the data listed in the privacy policy to the decision model you connected, and completes OpenRouter sign-in. |
 | Host `https://i.ytimg.com/*` | Downloads a video's thumbnail only when you have a Thumbnail rule. |
+| Host `https://www.bilibili.com/*` | Reads video titles, channel names and lengths on Bilibili and tells Bilibili Not interested or Don't recommend channel through Bilibili's own menu. You can turn Bilibili off in Settings. |
+| Host `https://i0.hdslb.com/*` | Downloads a Bilibili video's thumbnail only when you have a Thumbnail rule. |
 | Optional hosts `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` | Not granted at install. Requested only when you choose a model provider other than OpenRouter (Cloudflare, TypeSafe or Perplexity directly, a model on your computer, or any OpenAI-compatible address) during setup or in Settings, and only for that one address (Firefox grants it without the port). http is allowed only for a model you run on your own computer. |
 
-The dashboard may not ask about optional hosts. If it shows a single host-permission field, paste the three host rows and the optional row together.
+The dashboard may not ask about optional hosts. If it shows a single host-permission field, paste the five host rows and the optional row together.
 
 ### Remote code
 
@@ -134,9 +138,9 @@ CWS counts data handled only on the device too, so these follow REQ-PRIV-1 and t
 | **Authentication information** | **Yes** | The user's OpenRouter key (pasted, or created by Connect OpenRouter), the key of a provider reached directly (Cloudflare, TypeSafe or Perplexity), and the key of the user's own endpoint if one is set up. Stored on the device, each sent only to its own service as the user's credential |
 | Personal communications | No | Comments are never read |
 | Location | No | |
-| Web history | No | Shoo keeps no list of pages visited. On youtube.com it reads the page address and video links only to tell which part of YouTube it is on and which video a tile is. Video IDs stay on the device (Verdict cache, Exceptions, Activity) and are never sent. See risk 3 below |
+| Web history | No | Shoo keeps no list of pages visited. On youtube.com and bilibili.com it reads the page address and video links only to tell which part of the site it is on and which video a tile is, and on Bilibili the thumbnail's address, to fetch it for a Thumbnail rule and show it in Activity. Video IDs stay in the Verdict cache and Activity on the device, and in recent Exceptions through browser sync. Bilibili thumbnail addresses stay only in Activity. Neither is ever sent to a model or to the developer. See risk 3 below |
 | User activity | No | No click, scroll or keystroke monitoring. Shoo records only its own Remove and Keep buttons in Activity |
-| **Website content** | **Yes** | Video titles, channel names, lengths, the part of YouTube each video appeared on, thumbnails only with Thumbnail rules, the text of your Topic and Thumbnail rules and of Keep rules written as a sentence, and titles and channel names of up to 10 videos you kept |
+| **Website content** | **Yes** | Video titles, channel names, lengths, the part of YouTube or Bilibili each video appeared on, thumbnails only with Thumbnail rules, the text of your Topic and Thumbnail rules and of Keep rules written as a sentence, and titles and channel names of up to 10 videos you kept |
 
 Recipients to describe where the form asks: OpenRouter and the model provider it routes to (Cloudflare by default, TypeSafe for the text fallback, OpenAI for the thumbnail fallback, or the provider of another decision model the user picks in Settings). Instead of OpenRouter, the user can choose Cloudflare, TypeSafe or Perplexity directly, a model on their own computer, or their own endpoint. Nothing goes to the developer.
 
@@ -153,7 +157,7 @@ The wording is taken from public listing pages ("This developer declares that yo
 Certify compliance in the dashboard **and** publish a statement on a website (required by the Limited Use policy). The privacy policy carries it under the anchor `#limited-use`:
 
 ```
-Shoo's use of information received from YouTube pages is limited to deciding which videos to tell YouTube you're not interested in. It is sent only to OpenRouter and the model provider you use, and is never used for advertising or sold.
+Shoo's use of information received from YouTube and Bilibili pages is limited to deciding which videos to tell YouTube or Bilibili you're not interested in. It is sent only to OpenRouter and the model provider you use, and is never used for advertising or sold.
 
 Shoo's use of this information complies with the Chrome Web Store User Data Policy, including the Limited Use requirements.
 ```
@@ -176,6 +180,8 @@ Onboarding step 1 (screenshot 5) shows what is sent and to whom, with "Agree and
 No account is needed to try Shoo with Exact rules: on the first screen choose "Use Exact rules only", add a title keyword (for example "cartoon"), then open any youtube.com video. Matching videos in the Watch sidebar get a "Remove?" chip naming the rule.
 
 YouTube offers "Not interested" only to signed-in users, so Remove needs a signed-in YouTube account. Signed out, Remove fails, the video stays visible and Activity records the failure.
+
+Remove can be tried without any account on Bilibili. Open https://www.bilibili.com/ (Home) and add a title keyword taken from a video shown there, since most Bilibili titles are in Chinese. A matching video gets the "Remove?" chip. Remove clicks Bilibili's own "内容不感兴趣" (Not interested) menu item, Bilibili shows its placeholder, and "撤销" (Undo) brings the video back. Shoo supports only Bilibili's Home page. Settings, Sites turns either site off.
 
 Topic rules (plain-language rules judged by a model) need consent and an OpenRouter account with a key. Without one, Shoo stays on Exact rules.
 ```

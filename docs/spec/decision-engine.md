@@ -38,7 +38,7 @@ Rules (REQ-RULE-5):
 - Without consent or without a key, the background runs stages 1 to 4 only (Exact rules only mode, REQ-PRIV-2).
 - `tryTitle` runs this same pipeline (Section 7.5).
 - Shorts shelf Tiles have no channel (REQ-SURF-1b). Channel kinds never match them.
-- Remove Rules with `skipSubscribed` (REQ-RULE-14) do not apply to a Tile from a Subscribed channel: its requests carry only the remove Topic rules and Thumbnail rules that apply, in text requests apart from other Tiles, and with none left it gets no request. Its answers are cached under `cacheVersion` (`architecture.md` Section 9). The pipeline, the fail safe and the Subscribed channel list are in `architecture.md` Section 5.
+- Remove Rules with `skipSubscribed` (REQ-RULE-14) do not apply to a Tile from a Subscribed channel: its requests carry only the remove Topic rules and Thumbnail rules that apply, in text requests apart from other Tiles, and with none left it gets no request. Its answers are cached under `cacheVersion` (`architecture.md` Section 9). The pipeline, the fail safe and the Subscribed channel list are in `architecture.md` Section 5. Only YouTube Tiles are checked against the list, so the option never changes how a Bilibili Tile is judged.
 
 ### 1.1 Verdict and per-Tile result
 
@@ -107,9 +107,10 @@ Timeout and concurrency are in the network policy (Section 5). Measured in the f
 
 - `model`: `cloudflare/clef-flash` (REQ-MODEL-1).
 - `provider`: `{ "order": ["cloudflare"], "allow_fallbacks": false, "data_collection": "deny" }`. The provider is pinned, so the data goes only to the provider named in Section 10. The smoke test confirmed the Decisions endpoint accepts `data_collection: "deny"` (`test/fixtures/openrouter/provider-data-collection-deny.json`). Do not send `zdr: true`: the Cloudflare endpoint is not zero-data-retention and the request fails with 404.
-- `state`: an object. `viewer_does_not_want` maps each enabled remove Topic rule ref to its text. `viewer_always_wants` maps each enabled Topic Keep rule ref to its text (omit when empty). `viewer_kept_anyway` lists up to 10 most recent Exceptions as `"<title> (channel: <name>)"` (REQ-EXC-2, omit when empty).
+- `state`: an object. `viewer_does_not_want` maps each enabled remove Topic rule ref to its text. `viewer_always_wants` maps each enabled Topic Keep rule ref to its text (omit when empty). `viewer_kept_anyway` lists up to 10 most recent Exceptions as `"<title> (channel: <name>)"` (REQ-EXC-2, omit when empty). Only the Rules that work on the batch's Site go in, and Exceptions kept from a Rule that works only on another Site stay out (Site-only rules, ADR 0012).
 - `questions`: an object keyed by short Tile ids `t01` to `t16`, assigned per request and mapped back to `videoId` locally. Never put the `videoId` in the request (REQ-PRIV-1).
 - One `choice` question per Tile. `criteria` holds `keep` plus one option per remove Topic rule ref, each carrying the Rule text.
+- Every task names the Tile's Site. The examples below show YouTube's words, the ones calibration measured. A Bilibili Tile's tasks say "Bilibili" in their place (`choiceTask`, `ruleTask` in `engine/decisions.ts`), so YouTube's requests and their cached Verdicts are unchanged and `REQUEST_SHAPE_VERSION` stays. Filtering strength was not tuned on Bilibili's titles, mostly Chinese, and the default model's reading of them was not measured.
 - When Topic Keep rules exist, add one `noul` question per Tile and enabled Topic Keep rule, keyed `tNN_<keepRef>` (for example `t01_K2`), with the Keep rule text inline in the task: `Does this recommended YouTube video match this rule: <Keep rule text>?`. The first calibration replaced the earlier single `tNN_keep` question ("matches at least one rule in viewer_always_wants"), whose recall fell from 0.94 to 0.69 when a second Keep rule was added. Per-rule questions kept recall at 1.00 and name the Keep rule.
 - A Tile that already has an exact remove pending (Section 1) gets only its Keep questions, no choice question.
 - Batch size `min(16, floor(64 / (1 + topicKeepRules)))` Tiles: 16 Tiles with up to 3 Topic Keep rules, 10 with 5. Up to 63 Topic Keep rules fit next to the choice question in one request, at 1 Tile per request for 63. Above 63, the Keep rules beyond the first 63 go into further keep-only requests (`MAX_KEEP_RULES_PER_REQUEST` in `src/engine/judge.ts`). Workers AI rejects more than 64 questions with a 422 (Section 5.3).
@@ -269,8 +270,8 @@ Cloudflare reads roughly the first 2,000 tokens of text in `state` and silently 
 
 Runs only when at least one enabled Thumbnail rule exists, and only for Tiles where stage 6 matched no Rule, or that had no Topic rules to judge. Tiles decided by a Keep rule, an Exception, an Exact rule, a Topic Keep rule or a Topic rule never reach it.
 
-1. Fetch `https://i.ytimg.com/vi/<videoId>/mqdefault.jpg` in the background. This needs `https://i.ytimg.com/*` in `host_permissions`. Fetch timeout in the network policy (Section 5). Keep the Tile on failure.
-2. Encode as `data:image/jpeg;base64,...`. mqdefault is about 10 KB (320x180).
+1. Fetch the thumbnail in the background with `credentials: 'omit'` and no referrer: for YouTube `https://i.ytimg.com/vi/<videoId>/mqdefault.jpg` (`https://i.ytimg.com/*` is in `host_permissions`), for Bilibili `https://i0.hdslb.com<cover>@320w_180h_1c.jpg`, where `<cover>` is the Tile's `cover` path in the shape `/bfs/archive/<40 hex>.jpg|png` (`https://i0.hdslb.com/*` is in `host_permissions`, ADR 0011). A Bilibili Tile without such a path gets no thumbnail pass. Fetch timeout in the network policy (Section 5). Keep the Tile on failure.
+2. Encode as `data:image/jpeg;base64,...`. mqdefault is about 10 KB (320x180). Bilibili's cover at that size measured 17 KB as JPEG (2026-10-18).
 3. One request per Tile:
 
 ```json
@@ -292,7 +293,7 @@ Runs only when at least one enabled Thumbnail rule exists, and only for Tiles wh
 - Build it with a pure `buildThumbnailRequest(thumbnailRules, tile, dataUrl)`.
 - Images must be top-level items of the `state` array. Remote URLs are not fetched. At most 4 images per request on Clef, so one Tile per request.
 - `p = max` over the rule nouls, `ref = argmax`, gated by `removeCutoff(strength)` like Topic rules. `source: 'modelThumbnail'`. Cached as `thumb: { p, ref, model }`.
-- The `videoId` is used only to build the image URL locally. It is never sent to OpenRouter (REQ-PRIV-1). The image is never stored.
+- The `videoId` and the Bilibili cover path are used only to build the image URL locally. They are never sent to OpenRouter (REQ-PRIV-1). The image is never stored.
 - Thumbnail rules are not available on custom endpoints in v1 (REQ-MODEL-5). On a direct Decision provider they run only where the endpoint reads images (Section 12).
 
 ## 5. Network policy and fallback chain
@@ -493,7 +494,7 @@ All user-facing states, EyeStates, notices and recovery actions are defined in t
 
 This list is canonical for every disclosure: onboarding consent, `PRODUCT.md`, store listings, the Chrome Web Store privacy form and the privacy policy (REQ-PRIV-1).
 
-Sent per Tile: title, channel name, duration, Surface label, and the thumbnail image only when a Thumbnail rule is on. Sent per request: the enabled Topic rule and Thumbnail rule texts, Topic Keep rule texts, and up to 10 Exception titles with their channel names.
+Sent per Tile: title, channel name, duration, Surface label, and the thumbnail image only when a Thumbnail rule is on. The tasks name the Tile's Site ("this recommended Bilibili video"), and Bilibili's Home sends the label "home page" (the video page sidebar is unsupported and sends nothing). Sent per request: the enabled Topic rule and Thumbnail rule texts, Topic Keep rule texts, and up to 10 Exception titles with their channel names, for the Rules that work on the Tile's Site (ADR 0012).
 
 | Recipient | When |
 |---|---|
@@ -506,9 +507,9 @@ Sent per Tile: title, channel name, duration, Surface label, and the thumbnail i
 | A Decision model on this computer (Ollama, llama.cpp, LM Studio on localhost) | only when the user chooses one, instead of OpenRouter. Nothing leaves the device |
 | The user's custom endpoint host (a chat model, Settings only) | only when the user configures one, instead of OpenRouter |
 
-REQ-PRIV-1 names every row of this table, and the consent screen shows each one (`CONSENT_VERSION` 2). For the last three rows, consent also names the exact host before anything goes there (Section 12).
+REQ-PRIV-1 names every row of this table, and the consent screen shows each one (since `CONSENT_VERSION` 2, and since 3 also Bilibili's Home). For the last three rows, consent also names the exact host before anything goes there (Section 12).
 
-Never sent: URLs, video IDs, channel IDs, handles, the user's Subscribed channels or whether a Tile's channel is one, cookies, watch history, comments, page HTML, or the user's API key to anything but the `Authorization` header of the configured endpoint. The thumbnail image is the only image ever sent, and only with Thumbnail rules on.
+Never sent: URLs, video IDs (YouTube's and Bilibili's BV ids), channel IDs (Bilibili's are the channel owner's numeric uid), handles, Bilibili cover paths, the user's Subscribed channels or whether a Tile's channel is one, cookies, watch history, comments, page HTML, the user's YouTube or Bilibili account details, or the user's API key to anything but the `Authorization` header of the configured endpoint. The thumbnail image is the only image ever sent, and only with Thumbnail rules on.
 
 ## 11. Tests for `core/` and `engine/`
 

@@ -18,8 +18,9 @@
 // - reviewPending and judging per tab, in memory. reviewPending is mirrored in storage.session so it
 //   survives a background restart.
 import { exactVersion } from '~/core/ids';
+import { SITE_IDS, SITE_ORIGINS } from '~/core/sites';
 import { computeRuntime, endpointBase, endpointHost, endpointPattern, recordFailure, recordSuccess, type FailureState, type RuntimeInputs } from '~/core/runtime';
-import type { FailureCategory, ReasonCode, RuntimeSnapshot, Settings } from '~/core/types';
+import type { FailureCategory, ReasonCode, RuntimeSnapshot, Settings, SiteId } from '~/core/types';
 import { computeRulesVersion } from '~/engine/judge';
 import { CONSENT_VERSION } from '~/store/schema';
 import { getCustomKey, getDirectKey, hasOpenRouterKey } from '~/store/secret';
@@ -130,6 +131,7 @@ export function createRuntimeState(d: RuntimeStateDeps) {
       hostYouTube,
       hostModel,
       tripped: record.tripped,
+      ...(record.trippedSite && { trippedSite: record.trippedSite }),
       dailyCapReached: counters.judged >= settings.dailyCap,
       offline: offlineEvent || !platform.isOnline(),
       rulesVersion: lastRulesVersion,
@@ -150,10 +152,11 @@ export function createRuntimeState(d: RuntimeStateDeps) {
 
   /** What content acts on. Per-tab eyes (judging, review) only change the toolbar icon, never a broadcast. */
   const broadcastKey = (s: RuntimeSnapshot) =>
-    JSON.stringify([s.enabled, s.mode, s.reason, s.detail ?? null, s.stages, s.surfaces, s.notificationStyle, s.shelfDismissal]);
+    JSON.stringify([s.enabled, s.mode, s.reason, s.detail ?? null, s.site ?? null, s.stages, s.surfaces, s.notificationStyle, s.shelfDismissal]);
 
-  async function youtubeTabs(): Promise<(TabInfo & { id: number })[]> {
-    const tabs = await safe(platform.tabs.query({ url: 'https://www.youtube.com/*' }), []);
+  /** Tabs of every Site, those whose content script Shoo talks to. A Site without host access lists none. */
+  async function siteTabs(): Promise<(TabInfo & { id: number })[]> {
+    const tabs = await safe(platform.tabs.query({ url: SITE_IDS.map((site) => `${SITE_ORIGINS[site]}/*`) }), []);
     return tabs.filter((t): t is TabInfo & { id: number } => typeof t.id === 'number');
   }
 
@@ -183,7 +186,7 @@ export function createRuntimeState(d: RuntimeStateDeps) {
   async function refreshNow(tabId?: number): Promise<RuntimeSnapshot> {
     await loadReview();
     const base = await gather();
-    const tabs = await youtubeTabs();
+    const tabs = await siteTabs();
     const global = forTab(base);
     const key = broadcastKey(global);
     if (key !== lastKey) {
@@ -211,9 +214,9 @@ export function createRuntimeState(d: RuntimeStateDeps) {
     },
 
     /**
-     * Recomputes the snapshot, sends runtimeStateChanged to every YouTube tab when what content acts on
-     * changed (reason, detail, stages, mode, enabled, surfaces, notificationStyle, shelfDismissal), and
-     * repaints icons and the badge. Returns the snapshot for `tabId`, or the global one.
+     * Recomputes the snapshot, sends runtimeStateChanged to every Site tab when what content acts on
+     * changed (reason, detail, site, stages, mode, enabled, surfaces, notificationStyle, shelfDismissal),
+     * and repaints icons and the badge. Returns the snapshot for `tabId`, or the global one.
      */
     refresh(tabId?: number): Promise<RuntimeSnapshot> {
       // One at a time, so a refresh that gathered before a write never broadcasts after a newer one.
@@ -223,7 +226,7 @@ export function createRuntimeState(d: RuntimeStateDeps) {
     },
 
     /**
-     * Sends settingsChanged to every YouTube tab, so content re-judges what it shows. Without `force` it is
+     * Sends settingsChanged to every Site tab, so content re-judges what it shows. Without `force` it is
      * sent only when the generation, rulesVersion or Exact rules changed since the last one (remote merges
      * and imports can report one change twice). Rule, Keep rule, Banned channel and Exception changes pass
      * `force`, since Exceptions and some Rule edits change neither version. `actOnChipsTab` adds
@@ -240,7 +243,7 @@ export function createRuntimeState(d: RuntimeStateDeps) {
       if (sig === lastSettingsSig && extra.actOnChipsTab === undefined && !extra.force) return;
       lastSettingsSig = sig;
       const msg = { settingsGeneration: settings.generation, rulesVersion };
-      const tabs = await youtubeTabs();
+      const tabs = await siteTabs();
       await Promise.all(
         tabs.map((t) => safe(platform.sendToTab('settingsChanged', t.id === extra.actOnChipsTab ? { ...msg, actOnShowingChips: true } : msg, t.id), undefined)),
       );
@@ -302,8 +305,9 @@ export function createRuntimeState(d: RuntimeStateDeps) {
 
     // local:runtime -----------------------------------------------------------------------------------
 
-    async failure(cat: FailureCategory, ctx?: PrivacyContext): Promise<void> {
-      await writer.updateRuntime((s) => ({ ...s, ...recordFailure(s, cat, platform.now()).state }), ctx);
+    /** `site`: the Site whose markup failed (nativeAction and markup), named by the breaker's copy. */
+    async failure(cat: FailureCategory, ctx?: PrivacyContext, site?: SiteId): Promise<void> {
+      await writer.updateRuntime((s) => ({ ...s, ...recordFailure(s, cat, platform.now(), site).state }), ctx);
     },
 
     /** A success resets its own category (and a rejected key for 'model'). Skips the write when nothing changes. */
@@ -330,11 +334,13 @@ export function createRuntimeState(d: RuntimeStateDeps) {
         const cats: FailureCategory[] = cat ? [cat] : ['model', 'nativeAction', 'markup'];
         const failures = { ...s.failures };
         const tripped = { ...s.tripped };
+        const trippedSite = { ...s.trippedSite };
         for (const c of cats) {
           failures[c] = 0;
           delete tripped[c];
+          delete trippedSite[c];
         }
-        const next: RuntimeRecord = { ...s, failures, tripped };
+        const next: RuntimeRecord = { ...s, failures, tripped, trippedSite };
         return cats.includes('model') ? without(next, 'creditsExhausted') : next;
       });
     },

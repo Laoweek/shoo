@@ -3,14 +3,15 @@
 // Source of truth: docs/spec/architecture.md Sections 5 (pipeline, Counting), 6 and 7,
 // docs/spec/decision-engine.md Sections 7.5 and 8.3.
 import { channelKey } from '~/core/channel';
-import { dayKey, emptyEscalation, recordJudged } from '~/core/escalation';
+import { dayKey, emptyEscalation, escalationKey, recordJudged } from '~/core/escalation';
+import { SURFACE_SITE } from '~/core/sites';
 import { newId } from '~/core/ids';
 import type { ActivityEvent, ReasonCode, Rule, TileFacts, TileResult } from '~/core/types';
 import type { RuleDisplay } from '~/messaging/protocol';
 import { TRY_TITLE_MAX_CHARS } from '~/engine/judge';
 import { ACTIVITY_TITLE_MAX, queryActivity } from '~/store/local';
-import { isBool, isNonEmpty, isNum, isRecord, isShortStr, isStr, isTileList, isWouldRemoveList, isWouldRemoveTiles, optional } from '../guards';
-import type { Routes, Sender } from '../router';
+import { isBool, isNonEmpty, isNum, isRecord, isShortStr, isSite, isStr, isTileList, isWouldRemoveList, isWouldRemoveTiles, optional } from '../guards';
+import { InvalidInput, type Routes, type Sender } from '../router';
 import type { Services } from '../services';
 
 const HIT_MEMO_MAX = 5000;
@@ -72,10 +73,17 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
       await writer.updateEscalation((all) => {
         const next = { ...all };
         for (const t of judged) {
-          const key = channelKey(t.channelName!);
+          const site = SURFACE_SITE[t.surface];
+          const key = escalationKey(channelKey(t.channelName!), site);
           let rec = recordJudged(next[key] ?? emptyEscalation(), t.videoId, day);
-          if (!rec.name || (t.channelHandle && !rec.handle) || (t.channelId && !rec.id)) {
-            rec = { ...rec, name: rec.name ?? t.channelName!, ...(t.channelHandle && !rec.handle && { handle: t.channelHandle }), ...(t.channelId && !rec.id && { id: t.channelId }) };
+          if (!rec.name || !rec.site || (t.channelHandle && !rec.handle) || (t.channelId && !rec.id)) {
+            rec = {
+              ...rec,
+              name: rec.name ?? t.channelName!,
+              site,
+              ...(t.channelHandle && !rec.handle && { handle: t.channelHandle }),
+              ...(t.channelId && !rec.id && { id: t.channelId }),
+            };
           }
           next[key] = rec;
         }
@@ -123,6 +131,7 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
         source: 'keepRule',
         ...(f && { title: truncateTitle(f.title)!, surface: f.surface }),
         ...(f?.channelName && { channelName: f.channelName, channelKey: channelKey(f.channelName) }),
+        ...(f?.cover && { cover: f.cover }),
       });
     }
     if (events.length === 0) return;
@@ -150,6 +159,8 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
       from: 'content',
       valid: (v) => isRecord(v) && isTileList(v.items) && isNum(v.settingsGeneration),
       async run({ items }, sender) {
+        // The judge takes a batch's Rules from its Site, so every Tile must come from the sender's Site.
+        if (items.some((t) => SURFACE_SITE[t.surface] !== sender.site)) throw new InvalidInput('judgeTiles');
         await s.ensureInit();
         const base = await state.gather();
         const before = state.forTab(base, sender.tabId);
@@ -201,7 +212,8 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
         v.title.length <= TRY_TITLE_MAX_CHARS &&
         optional(v.channelName, (c) => isStr(c) && c.length <= TRY_CHANNEL_MAX_CHARS) &&
         optional(v.durationSec, isNum) &&
-        optional(v.thumbnailUrl, isShortStr),
+        optional(v.thumbnailUrl, isShortStr) &&
+        optional(v.site, isSite),
       invalid: { error: 'invalidInput' },
       async run(req) {
         await s.ensureInit();
@@ -233,6 +245,7 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
               e.channelName = f.channelName;
               e.channelKey = channelKey(f.channelName);
             }
+            if (f.cover) e.cover = f.cover;
           }
           if (v.ruleId) e.ruleId = v.ruleId;
           if (v.probability !== undefined) e.p = v.probability;
@@ -258,7 +271,7 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
         // Counted from private windows too: the counters hold no browsing data, and a markup change must
         // trip the breaker whichever window sees it (REQ-COST-4).
         if (ok) await state.success('markup');
-        else await state.failure('markup');
+        else await state.failure('markup', undefined, sender.site);
         return state.refresh(sender.tabId);
       },
     },

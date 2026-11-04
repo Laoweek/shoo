@@ -59,4 +59,8 @@ describe('subscribedMatcher', () => {
   it('never matches a Tile that shows no channel', () => {
     expect(isSubscribed(tile({ surface: 'shortsShelf', isShort: true }))).toBe(false);
   });
+
+  it('never matches a Bilibili Tile, even from a channel with a subscribed name', () => {
+    expect(isSubscribed(tile({ videoId: 'BV1FIXTURE01', surface: 'bilibiliHome', channelName: 'Code Bites', channelId: '10000001' }))).toBe(false);
+  });
 });

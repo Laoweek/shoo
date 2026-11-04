@@ -3,7 +3,8 @@
    Pupil offsets are fractions of the travel (30% of the eye radius = 2.88 units).
    Lengths in transforms on SVG elements are user units, so 'px' here means viewBox units. */
 .eyes {
-  --eye-bg: var(--paper);
+  /* The lids are filled with the ground the eyes sit on: extension pages set --eyes-bg to --ground (pages.css). */
+  --eye-bg: var(--eyes-bg, var(--paper));
   display: inline-block;
   flex: none;
   overflow: visible;

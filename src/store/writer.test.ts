@@ -31,7 +31,7 @@ describe('migrations', () => {
     expect(await areas.local.get('meta')).toEqual({ meta: { schema: SCHEMA } });
     expect(await areas.sync.get('meta')).toEqual({ meta: { schema: SCHEMA, nextR: 1, nextK: 1, nextColour: 1 } });
     expect(await readSettings(areas)).toEqual(DEFAULT_SETTINGS);
-    expect(await readEnabled(areas.local)).toBe(true);
+    expect(await readEnabled('youtube', areas.local)).toBe(true);
     // Running again changes nothing.
     await runMigrations(areas);
     expect(await areas.local.get(null)).toEqual({ meta: { schema: SCHEMA }, settings: DEFAULT_SETTINGS });

@@ -1,62 +1,108 @@
 /* Shoo tokens. Source of truth: docs/spec/ui-design.md, Section 2.
    Defined on :root and :host so the in-page shadow roots get the same values.
-   Dark is the exact inversion. Extension pages switch with prefers-color-scheme,
-   in-page UI switches with the [data-dark] attribute that follows YouTube's html[dark]. */
+   Extension pages switch with prefers-color-scheme, in-page UI switches with the [data-dark] attribute that
+   follows the Site's own theme. */
 :root,
 :host {
-  --paper: #fbfbfa;
-  --ink: #121214;
-  --muted: #5e5e65;
-  --edge: #8a8a8f;
-  --stroke: #8a8a8f;
-  --line: rgb(18 18 20 / 0.11);
-  --line-strong: rgb(18 18 20 / 0.22);
-  --tint: rgb(18 18 20 / 0.035);
-  --lit: rgb(18 18 20 / 0.06);
-  --danger: #c2410c;
-  --shadow: 0 18px 48px -18px rgb(18 18 20 / 0.28), 0 2px 6px rgb(18 18 20 / 0.06);
+  --ground: #f4f1ec;
+  --paper: #ffffff;
+  --ink: #2b241f;
+  --muted: #6f625a;
+  --edge: #938780;
+  --stroke: #cfc6bd;
+  --line: rgb(43 36 31 / 0.09);
+  --line-strong: rgb(43 36 31 / 0.18);
+  --tint: rgb(43 36 31 / 0.045);
+  --lit: #fff3d6;
+  --danger: #b4232a;
 
-  --c1: #6e4bff;
-  --c2: #00b39f;
-  --c3: #ffb000;
-  --c4: #ff4fa3;
-  --c5: #8bd100;
-  --c6: #ff8a3d;
-  --c7: #2ea8ff;
-  --c8: #b04bd8;
-  --c9: #9a9a2e;
-  --c10: #6b7a8f;
+  /* The one bright colour: only on things you can press. --on-action is the text on it. */
+  --action: #e4572f;
+  --action-hover: #f06a40;
+  --on-action: #1a1411;
+  /* The switch's knob: white on the light theme's orange, dark on the dark theme's lighter orange. */
+  --knob: #ffffff;
+
+  /* Verdict pills: pale grounds, so a Verdict never looks pressable. */
+  --remove-bg: #fde4e1;
+  --remove-fg: #b4232a;
+  --keep-bg: #ddf3e3;
+  --keep-fg: #1e6b3e;
+
+  --shadow: 0 1px 2px rgb(43 36 31 / 0.06), 0 8px 24px rgb(43 36 31 / 0.07);
+  --shadow-float: 0 1px 3px rgb(0 0 0 / 0.1), 0 10px 28px rgb(0 0 0 / 0.16);
+
+  /* Rule colours, the same in both themes. Orange and red stay out: they mean "press" and "Remove". */
+  --c1: #5b8def;
+  --c2: #3fae6e;
+  --c3: #e3b23c;
+  --c4: #e06b8b;
+  --c5: #93c24f;
+  --c6: #a97b54;
+  --c7: #4fb6db;
+  --c8: #d57fcb;
+  --c9: #9677e0;
+  --c10: #26a69a;
+  /* A pale dot needs an edge on white. */
+  --dot-ring: rgb(43 36 31 / 0.14);
 
   --font-ui-system: system-ui, -apple-system, 'Segoe UI', Ubuntu, sans-serif;
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   color-scheme: light;
 }
 
 :host([data-dark]),
 :root[data-theme='dark'] {
-  --paper: #121214;
-  --ink: #fbfbfa;
-  --muted: #a6a6ad;
-  --line: rgb(251 251 250 / 0.12);
-  --line-strong: rgb(251 251 250 / 0.24);
-  --tint: rgb(251 251 250 / 0.045);
-  --lit: rgb(251 251 250 / 0.08);
-  --danger: #fb923c;
-  --shadow: 0 18px 48px -18px rgb(0 0 0 / 0.7), 0 2px 6px rgb(0 0 0 / 0.4);
+  --ground: #1b1816;
+  --paper: #26221f;
+  --ink: #f2ede8;
+  --muted: #b3a89f;
+  --edge: #7a6f67;
+  --stroke: #4e4640;
+  --line: rgb(242 237 232 / 0.09);
+  --line-strong: rgb(242 237 232 / 0.18);
+  --tint: rgb(242 237 232 / 0.05);
+  --lit: rgb(255 196 92 / 0.1);
+  --danger: #ff9a8f;
+  --action: #ff7a50;
+  --action-hover: #ff9370;
+  --on-action: #1b1816;
+  --knob: #1b1816;
+  --remove-bg: #4a2220;
+  --remove-fg: #ffb4ac;
+  --keep-bg: #1d3a28;
+  --keep-fg: #9ee0b5;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px rgb(0 0 0 / 0.35);
+  --shadow-float: 0 1px 3px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.5);
+  --dot-ring: transparent;
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --paper: #121214;
-    --ink: #fbfbfa;
-    --muted: #a6a6ad;
-    --line: rgb(251 251 250 / 0.12);
-    --line-strong: rgb(251 251 250 / 0.24);
-    --tint: rgb(251 251 250 / 0.045);
-    --lit: rgb(251 251 250 / 0.08);
-    --danger: #fb923c;
-    --shadow: 0 18px 48px -18px rgb(0 0 0 / 0.7), 0 2px 6px rgb(0 0 0 / 0.4);
+    --ground: #1b1816;
+    --paper: #26221f;
+    --ink: #f2ede8;
+    --muted: #b3a89f;
+    --edge: #7a6f67;
+    --stroke: #4e4640;
+    --line: rgb(242 237 232 / 0.09);
+    --line-strong: rgb(242 237 232 / 0.18);
+    --tint: rgb(242 237 232 / 0.05);
+    --lit: rgb(255 196 92 / 0.1);
+    --danger: #ff9a8f;
+    --action: #ff7a50;
+    --action-hover: #ff9370;
+    --on-action: #1b1816;
+    --knob: #1b1816;
+    --remove-bg: #4a2220;
+    --remove-fg: #ffb4ac;
+    --keep-bg: #1d3a28;
+    --keep-fg: #9ee0b5;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px rgb(0 0 0 / 0.35);
+    --shadow-float: 0 1px 3px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.5);
+    --dot-ring: transparent;
     color-scheme: dark;
   }
 }

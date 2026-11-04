@@ -67,6 +67,7 @@ describe('rulesVersion', () => {
     ['text model', { models: { text: 'typesafe/jev-1.13', image: 'cloudflare/clef-flash' } }],
     ['image model', { models: { text: 'cloudflare/clef-flash', image: 'x/y' } }],
     ['framing', { textFraming: 'noul' }],
+    ['a Topic rule limited to one Site', { rules: [rule({ site: 'bilibili' }), base.rules[1]!] }],
     ['request shape', { requestShapeVersion: 2 }],
     ['custom engine', { engine: 'custom', customEndpoint: { baseUrl: 'https://llm.example', model: 'm' } }],
   ])('changes with %s', (_, patch) => {

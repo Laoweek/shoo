@@ -5,22 +5,22 @@ import { ChevronRight } from 'lucide-preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { dayKey } from '~/core/escalation';
 import { endpointBase, endpointHost } from '~/core/runtime';
+import { SITE_IDS, SITE_NAMES, siteOfUrl, type SiteId } from '~/core/sites';
 import type { Mode, Rule } from '~/core/types';
 import { t } from '~/i18n';
 import { sendMessage } from '~/messaging/protocol';
 import { readCounters, readRules, readSettings, watchCounters, watchRules, watchSettings } from '~/store/read';
 import { Button, Notice, RuleRef, Segmented, SkeletonRows, Switch, Wordmark } from '~/ui/components';
-import { hasConsent, keyState } from '~/ui/pages/consent';
+import { hasConsent, hasSiteAccess, keyState } from '~/ui/pages/consent';
 import { Escalations } from '~/ui/pages/Escalations';
 import { count, money } from '~/ui/pages/format';
 import { useAsync, useRuntime } from '~/ui/pages/hooks';
 import { OPENROUTER_CREDITS_URL, openExternal, openSettings } from '~/ui/pages/nav';
 import { TextInput } from '~/ui/pages/parts';
 import { findAdded, ruleHints } from '~/ui/pages/rules';
-import { FIX_SECTION, popupNotice, type PopupFix } from './state';
+import { FIX_SECTION, popupNotice, siteNotice, type PopupFix } from './state';
 
 const MODES: Mode[] = ['auto', 'review', 'dryRun'];
-const YOUTUBE = 'https://www.youtube.com/';
 
 export function App() {
   const runtime = useRuntime();
@@ -28,17 +28,21 @@ export function App() {
   const rules = useAsync(() => readRules(), [watchRules]);
   const today = useAsync(() => readCounters(dayKey(Date.now())), [watchCounters]);
   const key = useAsync(() => sendMessage('getKeyUsage'), []);
-  const onYouTube = useAsync(async () => {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    return !!tab?.url?.startsWith(YOUTUBE);
+  // The tab's Site, or null elsewhere. The browser shows Shoo a tab's address only on a site Shoo has access to.
+  const tab = useAsync(async () => {
+    const [active] = await browser.tabs.query({ active: true, currentWindow: true });
+    return (active?.url && siteOfUrl(active.url)) || null;
   }, []);
+  // Sites whose access the user took away, checked for every Site since such a tab hides its address.
+  const blocked = useAsync(async () => (await Promise.all(SITE_IDS.map(async (s) => ((await hasSiteAccess(s)) ? [] : [s])))).flat(), []);
   const [confirm, setConfirm] = useState<number>();
   const [error, setError] = useState(false);
 
   const r = runtime.data;
   const s = settings.data;
   const loading = !r;
-  const notice = r ? popupNotice(r, s) : undefined;
+  const site = tab.data ?? undefined;
+  const notice = r ? (popupNotice(r, s) ?? siteNotice(site, s, blocked.data ?? [])) : undefined;
   const controlsOff = loading || r.reason === 'off' || r.reason === 'migrating';
 
   const keyNow = r?.reason === 'noKey' ? (r.detail === 'keyRejected' ? 'rejected' : 'none') : keyState(key.data);
@@ -72,6 +76,7 @@ export function App() {
 
   const runFix = (f: PopupFix, category?: 'model' | 'nativeAction' | 'markup') => {
     if (f === 'turnOn') return setEnabled(true);
+    if (f === 'turnOnSite' && s && site) return void send(() => sendMessage('updateSettings', { patch: { sites: { ...s.sites, [site]: true } } }));
     if (f === 'retry') return void send(() => sendMessage('resumeFromBreaker', category ? { category } : {}));
     if (f === 'openOpenRouter') return openExternal(OPENROUTER_CREDITS_URL);
     openSettings(FIX_SECTION[f] || undefined);
@@ -82,16 +87,16 @@ export function App() {
   const capShare = counters && cap > 0 ? counters.judged / cap : 0;
 
   return (
-    <div class="w-[360px] bg-paper text-ink">
-      <header class="flex items-center justify-between px-4 pt-3 pb-4">
+    <div class="w-[360px] bg-ground text-ink">
+      <header class="flex items-center justify-between px-4 pt-3.5 pb-1">
         <Wordmark state={r?.eye ?? 'watching'} size={22} track status />
-        <label class="-my-2.5 inline-flex min-h-11 cursor-pointer items-center gap-2 font-medium text-muted">
+        <label class="-my-2.5 inline-flex min-h-11 cursor-pointer items-center gap-2 font-semibold">
           <span aria-hidden="true">{r?.enabled === false ? t('popup.off') : t('popup.on')}</span>
           <Switch checked={r?.enabled ?? s?.enabled ?? true} disabled={loading} onChange={setEnabled} label={t('popup.switch')} />
         </label>
       </header>
 
-      <div class="grid gap-4 px-4 pb-4">
+      <div class="grid gap-4 px-4 pt-3 pb-4">
         <div class="grid gap-2">
           <Segmented
             label={t('mode.label')}
@@ -108,7 +113,7 @@ export function App() {
           <div
             role="alertdialog"
             aria-labelledby="confirm-auto"
-            class="grid gap-2 rounded-[10px] bg-lit px-3 py-2.5"
+            class="grid gap-2 rounded-[14px] bg-lit px-3 py-2.5"
             onKeyDown={(e) => {
               if (e.key !== 'Escape') return;
               setConfirm(undefined);
@@ -127,7 +132,7 @@ export function App() {
           </div>
         )}
 
-        <section aria-labelledby="today-label" class="border-y border-line py-4">
+        <section aria-labelledby="today-label" class="card px-4 py-3.5">
           <h2 id="today-label" class="sr-only">
             {t('popup.today.label')}
           </h2>
@@ -149,9 +154,9 @@ export function App() {
                     aria-valuemax={cap}
                     aria-valuenow={Math.min(counters.judged, cap)}
                     aria-label={t('popup.today.cap', { used: count(counters.judged), cap: count(cap) })}
-                    class="h-1 overflow-hidden rounded-full bg-line"
+                    class="h-1.5 overflow-hidden rounded-full bg-line-strong"
                   >
-                    <div class="h-full rounded-full bg-ink" style={`width:${Math.min(100, capShare * 100)}%`} />
+                    <div class="h-full rounded-full bg-muted" style={`width:${Math.min(100, capShare * 100)}%`} />
                   </div>
                   <span class="num text-[12px] text-muted">{t('popup.today.cap', { used: count(counters.judged), cap: count(cap) })}</span>
                 </div>
@@ -165,7 +170,7 @@ export function App() {
             {notice.text}
           </Notice>
         )}
-        {!notice && onYouTube.data === false && <p class="m-0 text-[13px] text-muted">{t('popup.state.notOnYouTube')}</p>}
+        {!notice && tab.data === null && <p class="m-0 text-[13px] text-muted">{t('popup.state.notOnSite')}</p>}
         {error && (
           <p role="alert" class="m-0 text-[13px] text-danger">
             {t('popup.error')}
@@ -174,10 +179,10 @@ export function App() {
 
         <Escalations rules={rules.data} variant="popup" />
 
-        <QuickAdd disabled={controlsOff || !modelOk} hint={!loading && !modelOk ? t('rules.disabled.needsModel') : undefined} />
+        <QuickAdd disabled={controlsOff || !modelOk} hint={!loading && !modelOk ? t('rules.disabled.needsModel') : undefined} site={site} />
       </div>
 
-      <footer class="flex items-center justify-between gap-3 border-t border-line px-4 py-3 text-[13px]">
+      <footer class="flex items-center justify-between gap-3 border-t border-line-strong px-4 py-3 text-[13px]">
         <span class="min-w-0 truncate text-muted">
           {custom
             ? t('popup.footer.custom', { host: (s && endpointHost(endpointBase(s) ?? '')) ?? '' })
@@ -191,7 +196,7 @@ export function App() {
           <FooterLink onClick={() => openSettings('activity')}>{t('popup.footer.activity')}</FooterLink>
           <FooterLink onClick={() => openSettings()}>
             {t('popup.footer.settings')}
-            <ChevronRight size={16} strokeWidth={1.75} aria-hidden="true" />
+            <ChevronRight size={16} strokeWidth={2} aria-hidden="true" />
           </FooterLink>
         </span>
       </footer>
@@ -203,7 +208,7 @@ function Figure({ value, label }: { value: string; label: string }) {
   return (
     <div class="flex flex-col-reverse">
       <dt class="text-[12px] text-muted">{label}</dt>
-      <dd class="num m-0 text-[20px] leading-[1.1] font-semibold tracking-[-0.02em]">{value}</dd>
+      <dd class="num m-0 text-[22px] leading-[1.1] font-semibold tracking-[-0.02em]">{value}</dd>
     </div>
   );
 }
@@ -212,7 +217,7 @@ function ConfirmButton({ onClick, children }: { onClick: () => void; children: s
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => ref.current?.focus(), []);
   return (
-    <button ref={ref} type="button" onClick={onClick} class="h-[30px] cursor-pointer rounded-[6px] border border-ink bg-ink px-3 font-semibold text-paper hover:opacity-90">
+    <button ref={ref} type="button" onClick={onClick} class="press h-9 cursor-pointer rounded-full bg-action px-4 font-semibold text-on-action hover:bg-action-hover">
       {children}
     </button>
   );
@@ -220,15 +225,19 @@ function ConfirmButton({ onClick, children }: { onClick: () => void; children: s
 
 function FooterLink({ onClick, children }: { onClick: () => void; children: preact.ComponentChildren }) {
   return (
-    <button type="button" onClick={onClick} class="inline-flex min-h-6 cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium text-ink hover:underline hover:underline-offset-[3px]">
+    <button type="button" onClick={onClick} class="inline-flex min-h-6 cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-medium text-ink decoration-action decoration-[1.5px] hover:underline hover:underline-offset-[3px]">
       {children}
     </button>
   );
 }
 
-/** Quick "Add a rule": a Topic rule, Enter to save, then "Rule added" with its colour and text. */
-export function QuickAdd({ disabled, hint }: { disabled: boolean; hint?: string }) {
+/**
+ * Quick "Add a rule": a Topic rule, Enter to save, then "Rule added" with its colour and text. On a Site's page,
+ * "Only on {site}" makes it a Site-only rule. Unticked, the Rule works on all sites like every other.
+ */
+export function QuickAdd({ disabled, hint, site }: { disabled: boolean; hint?: string; site?: SiteId }) {
   const [text, setText] = useState('');
+  const [onlyHere, setOnlyHere] = useState(false);
   const [added, setAdded] = useState<Rule>();
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -239,7 +248,8 @@ export function QuickAdd({ disabled, hint }: { disabled: boolean; hint?: string 
     if (!value || busy || disabled) return;
     setBusy(true);
     setFailed(false);
-    const op = { op: 'add' as const, rule: { polarity: 'remove' as const, kind: 'topic' as const, text: value, enabled: true, origin: 'user' as const } };
+    const only = site && onlyHere ? { site } : {};
+    const op = { op: 'add' as const, rule: { polarity: 'remove' as const, kind: 'topic' as const, text: value, enabled: true, origin: 'user' as const, ...only } };
     try {
       const res = await sendMessage('mutateRules', { ops: [op] });
       if ('error' in res) throw new Error(res.detail);
@@ -280,6 +290,12 @@ export function QuickAdd({ disabled, hint }: { disabled: boolean; hint?: string 
           {t('popup.addRule.submit')}
         </Button>
       </div>
+      {site && (
+        <label class="mt-2 flex min-h-6 cursor-pointer items-center gap-2 text-[13px]">
+          <input type="checkbox" checked={onlyHere} disabled={disabled} onChange={(e) => setOnlyHere(e.currentTarget.checked)} class="size-4 shrink-0 cursor-pointer" />
+          {t('popup.addRule.onlyHere', { site: SITE_NAMES[site] })}
+        </label>
+      )}
       {/* The help line, or a soft hint while the text reads as an order or a negation (REQ-RULE-12). */}
       <p id="quick-add-hint" role="status" class="mt-2 mb-0 text-[13px] text-muted">
         {hint ??

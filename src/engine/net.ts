@@ -7,7 +7,7 @@ export const REQUEST_TIMEOUT_MS = 8000;
  * request far slower than a hosted one. Kept under Chrome's 30 s limit for a service worker fetch with no response.
  */
 export const LOCAL_REQUEST_TIMEOUT_MS = 25_000;
-/** Thumbnail image fetch from i.ytimg.com. */
+/** Thumbnail image fetch from i.ytimg.com or Bilibili's image host. */
 export const THUMBNAIL_TIMEOUT_MS = 4000;
 /** In flight per browser: text and keep-only requests share one limit, thumbnail requests have their own. */
 export const TEXT_IN_FLIGHT = 2;

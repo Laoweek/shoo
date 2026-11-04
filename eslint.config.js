@@ -3,7 +3,8 @@
 import tseslint from 'typescript-eslint';
 
 const secret = { group: ['**/store/secret', '**/store/secret.ts', '~/store/secret', '@/store/secret'], message: 'Key isolation: only src/engine/ and the background router may import store/secret.ts (REQ-MODEL-6).' };
-const youtube = { group: ['**/youtube/*', '~/youtube/*', '@/youtube/*'], message: 'youtube/ is imported only from entrypoints/content (architecture.md Section 4).' };
+const sites = { group: ['~/sites/**', '@/sites/**', '**/sites/**'], message: 'sites/ is imported only by the content engine (src/content/) and the content entrypoints (architecture.md Section 4).' };
+const content = { group: ['~/content/**', '@/content/**', '**/content/**'], message: 'content/ is imported only by the content entrypoints (architecture.md Section 4).' };
 const engine = { group: ['**/engine/*', '~/engine/*', '@/engine/*'], message: 'engine/ is imported only from entrypoints/background/ (architecture.md Section 4).' };
 const writer = { group: ['**/store/writer', '~/store/writer', '@/store/writer'], message: 'store/writer.ts is imported only from entrypoints/background/.' };
 const coreOut = { group: ['~/*', '@/*', '../*', '!../core/*'], message: 'core/ imports nothing outside core/ (architecture.md Section 4).' };
@@ -21,20 +22,22 @@ export default tseslint.config(
       'no-new-func': 'error',
     },
   },
-  // Default for all source files: no secret, no youtube, no engine, no writer.
-  { files: ['src/**/*.{ts,tsx}'], rules: restrict(secret, youtube, engine, writer) },
+  // Default for all source files: no secret, no Site adapters, no content engine, no engine, no writer.
+  { files: ['src/**/*.{ts,tsx}'], rules: restrict(secret, sites, content, engine, writer) },
   // core/ is pure.
-  { files: ['src/core/**/*.ts'], rules: restrict(secret, youtube, engine, writer, coreOut) },
+  { files: ['src/core/**/*.ts'], rules: restrict(secret, sites, content, engine, writer, coreOut) },
   // engine/ may import secret.
-  { files: ['src/engine/**/*.ts'], rules: restrict(youtube, writer) },
-  // youtube/ internals import each other.
-  { files: ['src/youtube/**/*.ts'], rules: restrict(secret, engine, writer) },
+  { files: ['src/engine/**/*.ts'], rules: restrict(sites, content, writer) },
+  // A Site knows its own markup and nothing of the engine that drives it.
+  { files: ['src/sites/**/*.ts'], rules: restrict(secret, content, engine, writer) },
+  // The content engine drives any Site.
+  { files: ['src/content/**/*.{ts,tsx}'], rules: restrict(secret, engine, writer) },
   // store/ internals: writer and secret are store's own files.
-  { files: ['src/store/**/*.ts'], rules: restrict(youtube, engine) },
+  { files: ['src/store/**/*.ts'], rules: restrict(sites, content, engine) },
   // The background router may import engine, writer and secret.
-  { files: ['src/entrypoints/background/**/*.ts'], rules: restrict(youtube) },
-  // The content script may import youtube/.
-  { files: ['src/entrypoints/content/**/*.{ts,tsx}'], rules: restrict(secret, engine, writer) },
+  { files: ['src/entrypoints/background/**/*.ts'], rules: restrict(sites, content) },
+  // A content entrypoint starts the engine for its Site.
+  { files: ['src/entrypoints/*.content.ts'], rules: restrict(secret, engine, writer) },
   // Tests may reach across boundaries to set up fixtures.
-  { files: ['**/*.test.{ts,tsx}', '**/*.bench.ts', 'test/**/*.ts'], rules: { 'no-restricted-imports': 'off' } },
+  { files: ['**/*.test.{ts,tsx}', '**/*.bench.ts', 'test/**/*.ts', 'src/sites/*/test-harness.ts'], rules: { 'no-restricted-imports': 'off' } },
 );

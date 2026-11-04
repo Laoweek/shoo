@@ -13,4 +13,4 @@ pnpm zip:firefox
 
 The extension zip is written to `.output/shoo-<version>-firefox.zip`. Every file inside it matches the uploaded one (compare the sha256 of each extracted file, not the zip checksum, since zip containers carry timestamps).
 
-Source layout: `src/entrypoints/` (background, content script, popup, options, onboarding), `src/core/` (pure logic), `src/engine/` (OpenRouter client, background only), `src/store/` (storage), `src/youtube/` (YouTube page handling), `src/ui/` (Preact components), `src/locales/` (strings). Fonts (Geist, Bricolage Grotesque, SIL OFL) come from the `@fontsource-variable` packages.
+Source layout: `src/entrypoints/` (background, the YouTube and Bilibili content scripts, popup, options, onboarding), `src/core/` (pure logic), `src/engine/` (OpenRouter client, background only), `src/store/` (storage), `src/content/` (content-script engine for any site), `src/sites/` (YouTube and Bilibili page handling), `src/ui/` (Preact components), `src/locales/` (strings). The font (Figtree, SIL OFL) comes from its `@fontsource-variable` package.

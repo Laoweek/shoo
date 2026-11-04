@@ -3,16 +3,83 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import type { RuntimeSnapshot } from '~/core/types';
 import { answerer, fixture, fromFixture } from '~/engine/testing';
 import { queryActivity } from '~/store/local';
+import { CONSENT_VERSION } from '~/store/schema';
 import { getCustomKey, getDirectKey, getOpenRouterKey, setOpenRouterKey } from '~/store/secret';
 import { createBackground, RETENTION_ALARM } from './app';
 import { KEPT_BY_RULE_DAY_MAX } from './handlers/judging';
 import { DroppedMessage, InvalidInput } from './router';
 import { banRule, contentSender, fakeOpenRouter, harness, keywordRule, pageSender, T0, tile, topicRule } from './testing';
-import { CONSENT_VERSION } from '~/store/schema';
 
 beforeEach(() => fakeBrowser.reset());
 
 const localKeys = (h: ReturnType<typeof harness>) => Object.keys(h.areas.local.dump()).sort();
+
+describe('Bilibili', () => {
+  const BILI = 'https://www.bilibili.com/';
+  const COVER = `/bfs/archive/${'0'.repeat(39)}1.jpg`;
+
+  it('judges a Bilibili tab against the Rules that work there: its own Site-only rules and the ones for all sites', async () => {
+    const h = harness({ tabs: [{ id: 2, url: BILI }] });
+    const only = (text: string, site: 'youtube' | 'bilibili') => ({ op: 'add' as const, rule: { ...keywordRule(text).rule, site } });
+    await h.addRules(only('unboxing', 'youtube'), only('mukbang', 'bilibili'), keywordRule('asmr'));
+    const onBilibili = async (title: string) =>
+      (await h.call('judgeTiles', { items: [tile('BV1FIXTURE01', title, { surface: 'bilibiliHome' })], settingsGeneration: 0 }, contentSender(2, false, BILI))).results[0]!.verdict;
+    expect(await onBilibili('Mukbang night')).toMatchObject({ outcome: 'remove', source: 'exact' });
+    expect(await onBilibili('ASMR night')).toMatchObject({ outcome: 'remove', source: 'exact' });
+    expect((await onBilibili('Unboxing day'))?.outcome).not.toBe('remove');
+    const onYouTube = await h.call('judgeTiles', { items: [tile('yyyyyyyyyyy', 'Mukbang night')], settingsGeneration: 0 }, contentSender());
+    expect(onYouTube.results[0]!.verdict?.outcome).not.toBe('remove');
+  });
+
+  it('limits a Rule to one Site and makes it work on all sites again, and refuses an unknown Site', async () => {
+    const h = harness();
+    const [added] = await h.addRules(keywordRule('mukbang'));
+    const id = added!.id;
+    await h.call('mutateRules', { ops: [{ op: 'update', id, patch: { site: 'bilibili' } }] });
+    expect((await h.writer.getRules())[0]!.site).toBe('bilibili');
+    await h.call('mutateRules', { ops: [{ op: 'update', id, patch: { site: null } }] });
+    expect('site' in (await h.writer.getRules())[0]!).toBe(false);
+    expect(await h.call('mutateRules', { ops: [{ op: 'update', id, patch: { site: 'vimeo' } }] } as never)).toEqual({ error: 'invalidInput', detail: 'shape' });
+  });
+
+  it("refuses a judge batch with another Site's Tiles", async () => {
+    const h = harness({ tabs: [{ id: 2, url: BILI }] });
+    await expect(h.call('judgeTiles', { items: [tile('yyyyyyyyyyy', 't')], settingsGeneration: 0 }, contentSender(2, false, BILI))).rejects.toBeInstanceOf(InvalidInput);
+  });
+
+  it('takes content messages from a Bilibili tab: covers go into Activity, its Undo is recorded as the Site', async () => {
+    const h = harness({ tabs: [{ id: 2, url: BILI }] });
+    const sender = contentSender(2, false, BILI);
+    const report = { ok: true, videoId: 'BV1FIXTURE01', surface: 'bilibiliHome', nativeAction: 'notInterested', batchId: 'b1', title: 'Fixture', channelName: 'Up', channelId: '10000001', cover: COVER, source: 'exact' } as const;
+    await h.call('reportActionResult', report, sender);
+    await h.call('reportUndo', { videoId: 'BV1FIXTURE01', via: 'site' }, sender);
+    const events = await queryActivity(h.areas.local, { videoId: 'BV1FIXTURE01' });
+    expect(events.find((e) => e.kind === 'removed')).toMatchObject({ cover: COVER, surface: 'bilibiliHome' });
+    expect(events.find((e) => e.kind === 'undone')).toMatchObject({ detail: 'bilibili' });
+    await expect(h.call('reportActionResult', { ...report, cover: '/bfs/face/x.jpg' }, sender)).rejects.toBeInstanceOf(InvalidInput);
+  });
+
+  it("names the Site whose Native action failures tripped the shared breaker", async () => {
+    const h = harness({ tabs: [{ id: 2, url: BILI }] });
+    await h.connect(); // consent and a key, so the breaker is the top reason
+    const fail = { ok: false, videoId: 'BV1FIXTURE01', surface: 'bilibiliHome', nativeAction: 'notInterested', step: 'openMenu', selectorVersion: 'bilibili-2026-10-18' } as const;
+    let snap: RuntimeSnapshot | undefined;
+    for (let i = 0; i < 5; i++) snap = await h.call('reportActionResult', fail, contentSender(2, false, BILI));
+    expect(snap).toMatchObject({ reason: 'breakerNativeAction', site: 'bilibili' });
+    await h.call('resumeFromBreaker', { category: 'nativeAction' });
+    expect((await h.call('getRuntimeState', undefined, pageSender('popup.html'))).site).toBeUndefined();
+  });
+
+  it('keeps a channel on the Site it was seen on: a Bilibili Keep rule never keeps a same-named YouTube channel', async () => {
+    const h = harness({ tabs: [{ id: 2, url: BILI }] });
+    await h.call('keepChannel', { channelName: 'Same Name', channelId: '10000001', site: 'bilibili' }, contentSender(2, false, BILI));
+    const [rule] = await h.writer.getRules();
+    expect(rule).toMatchObject({ params: { channelName: 'Same Name', channelId: '10000001' }, site: 'bilibili' });
+    await h.addRules(banRule('Same Name'));
+    const res = await h.call('judgeTiles', { items: [tile('yyyyyyyyyyy', 't', { channelName: 'Same Name' })], settingsGeneration: 0 }, contentSender());
+    expect(res.results[0]!.verdict).toMatchObject({ outcome: 'remove', source: 'exact' });
+  });
+});
 
 describe('sender checks', () => {
   it('drops content messages from pages, other origins and other extensions', async () => {
@@ -347,7 +414,7 @@ describe('Undo and Exceptions', () => {
     expect(h.sentOf('undoRemoval')).toEqual([{ type: 'undoRemoval', data: { videoId: 'jjjjjjjjjjj' }, tabId: 1 }]);
     // Content answers ok and reports the undo, maybe twice when two detectors fire.
     await h.call('reportUndo', { videoId: 'jjjjjjjjjjj', via: 'shoo' }, contentSender(1));
-    await h.call('reportUndo', { videoId: 'jjjjjjjjjjj', via: 'youtube' }, contentSender(1));
+    await h.call('reportUndo', { videoId: 'jjjjjjjjjjj', via: 'site' }, contentSender(1));
     const exceptions = await h.writer.getExceptions();
     expect(exceptions).toEqual([expect.objectContaining({ videoId: 'jjjjjjjjjjj', title: 'Drama time', channelName: 'Chan', ruleId: r1.id })]);
     const events = Object.entries(h.areas.local.dump())
@@ -451,6 +518,35 @@ describe('Escalation', () => {
     const { ruleId } = await h.call('confirmEscalation', { channelKey: 'drama hub' });
     expect((await h.writer.getRules()).find((r) => r.id === ruleId)).toMatchObject({ kind: 'channel', polarity: 'remove', origin: 'escalation', params: { channelName: 'Drama Hub' } });
     expect(await h.call('listEscalations', undefined)).toEqual([]);
+  });
+
+  it('counts a same-named channel on each Site apart, and bans it on its own Site only', async () => {
+    const h = harness({ tabs: [{ id: 1, url: 'https://www.youtube.com/' }, { id: 2, url: 'https://www.bilibili.com/' }] });
+    await h.addRules(keywordRule('drama'));
+    const bili = contentSender(2, false, 'https://www.bilibili.com/');
+    async function biliRemovals(n: number, from: number) {
+      for (let i = from; i < from + n; i++) {
+        const videoId = `BV1DRAMA${String(i).padStart(4, '0')}`;
+        await h.call('judgeTiles', { items: [tile(videoId, `drama ${i}`, { channelName: 'Drama Hub', surface: 'bilibiliHome' })], settingsGeneration: 0 }, bili);
+        await h.call('reportActionResult', { ok: true, videoId, surface: 'bilibiliHome', nativeAction: 'notInterested', batchId: `c${i}`, title: `drama ${i}`, channelName: 'Drama Hub', source: 'model', p: 0.9, mode: 'auto' }, bili);
+      }
+    }
+    await topicRemovals(h, 1);
+    await biliRemovals(2, 0);
+    expect(await h.call('listEscalations', undefined)).toEqual([]);
+    await biliRemovals(1, 2);
+    expect(await h.call('listEscalations', undefined)).toEqual([{ channelKey: 'bilibili:drama hub', channelName: 'Drama Hub', removed: 3, judged: 3 }]);
+    const { ruleId } = await h.call('confirmEscalation', { channelKey: 'bilibili:drama hub' });
+    expect((await h.writer.getRules()).find((r) => r.id === ruleId)).toMatchObject({ params: { channelName: 'Drama Hub' }, site: 'bilibili' });
+    // The Escalation's Activity row is about no video, so it carries the Site itself.
+    expect((await queryActivity(h.areas.local, { kinds: ['escalated'] }))[0]).toMatchObject({ ruleId, site: 'bilibili' });
+  });
+
+  it('bans a channel from a record stored before Sites on YouTube only', async () => {
+    const h = harness();
+    await h.writer.updateEscalation((all) => ({ ...all, 'news daily': { judged: {}, topicRemoved: {}, name: 'News Daily', suggestedAt: T0 } }));
+    const { ruleId } = await h.call('confirmEscalation', { channelKey: 'news daily' });
+    expect((await h.writer.getRules()).find((r) => r.id === ruleId)).toMatchObject({ params: { channelName: 'News Daily' }, site: 'youtube' });
   });
 
   it('bans automatically in Automatic mode, records escalated and broadcasts settingsChanged', async () => {
@@ -751,11 +847,11 @@ describe('engines, consent, tabs and Rule edits', () => {
     expect(fake.decisionRequests()).toHaveLength(0);
   });
 
-  it('consent recorded under consent version 1, before the recipients were widened, counts as noConsent', async () => {
+  it('consent recorded under consent version 2, before Bilibili was named, counts as noConsent', async () => {
     const h = harness();
     await h.connect();
     expect((await h.call('getRuntimeState', undefined)).reason).toBe('ok');
-    await h.writer.updateSettings({ consent: { version: 1, acceptedAt: T0 } });
+    await h.writer.updateSettings({ consent: { version: 2, acceptedAt: T0 } });
     expect((await h.call('getRuntimeState', undefined)).reason).toBe('noConsent');
   });
 
@@ -788,7 +884,7 @@ describe('engines, consent, tabs and Rule edits', () => {
     const before = h.sentOf('settingsChanged').length;
     await h.call('addException', { videoId: 'sssssssssss', title: 't', origin: 'reviewKeep' }, contentSender(1));
     expect(h.sentOf('settingsChanged').slice(before).map((m) => m.tabId).sort()).toEqual([1, 2]);
-    await h.call('reportUndo', { videoId: 'ttttttttttt', via: 'youtube' }, contentSender(1));
+    await h.call('reportUndo', { videoId: 'ttttttttttt', via: 'site' }, contentSender(1));
     expect(h.sentOf('settingsChanged').length).toBe(before + 4);
   });
 

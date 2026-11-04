@@ -10,6 +10,8 @@ import {
   isTopicKeep,
   parseRef,
   resolveRefCollisions,
+  rulesOn,
+  ruleSite,
   runExactStages,
   sortByRef,
   trimName,
@@ -254,6 +256,26 @@ describe('Rule predicates and ordering', () => {
     expect(sortByRef(refs).map((r) => `${r.ref}/${r.id}`)).toEqual(['K1/id2', 'K3/id3', 'R2/id0', 'R2/id4', 'R10/id6', 'aa/id1', 'zz/id5']);
     const same = rule({ ref: 'R1', id: 'same' });
     expect(sortByRef([same, { ...same }])).toHaveLength(2);
+  });
+});
+
+describe('Site-only rules', () => {
+  it('reads the Site of a channel Rule saved before Sites from its YouTube handle or channel id', () => {
+    const byHandle = rule({ kind: 'channel', text: 'Foo', params: { channelName: 'Foo', handle: 'foo' } });
+    const byId = rule({ id: 'id2', kind: 'channel', text: 'Foo', params: { channelName: 'Foo', channelId: 'UCxxxxxxxxxxxxxxxxxxxxxx' } });
+    const byName = rule({ id: 'id3', kind: 'channel', text: 'Foo', params: { channelName: 'Foo' } });
+    expect([byHandle, byId, byName].map(ruleSite)).toEqual(['youtube', 'youtube', undefined]);
+    expect(rulesOn([byHandle, byId, byName], 'bilibili')).toEqual([byName]);
+    const compiled = compileExact([byHandle], false);
+    expect(runExactStages(tile({ videoId: 'BV1FIXTURE01', surface: 'bilibiliHome', channelName: 'Foo', channelId: '10000001' }), compileExact(rulesOn([byHandle], 'bilibili'), false), () => false).kind).toBe('none');
+    expect(runExactStages(tile({ channelName: 'Foo', channelHandle: '@foo' }), compiled, () => false).kind).toBe('remove');
+  });
+
+  it('keeps a views Rule on YouTube, the only Site whose Tiles carry a view count', () => {
+    const views = rule({ kind: 'views', text: 'Under 1k views', params: { maxViews: 1000 }, site: 'bilibili' });
+    expect(ruleSite(views)).toBe('youtube');
+    expect(rulesOn([views], 'bilibili')).toEqual([]);
+    expect(rulesOn([views], 'youtube')).toEqual([views]);
   });
 });
 

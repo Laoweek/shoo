@@ -2,6 +2,8 @@
 // state budget meter, the Rules table sorted by activity, Add a Rule, and the empty state with Starter rules.
 import { useContext, useMemo } from 'preact/hooks';
 import { directProvider, topicRuleLimit } from '~/core/providers';
+import { rulesOn } from '~/core/rules';
+import { SITE_IDS } from '~/core/sites';
 import { t } from '~/i18n';
 import { readRuleStats, watchRuleStats } from '~/store/read';
 import { Notice, SkeletonRows } from '~/ui/components';
@@ -25,7 +27,8 @@ export function Rules({ data }: SectionProps) {
   const hasTopic = (data.rules ?? []).some((r) => r.kind === 'topic' && r.enabled);
   // The direct Decision provider in use takes fewer Topic rules than are on: say so where Rules are edited.
   const provider = data.settings?.engine === 'direct' && data.settings.direct ? directProvider(data.settings.direct.provider) : undefined;
-  const topicOn = remove.filter((r) => r.kind === 'topic' && r.enabled && r.deletedAt === undefined).length;
+  // Each Site's requests carry only its own Rules, so the fullest Site counts.
+  const topicOn = Math.max(...SITE_IDS.map((site) => rulesOn(remove, site).filter((r) => r.kind === 'topic' && r.enabled && r.deletedAt === undefined).length));
   const overLimit = !!provider && topicOn > topicRuleLimit(provider);
 
   return (
@@ -48,24 +51,30 @@ export function Rules({ data }: SectionProps) {
             </Notice>
           )}
           {hasTopic && <BudgetMeter fit={fit} />}
-          <SubHead id="rules-yours" title={t('rules.yours')} hint={remove.length > 0 ? t('rules.sorted') : undefined} />
-          {remove.length === 0 ? (
-            <div class="border-t border-line-strong pt-4">
-              <p class="mt-0 mb-3">{t('rules.empty')}</p>
-              <StarterChips rules={data.rules} modelOk={data.modelOk} disabledNote={data.consent ? t('rules.disabled.needsKey') : t('onboarding.rules.needsConsent')} />
+          <div class="card px-3 pt-5 pb-5 sm:px-5">
+            <div class="px-2">
+              <SubHead id="rules-yours" title={t('rules.yours')} hint={remove.length > 0 ? t('rules.sorted') : undefined} />
             </div>
-          ) : (
-            <RuleTable
-              rules={remove}
-              stats={stats.data ?? {}}
-              now={now}
-              regexEnabled={data.settings.regexEnabled}
-              truncatedRefs={truncated}
-              onHover={eyes.wide}
-              labelledBy="rules-yours"
-            />
-          )}
-          <AddRule polarity="remove" regexEnabled={data.settings.regexEnabled} modelOk={data.modelOk} />
+            {remove.length === 0 ? (
+              <div class="px-2">
+                <p class="mt-0 mb-3">{t('rules.empty')}</p>
+                <StarterChips rules={data.rules} modelOk={data.modelOk} disabledNote={data.consent ? t('rules.disabled.needsKey') : t('onboarding.rules.needsConsent')} />
+              </div>
+            ) : (
+              <RuleTable
+                rules={remove}
+                stats={stats.data ?? {}}
+                now={now}
+                regexEnabled={data.settings.regexEnabled}
+                truncatedRefs={truncated}
+                onHover={eyes.wide}
+                labelledBy="rules-yours"
+              />
+            )}
+            <div class="px-2">
+              <AddRule polarity="remove" regexEnabled={data.settings.regexEnabled} modelOk={data.modelOk} />
+            </div>
+          </div>
         </>
       )}
     </section>

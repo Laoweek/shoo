@@ -57,6 +57,16 @@ describe('buildTextRequest', () => {
     expect(track(buildTextRequest([R1, R2, R3], [], T16)).body).toMatchSnapshot('16 tiles, no keep, no exceptions');
   });
 
+  it("names a Bilibili Tile's Site in its tasks and Surface, and leaves YouTube's calibrated words alone", () => {
+    const bili = tile('BV1FIXTURE01', 'Fixture title', { surface: 'bilibiliHome', channelName: 'Up', durationSec: 69 });
+    const b = buildTextRequest([R1, K2], [], [T16[0]!, bili]);
+    const q = b.body.questions as Record<string, any>;
+    expect(q.t01.instructions.task).toBe(CHOICE_TASK);
+    expect(q.t02.instructions.task).toBe(CHOICE_TASK.replace('recommended YouTube video', 'recommended Bilibili video'));
+    expect(q.t02_K2.instructions.task).toMatch(/^Does this recommended Bilibili video match this rule: /);
+    expect(q.t02.instructions.video).toEqual({ title: 'Fixture title', channel: 'Up', duration: '1:09', surface: 'home page' });
+  });
+
   it('gives Tiles with an exact remove pending only their Keep questions', () => {
     const b = track(buildTextRequest(RULES, [EXC], T16.slice(0, 3), { keepOnly: new Set([T16[1]!.videoId]) }));
     expect(Object.keys(b.body.questions)).toEqual(['t01', 't01_K2', 't01_K5', 't02_K2', 't02_K5', 't03', 't03_K2', 't03_K5']);

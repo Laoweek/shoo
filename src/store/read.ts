@@ -5,7 +5,7 @@
 // `getRuntimeState` (reason `noKey`, detail `keyRejected`) and `getKeyUsage` (label, source, connectedAt),
 // which the background answers from store/secret.ts without the key value.
 import { sortByRef } from '~/core/rules';
-import type { ActivityEvent, Exception, Rule, Settings } from '~/core/types';
+import type { ActivityEvent, Exception, Rule, Settings, SiteId } from '~/core/types';
 import { browserAreas, getOne, type AreaLike, type Areas } from './areas';
 import {
   getArchive,
@@ -27,10 +27,13 @@ type ReadAreas = Pick<Areas, 'sync' | 'local'>;
 /** Tests pass fake areas. Pages use the real ones. */
 const areasOrBrowser = (a?: Partial<ReadAreas>): ReadAreas => ({ sync: a?.sync ?? browserAreas().sync, local: a?.local ?? browserAreas().local });
 
-/** Content script start-up: one `storage.local.get('settings')`. Missing settings mean enabled (the default). */
-export async function readEnabled(local?: AreaLike): Promise<boolean> {
+/**
+ * Content script start-up: one `storage.local.get('settings')`. Whether Shoo is on, and on for this Site.
+ * Missing settings, or settings from before Sites, mean on (the defaults).
+ */
+export async function readEnabled(site: SiteId, local?: AreaLike): Promise<boolean> {
   const settings = await getOne<Partial<Settings>>(local ?? browserAreas().local, SETTINGS_KEY);
-  return settings?.enabled ?? true;
+  return (settings?.enabled ?? true) && settings?.sites?.[site] !== false;
 }
 
 export const readSettings = (a?: Partial<ReadAreas>): Promise<Settings> => getSettings(areasOrBrowser(a).local);

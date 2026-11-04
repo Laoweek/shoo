@@ -23,11 +23,11 @@ export function RuleGuide({ open }: { open: boolean }) {
   const [initial] = useState(open);
   return (
     <details class="group mb-6" open={initial}>
-      <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-[6px] py-1 font-semibold [&::-webkit-details-marker]:hidden">
-        <ChevronRight size={16} strokeWidth={1.75} aria-hidden="true" class="transition-transform group-open:rotate-90 motion-reduce:transition-none" />
+      <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-[6px] py-1 font-semibold hover:text-ink [&::-webkit-details-marker]:hidden">
+        <ChevronRight size={16} strokeWidth={2} aria-hidden="true" class="transition-transform group-open:rotate-90 motion-reduce:transition-none" />
         {t('rules.guide.title')}
       </summary>
-      <div class="@container mt-2 border-t border-line-strong text-pretty">
+      <div class="card @container mt-2 px-5 pb-3 text-pretty">
         <p class="m-0 max-w-[72ch] py-3 text-muted">{t('rules.guide.lede')}</p>
         <ul class="m-0 list-none p-0">
           {WITH_EXAMPLES.map((id) => (
@@ -66,13 +66,13 @@ function Examples({ good, avoid }: { good: string; avoid: string }) {
   return (
     <div class="grid gap-x-6 gap-y-1 @2xl:grid-cols-2">
       <p class="m-0 flex items-start gap-2">
-        <Check size={16} strokeWidth={1.75} aria-hidden="true" class="mt-0.5 shrink-0" />
+        <Check size={16} strokeWidth={2} aria-hidden="true" class="mt-0.5 shrink-0" />
         <span>
           <span class="font-semibold">{t('rules.guide.good')}</span> {good}
         </span>
       </p>
       <p class="m-0 flex items-start gap-2 text-muted">
-        <X size={16} strokeWidth={1.75} aria-hidden="true" class="mt-0.5 shrink-0" />
+        <X size={16} strokeWidth={2} aria-hidden="true" class="mt-0.5 shrink-0" />
         <span>
           <span class="font-semibold">{t('rules.guide.avoid')}</span> {avoid}
         </span>

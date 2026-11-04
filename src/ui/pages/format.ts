@@ -1,6 +1,8 @@
 // Number, money, time and day formatting for extension pages. Counts, costs and times render in
 // tabular figures (the `num` class), see docs/spec/ui-design.md Section 2.
 import { dayKey } from '~/core/escalation';
+import { SITE_NAMES, SURFACE_SITE, thumbnailUrlFor, type SiteId } from '~/core/sites';
+import type { SurfaceId } from '~/core/types';
 import { t } from '~/i18n';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
@@ -43,5 +45,17 @@ export function weekStart(now: number): string {
   return dayKey(d.getTime());
 }
 
-/** Thumbnail for a video on an extension page (64 x 36 walls, Activity rows). */
-export const thumbUrl = (videoId: string): string => `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/mqdefault.jpg`;
+/**
+ * Thumbnail for a video on an extension page (64 x 36 walls, Activity rows): YouTube's derived from the videoId,
+ * Bilibili's from the cover path Activity stored. Undefined when there is none (a Bilibili row without a cover).
+ */
+export const thumbUrl = (videoId: string, cover?: string): string | undefined => thumbnailUrlFor(videoId, cover);
+
+/** A Surface's name under its Site's heading: "Home", "Watch sidebar". */
+export const surfaceLabel = (s: SurfaceId): string => t(`settings.surfaces.${s}`);
+
+/** A Surface's name on its own, with its Site: "YouTube Home", "Bilibili Home". */
+export const whereLabel = (s: SurfaceId): string => t('settings.surfaces.where', { site: SITE_NAMES[SURFACE_SITE[s]], surface: surfaceLabel(s) });
+
+/** A Site-only rule's Site: "Bilibili only". */
+export const ruleSiteLabel = (site: SiteId): string => t('rules.site.only', { site: SITE_NAMES[site] });

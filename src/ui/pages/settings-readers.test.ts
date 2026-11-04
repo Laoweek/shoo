@@ -16,9 +16,10 @@ const BACKGROUND = 'src/entrypoints/background.ts|src/entrypoints/background';
 const READERS: Record<keyof Settings, string[]> = {
   generation: ['src/core/runtime.ts'], // settingsGeneration in every RuntimeSnapshot
   enabled: ['src/core/runtime.ts', 'src/store/read.ts'], // RuntimeState 'off', content start-up (readEnabled)
-  mode: ['src/core/runtime.ts', 'src/entrypoints/content/pipeline.ts'],
-  surfaces: ['src/core/runtime.ts', 'src/entrypoints/content/pipeline.ts'],
-  notificationStyle: ['src/entrypoints/content/pipeline.ts'],
+  mode: ['src/core/runtime.ts', 'src/content/pipeline.ts'],
+  sites: ['src/core/runtime.ts', 'src/store/read.ts'], // a Site's Surfaces, content start-up (readEnabled)
+  surfaces: ['src/core/runtime.ts', 'src/content/pipeline.ts'],
+  notificationStyle: ['src/content/pipeline.ts'],
   dailyCap: [BACKGROUND, 'src/entrypoints/popup/state.ts'], // judgeTiles stops model calls at the cap
   escalationMode: [BACKGROUND], // Suggest lists, Automatic bans (REQ-ESC-2)
   strength: ['src/engine/judge.ts'], // removeCutoff on read
@@ -28,7 +29,7 @@ const READERS: Record<keyof Settings, string[]> = {
   customEndpoint: ['src/engine/judge.ts'],
   consent: ['src/core/runtime.ts'],
   regexEnabled: ['src/engine/judge.ts'],
-  shelfDismissal: ['src/entrypoints/content/pipeline.ts'], // through RuntimeSnapshot.shelfDismissal
+  shelfDismissal: ['src/content/pipeline.ts'], // through RuntimeSnapshot.shelfDismissal
   onboarding: ['src/entrypoints/onboarding/App.tsx', 'src/entrypoints/options/App.tsx'],
 };
 

@@ -2,19 +2,21 @@
 // docs/spec/architecture.md Sections 5 ("Counting"), 6, 8 (session:removalTabs, private windows) and 10,
 // docs/spec/requirements.md §5, §8 and §11.
 //
-// Undo ownership: content sends reportUndo once after every successful undo, whatever started it (YouTube's
+// Undo ownership: content sends reportUndo once after every successful undo, whatever started it (the site's
 // own Undo, Shoo's annotation or summary Undo, or an undoRemoval this background routed from Activity).
 // reportUndo records exactly one 'undone' Activity event and one Exception. undoFromActivity records nothing.
 // A second reportUndo for the same video within UNDO_DEDUPE_MS is ignored, so two detectors firing for one
 // undo still give one event.
 import { channelIdentity, channelKey } from '~/core/channel';
 import { newId } from '~/core/ids';
+import { SURFACE_SITE, siteOfUrl } from '~/core/sites';
 import type { ActivityEvent } from '~/core/types';
 import { queryActivity } from '~/store/local';
 import { forgetRemovalTab, getRemovalTab, recordRemovalTab } from '~/store/session';
 import {
   isBool,
   isChannelParts,
+  isCover,
   isIdList,
   isMode,
   isNativeAction,
@@ -22,6 +24,7 @@ import {
   isNum,
   isRecord,
   isShortStr,
+  isSite,
   isSource,
   isStep,
   isStr,
@@ -45,7 +48,8 @@ const isOkReport = (v: Record<string, unknown>) =>
   isChannelParts(v) &&
   optional(v.source, isSource) &&
   optional(v.p, isNum) &&
-  optional(v.mode, isMode);
+  optional(v.mode, isMode) &&
+  isCover(v.cover);
 const isFailReport = (v: Record<string, unknown>) =>
   v.ok === false && isStep(v.step) && isStr(v.selectorVersion) && optionalStr(v.title) && optionalStr(v.ruleId);
 
@@ -80,6 +84,7 @@ export function actionRoutes(
           if (r.source) e.source = r.source;
           if (r.p !== undefined) e.p = r.p;
           if (r.mode) e.mode = r.mode;
+          if (r.cover) e.cover = r.cover;
           withChannel(e, r.channelName);
           await writer.recordActivity([e], ctx);
           const tabId = sender.tabId;
@@ -94,7 +99,13 @@ export function actionRoutes(
           // The Rule hit was counted when the Tile was judged (handlers/judging.ts), not here.
           if (r.source === 'model' && r.channelName?.trim() && !sender.incognito) {
             try {
-              escalated = await esc.afterTopicRemoval({ channelName: r.channelName, channelHandle: r.channelHandle, channelId: r.channelId, batchId: r.batchId });
+              escalated = await esc.afterTopicRemoval({
+                channelName: r.channelName,
+                channelHandle: r.channelHandle,
+                channelId: r.channelId,
+                site: SURFACE_SITE[r.surface],
+                batchId: r.batchId,
+              });
             } catch {
               platform.log?.('escalationFailed');
             }
@@ -115,7 +126,7 @@ export function actionRoutes(
           if (r.title) e.title = truncateTitle(r.title)!;
           if (r.ruleId) e.ruleId = r.ruleId;
           await writer.recordActivity([e], ctx);
-          await state.failure('nativeAction');
+          await state.failure('nativeAction', undefined, sender.site);
         }
         const snapshot = await state.refresh(sender.tabId);
         return escalated ? { ...snapshot, escalated } : snapshot;
@@ -124,7 +135,7 @@ export function actionRoutes(
 
     reportUndo: {
       from: 'content',
-      valid: (v) => isRecord(v) && isVideoId(v.videoId) && (v.via === 'youtube' || v.via === 'shoo'),
+      valid: (v) => isRecord(v) && isVideoId(v.videoId) && (v.via === 'site' || v.via === 'shoo'),
       async run({ videoId, via }, sender) {
         const at = s.now();
         const last = undoneAt.get(videoId);
@@ -143,7 +154,8 @@ export function actionRoutes(
           }
         }
         const title = info?.title ?? '';
-        const e: ActivityEvent = { id: newId(), kind: 'undone', at, videoId, title, detail: via };
+        // Stored as the Site's id ('youtube' before Bilibili existed) or 'shoo'.
+        const e: ActivityEvent = { id: newId(), kind: 'undone', at, videoId, title, detail: via === 'site' ? (sender.site ?? 'youtube') : 'shoo' };
         if (info) {
           e.surface = info.surface;
           e.nativeAction = info.nativeAction;
@@ -207,10 +219,11 @@ export function actionRoutes(
      */
     keepChannel: {
       from: 'both',
-      valid: (v) => isRecord(v) && isChannelParts(v) && optional(v.liftBan, isBool),
-      async run({ channelName, channelHandle, channelId, liftBan }, sender) {
+      valid: (v) => isRecord(v) && isChannelParts(v) && optional(v.site, isSite) && optional(v.liftBan, isBool),
+      async run({ channelName, channelHandle, channelId, site, liftBan }, sender) {
         if (sender.incognito) return { error: 'privateWindow' as const };
-        const identity = channelIdentity(channelName, channelHandle, channelId);
+        const known = channelIdentity(channelName, channelHandle, channelId);
+        const identity = known && site ? { ...known, site } : known;
         const name = [channelName, channelHandle, channelId].find(isNonEmpty)?.trim();
         if (!identity || !name) return { error: 'noChannel' as const };
         await s.ensureInit();
@@ -221,7 +234,7 @@ export function actionRoutes(
           if (ban && liftBan === undefined) return { ruleId: '', bannedRuleId: ban.id };
           const existing = keepRuleFor(rules, identity);
           const ops = [
-            ...(existing ? [] : [channelRuleOp('keep', name, channelHandle?.trim() || undefined, channelId?.trim() || undefined, 'user')]),
+            ...(existing ? [] : [channelRuleOp('keep', name, channelHandle?.trim() || undefined, channelId?.trim() || undefined, 'user', site)]),
             ...(ban && liftBan ? [{ op: 'delete' as const, id: ban.id }] : []),
           ];
           let ruleId = existing?.id ?? '';
@@ -241,7 +254,7 @@ export function actionRoutes(
     /**
      * Activity's Undo: routes undoRemoval to the tab that removed the video (session:removalTabs, 1 hour).
      * Records nothing itself: content answers ok and then sends reportUndo. A closed tab, a tab that left
-     * YouTube or a tab whose content script no longer answers gives 'expired'.
+     * its Site or a tab whose content script no longer answers gives 'expired'.
      */
     undoFromActivity: {
       from: 'page',
@@ -251,7 +264,7 @@ export function actionRoutes(
         if (!entry) return { ok: false as const, reason: 'expired' as const };
         try {
           const tab = await platform.tabs.get(entry.tabId);
-          if (!tab.url || new URL(tab.url).origin !== 'https://www.youtube.com') return { ok: false as const, reason: 'expired' as const };
+          if (!tab.url || !siteOfUrl(tab.url)) return { ok: false as const, reason: 'expired' as const };
           const res = await platform.sendToTab('undoRemoval', { videoId }, entry.tabId);
           return res && typeof res === 'object' && 'ok' in res ? res : { ok: false as const, reason: 'expired' as const };
         } catch {

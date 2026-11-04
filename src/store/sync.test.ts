@@ -48,6 +48,16 @@ describe('compact mapping', () => {
     expect(fromCompactRule(JSON.parse(JSON.stringify(deleted)))?.rule).toEqual(tombstone(rule, T0));
   });
 
+  it("stores a Site-only rule's Site as `s`, drops it from tombstones, and writes none for a Rule on every Site", () => {
+    const rule: Rule = { ...makeRule(rng(6), 3), site: 'bilibili' };
+    const compact = toCompactRule(rule);
+    expect(compact).toMatchObject({ s: 'bilibili' });
+    expect(fromCompactRule(JSON.parse(JSON.stringify(compact)))).toEqual({ rule });
+    expect(toCompactRule({ ...rule, deletedAt: T0, updatedAt: T0 })).not.toHaveProperty('s');
+    expect(toCompactRule(makeRule(rng(6), 3))).not.toHaveProperty('s');
+    expect(fromCompactRule({ ...compact, s: 'vimeo' })!.rule).not.toHaveProperty('site');
+  });
+
   it('keeps unknown kinds and unknown fields from a newer Shoo', () => {
     const raw = { ...toCompactRule(makeRule(rng(4), 1)), k: 'futureKind', zz: { a: 1 } };
     const parsed = fromCompactRule(raw)!;

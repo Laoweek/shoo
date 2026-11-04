@@ -68,7 +68,8 @@ export default defineConfig({
       description: '__MSG_extDescription__',
       default_locale: 'en',
       permissions: ['storage', 'alarms', 'identity'],
-      host_permissions: ['https://www.youtube.com/*', 'https://openrouter.ai/*', 'https://i.ytimg.com/*'],
+      // Each Site's pages and its image host (thumbnails for Thumbnail rules), then OpenRouter.
+      host_permissions: ['https://www.youtube.com/*', 'https://i.ytimg.com/*', 'https://www.bilibili.com/*', 'https://i0.hdslb.com/*', 'https://openrouter.ai/*'],
       optional_host_permissions: ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*'],
       action: { default_title: 'Shoo' },
       commands: {

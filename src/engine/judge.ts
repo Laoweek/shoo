@@ -6,9 +6,10 @@ import { tileChannelIdentity } from '~/core/channel';
 import { compileExact, type CompiledExact } from '~/core/exact';
 import { cacheVersion, exactVersion, rulesVersion } from '~/core/ids';
 import { directProvider, readsImages, topicRuleLimit } from '~/core/providers';
-import { activeRules, runExactStages, type ExactStageOutcome } from '~/core/rules';
+import { activeRules, exampleOn, rulesOn, runExactStages, type ExactStageOutcome } from '~/core/rules';
+import { SURFACE_SITE } from '~/core/sites';
 import { subscribedMatcher, type SubscribedChannels } from '~/core/subscriptions';
-import type { Exception, ReasonCode, Rule, Settings, TileFacts, TileResult } from '~/core/types';
+import type { Exception, ReasonCode, Rule, Settings, SiteId, TileFacts, TileResult } from '~/core/types';
 import { finalVerdict, needsThumbnailPass, type ThumbModelResult } from '~/core/verdict';
 import { buildChatRequest, chatCost, parseChatResponse, sendChat } from './chat';
 import {
@@ -81,11 +82,12 @@ export interface JudgeDeps {
   rules(): Promise<Rule[]>;
   /** Which of these videoIds have an Exception: sync, the local archive, and the tab's session Exceptions in private windows. */
   exceptionIds(videoIds: string[], ctx: JudgeContext): Promise<ReadonlySet<string>>;
-  /** The n most recent Exceptions, newest first, for `viewer_kept_anyway`. */
-  recentExceptions(n: number): Promise<Exception[]>;
+  /** The `n` most recent Exceptions that pass `keep`, newest first, for `viewer_kept_anyway`. */
+  recentExceptions(n: number, keep: (x: Exception) => boolean): Promise<Exception[]>;
   /**
-   * The user's Subscribed channels, asked only while an enabled remove Rule has `skipSubscribed`. Undefined
-   * when no list is usable (never read, signed out, the page changed). A private context never starts a read.
+   * The user's YouTube Subscribed channels, asked only while a YouTube batch meets an enabled remove Rule with
+   * `skipSubscribed`. Undefined when no list is usable (never read, signed out, the page changed). A private
+   * context never starts a read.
    */
   subscriptions?(ctx: JudgeContext): Promise<SubscribedChannels | undefined>;
   /** Records for these videos whose rulesVersion matches (store/local.ts getVerdicts). */
@@ -117,7 +119,10 @@ export interface TryTitleInput {
   title: string;
   channelName?: string;
   durationSec?: number;
+  /** A YouTube video's address or ID. */
   thumbnailUrl?: string;
+  /** The Site the title is tried on, so only its Rules apply. YouTube when unset. */
+  site?: SiteId;
 }
 
 export type TryTitleResult = { result: TileResult; costUsd: number } | { error: ReasonCode };
@@ -221,17 +226,24 @@ export function createJudge(deps: JudgeDeps): Judge {
   const thumbSem = new Semaphore(THUMBNAIL_IN_FLIGHT);
   const sleep = deps.sleep ?? defaultSleep;
   const decisionsDeps: DecisionsDeps = { fetch: deps.fetch, sleep, now: () => deps.now(), timeoutMs: deps.timeouts?.requestMs, log: deps.log };
-  let exactMemo: { version: string; compiled: CompiledExact } | undefined;
+  const exactMemo = new Map<SiteId, { version: string; compiled: CompiledExact }>();
 
-  const compiledFor = (rules: Rule[], regexEnabled: boolean): CompiledExact => {
+  const compiledFor = (site: SiteId, rules: Rule[], regexEnabled: boolean): CompiledExact => {
     const version = exactVersion(rules, regexEnabled);
-    if (exactMemo?.version !== version) exactMemo = { version, compiled: compileExact(rules, regexEnabled) };
-    return exactMemo.compiled;
+    let memo = exactMemo.get(site);
+    if (memo?.version !== version) exactMemo.set(site, (memo = { version, compiled: compileExact(rules, regexEnabled) }));
+    return memo.compiled;
   };
 
   async function run(items: TileFacts[], ctx: JudgeContext, opts: RunOptions): Promise<JudgeResult> {
-    const [settings, allRules] = await Promise.all([deps.settings(), deps.rules()]);
-    const rv = computeRulesVersion(allRules, settings);
+    const [settings, everyRule] = await Promise.all([deps.settings(), deps.rules()]);
+    // Content compares Verdicts with this one, which every Rule changes.
+    const rv = computeRulesVersion(everyRule, settings);
+    // One Site per batch (the router checks), judged only against the Rules that work there (ADR 0012). The Verdict
+    // cache keys on those, so a Rule for another Site never voids this Site's cached answers.
+    const site = items[0] ? SURFACE_SITE[items[0].surface] : 'youtube';
+    const allRules = rulesOn(everyRule, site);
+    const siteRv = computeRulesVersion(allRules, settings);
     const custom = settings.engine === 'custom';
     // A direct Decision provider (§12): its own address, model and key, no OpenRouter fallback chain.
     const direct = settings.engine === 'direct' ? settings.direct : undefined;
@@ -247,10 +259,11 @@ export function createJudge(deps: JudgeDeps): Judge {
     const keepRules = rules.filter((r) => r.polarity === 'keep');
     const { topicRemove, topicKeep, thumbnail } = modelRules(rules);
     const hasThumb = thumbnail.length > 0;
-    const compiled = compiledFor(allRules, settings.regexEnabled);
+    const compiled = compiledFor(site, allRules, settings.regexEnabled);
 
-    // REQ-RULE-14: remove Rules that never remove a Tile from a Subscribed channel.
-    const skipping = opts.ignoreSubscriptions ? [] : activeRules(rules).filter((r) => r.polarity === 'remove' && r.skipSubscribed === true);
+    // REQ-RULE-14: remove Rules that never remove a Tile from a Subscribed channel. The list is the user's YouTube
+    // subscriptions, so another Site's batch never reads it and those Rules remove its Tiles as usual.
+    const skipping = opts.ignoreSubscriptions || site !== 'youtube' ? [] : activeRules(rules).filter((r) => r.polarity === 'remove' && r.skipSubscribed === true);
     const skippingIds = new Set(skipping.map((r) => r.id));
     const subscriptions = skipping.length > 0 ? await deps.subscriptions?.(ctx) : undefined;
     const fromSubscribed = subscriptions ? subscribedMatcher(subscriptions) : undefined;
@@ -263,7 +276,7 @@ export function createJudge(deps: JudgeDeps): Judge {
         thumbnail: thumbnail.filter(applies),
         rulesByRef: new Map([...rulesByRef].filter(([, r]) => applies(r))),
         hasTopicRules: remove.length + topicKeep.length > 0,
-        cacheRv: cacheVersion(rv, skippedRefs),
+        cacheRv: cacheVersion(siteRv, skippedRefs),
       };
     };
     const fullView = viewWithout(new Set());
@@ -361,7 +374,7 @@ export function createJudge(deps: JudgeDeps): Judge {
         const fullPass = overLimit ? [] : wanted;
         const keepPass = modelSlots.filter((s) => s.exact.kind === 'remove' && s.text?.pKeep === undefined);
         if (fullPass.length + keepPass.length > 0) {
-          const exceptions = fullPass.some((s) => s.view.topicRemove.length > 0) ? await deps.recentExceptions(MAX_KEPT_EXAMPLES) : [];
+          const exceptions = fullPass.some((s) => s.view.topicRemove.length > 0) ? await deps.recentExceptions(MAX_KEPT_EXAMPLES, exampleOn(everyRule, site)) : [];
           const keepOnlyIds = new Set(keepPass.map((s) => s.facts.videoId));
           // More Topic Keep rules than fit next to a choice question in 64 go to extra keep-only requests.
           const keepGroups = topicKeep.length > MAX_KEEP_RULES_PER_REQUEST ? chunk(topicKeep, MAX_KEEP_RULES_PER_REQUEST) : [topicKeep];
@@ -462,7 +475,7 @@ export function createJudge(deps: JudgeDeps): Judge {
                   s.thumb = { p: 0, model: models.image };
                   s.thumbKept = true;
                 };
-                const dataUrl = await fetchThumbnail(deps.fetch, s.facts.videoId, deps.timeouts?.thumbnailMs);
+                const dataUrl = await fetchThumbnail(deps.fetch, s.facts, deps.timeouts?.thumbnailMs);
                 if (!dataUrl) return keepTile();
                 const built = buildThumbnailRequest(s.view.thumbnail, s.facts, dataUrl, { model: models.image });
                 if (!(await stillAllowed([s]))) return;
@@ -550,8 +563,10 @@ export function createJudge(deps: JudgeDeps): Judge {
       const channelName = typeof input.channelName === 'string' && input.channelName.trim() ? input.channelName.trim() : undefined;
       const d = input.durationSec;
       if (d !== undefined && !(typeof d === 'number' && Number.isFinite(d) && d >= 0)) return { error: 'invalidInput' };
+      const site = input.site ?? 'youtube';
       let videoId = TRY_TITLE_ID;
       if (typeof input.thumbnailUrl === 'string' && input.thumbnailUrl.trim()) {
+        if (site !== 'youtube') return { error: 'invalidInput' };
         const parsed = parseThumbnailInput(input.thumbnailUrl);
         if (!parsed) return { error: 'invalidInput' };
         videoId = parsed;
@@ -560,7 +575,7 @@ export function createJudge(deps: JudgeDeps): Judge {
       if (!allowed.ok) return { error: allowed.reason };
       const tile: TileFacts = {
         videoId,
-        surface: 'home',
+        surface: site === 'bilibili' ? 'bilibiliHome' : 'home',
         title,
         ...(channelName ? { channelName } : {}),
         ...(d !== undefined ? { durationSec: d } : {}),

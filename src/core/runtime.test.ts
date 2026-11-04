@@ -6,7 +6,8 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   generation: 7,
   enabled: true,
   mode: 'review',
-  surfaces: { home: true, watchSidebar: true, shortsShelf: false, search: true, channel: true, endScreen: true },
+  sites: { youtube: true, bilibili: true },
+  surfaces: { home: true, watchSidebar: true, shortsShelf: false, search: true, channel: true, endScreen: true, bilibiliHome: true, bilibiliVideoSidebar: true },
   notificationStyle: 'summary',
   dailyCap: 5000,
   escalationMode: 'suggest',
@@ -138,8 +139,13 @@ describe('computeRuntime: ok details', () => {
   it('copies settings, forces unsupported Surfaces off and passes reviewPending through', () => {
     const snap = computeRuntime(inputs({ reviewPending: 2 }));
     expect(snap).toMatchObject({ enabled: true, mode: 'review', settingsGeneration: 7, rulesVersion: 'rv', reviewPending: 2 });
-    expect(snap.surfaces).toEqual({ home: true, watchSidebar: true, shortsShelf: false, search: false, channel: false, endScreen: false });
+    expect(snap.surfaces).toEqual({ home: true, watchSidebar: true, shortsShelf: false, search: false, channel: false, endScreen: false, bilibiliHome: true, bilibiliVideoSidebar: false });
     expect('reviewPending' in computeRuntime(inputs())).toBe(false);
+  });
+
+  it("turns off every Surface of a Site that is off, and leaves the other Site's as they are", () => {
+    const snap = computeRuntime(inputs({ settings: settings({ sites: { youtube: true, bilibili: false } }) }));
+    expect(snap.surfaces).toEqual({ home: true, watchSidebar: true, shortsShelf: false, search: false, channel: false, endScreen: false, bilibiliHome: false, bilibiliVideoSidebar: false });
   });
 });
 

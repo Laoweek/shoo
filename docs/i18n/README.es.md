@@ -4,9 +4,9 @@
 
 La versión de referencia es el [README en inglés](../../README.md), y esta traducción puede ir por detrás de él.
 
-Shoo es una extensión para Chrome y Firefox que quita las recomendaciones de YouTube que no quieres ver. Escribes reglas (Rules) en lenguaje normal, Shoo compara con ellas cada vídeo recomendado y, cuando uno coincide, usa las opciones propias de YouTube **Not interested** (No me interesa) o **Don't recommend channel** (No recomendar este canal), para que YouTube aprenda de ello. Cada eliminación indica la regla que la causó. Mientras sigues en la página, un clic la deshace, y Keep evita que Shoo vuelva a quitar ese vídeo.
+Shoo es una extensión para Chrome y Firefox que quita las recomendaciones de YouTube y Bilibili que no quieres ver. Escribes reglas (Rules) en lenguaje normal, Shoo compara con ellas cada vídeo recomendado y, cuando uno coincide, usa las opciones propias del sitio **Not interested** (No me interesa) o **Don't recommend channel** (No recomendar este canal), para que el sitio aprenda de ello. Cada eliminación indica la regla que la causó. Mientras sigues en la página, un clic la deshace, y Keep evita que Shoo vuelva a quitar ese vídeo.
 
-Shoo no está afiliado a YouTube ni a Google, ni cuenta con su respaldo.
+Shoo no está afiliado a YouTube, Google ni Bilibili, ni cuenta con su respaldo.
 
 <p align="center">
   <img src="../release/screenshots/mock-1-review-chip.png" alt="Una etiqueta Remove? sobre un vídeo de la barra lateral de la página de reproducción, con la regla que coincidió y los botones Remove y Keep" width="640">
@@ -22,7 +22,7 @@ La captura superior y «Lo que hizo Shoo» se tomaron en una página de reproduc
 
 ```mermaid
 flowchart LR
-  T[Vídeo recomendado en YouTube] --> K{¿Regla de conservación o excepción?}
+  T[Vídeo recomendado en YouTube o Bilibili] --> K{¿Regla de conservación o excepción?}
   K -- sí --> Keep[Keep]
   K -- no --> E{¿Regla exacta o canal vetado?}
   E -- sí --> V[Remove]
@@ -30,25 +30,26 @@ flowchart LR
   M --> V
   M --> Keep
   V --> Mode{Modo}
-  Mode -- Auto --> A[Acción propia de YouTube]
+  Mode -- Auto --> A[Acción propia del sitio]
   Mode -- Review --> C[Etiqueta sobre el vídeo: Remove / Keep]
   Mode -- Dry-run --> L[Solo una etiqueta]
   C -- Remove --> A
 ```
 
-- **Reglas.** Una regla de tema (Topic rule) es una sola frase en lenguaje normal, como «Vídeos de reacciones, en los que alguien mira otro contenido y reacciona». Una regla de miniatura (Thumbnail rule) describe lo que muestra una miniatura. Las reglas exactas (Exact rules) filtran por canal, por palabra clave o patrón en el título, por duración, por número de visualizaciones, o por Shorts o directos, en tu dispositivo y sin ningún modelo. Las reglas de conservación (Keep rules) protegen lo que siempre quieres ver, y pulsar Keep (Conservar) en un vídeo concreto añade una excepción (Exception). Una regla de eliminación se puede configurar para que no afecte a los canales a los que estás suscrito.
+- **Reglas.** Una regla de tema (Topic rule) es una sola frase en lenguaje normal, como «Vídeos de reacciones, en los que alguien mira otro contenido y reacciona». Una regla de miniatura (Thumbnail rule) describe lo que muestra una miniatura. Las reglas exactas (Exact rules) filtran por canal, por palabra clave o patrón en el título, por duración, por número de visualizaciones, o por Shorts o directos, en tu dispositivo y sin ningún modelo. Las reglas de conservación (Keep rules) protegen lo que siempre quieres ver, y pulsar Keep (Conservar) en un vídeo concreto añade una excepción (Exception). Una regla de eliminación se puede configurar para que no afecte a los canales de YouTube a los que estás suscrito.
 - **Modelo de decisión.** Las reglas de tema y de miniatura las juzga un modelo de decisión (Decision model), un modelo que responde a preguntas tipadas con probabilidades. Por defecto es `cloudflare/clef-flash` a través de la Decisions API de OpenRouter, con tu propia clave de OpenRouter. También puedes conectarte directamente a Cloudflare, TypeSafe o Perplexity con su clave, o ejecutar un modelo de decisión en tu ordenador con Ollama, llama.cpp o LM Studio. Settings (Ajustes) también admite un modelo de chat compatible con OpenAI, marcado como menos preciso. La intensidad del filtrado (Filtering strength: Cautious, Balanced o Eager, es decir, prudente, equilibrada o decidida) fija cuánta seguridad debe tener el modelo antes de que una regla elimine un vídeo.
-- **Acciones propias de YouTube.** Shoo nunca oculta nada. Abre el menú del vídeo y pulsa Not interested, o Don't recommend channel en el caso de un canal vetado (Banned channel), y para eso necesitas haber iniciado sesión en YouTube.
+- **Acciones propias del sitio.** Shoo nunca oculta nada. Abre el menú del vídeo y pulsa Not interested, o Don't recommend channel en el caso de un canal vetado (Banned channel), y para eso necesitas haber iniciado sesión en YouTube. En Bilibili son 内容不感兴趣 y 不想看此UP主.
 - **Modos.** Review (Revisar) te pregunta primero sobre el propio vídeo. Auto (Automático) elimina en el acto. Dry-run (Simulación) solo etiqueta lo que haría.
-- **Dónde.** En la página de inicio de YouTube, en la barra lateral de la página de reproducción y en la fila de Shorts, en el ordenador. Dos interruptores opcionales también piden a YouTube que muestre menos filas de Shorts y de juegos en la página de inicio.
+- **Dónde.** En la página de inicio de YouTube, en la barra lateral de la página de reproducción y en la fila de Shorts, y en la página de inicio de Bilibili, en el ordenador. Puedes desactivar cualquiera de los dos sitios en Settings, Sites (Ajustes, Sitios). Dos interruptores opcionales también piden a YouTube que muestre menos filas de Shorts y de juegos en la página de inicio.
+- **Las reglas funcionan en los dos sitios** salvo que limites una a YouTube o a Bilibili al añadirla, o más tarde desde su fila. Una regla de canal creada desde un vídeo (Always keep this channel, es decir, conservar siempre este canal, o un veto propuesto por una escalada (Escalation)) funciona solo en el sitio de ese vídeo, y las reglas de Shorts, directos, canales de artista (Artist channel) y número de visualizaciones funcionan solo en YouTube.
 
 Pagas al proveedor a través de tu propia clave. Con OpenRouter y clef-flash, una calibración con 10 reglas de tema midió unos 2,5 céntimos de dólar estadounidense por cada 1.000 vídeos, y menos con menos reglas. Shoo recuerda cada respuesta, así que un vídeo no se envía dos veces con las mismas reglas, y un límite diario restringe cuántos vídeos llegan al modelo en un día.
 
 ## Privacidad
 
-Nada llega a un proveedor de modelos hasta que aceptas en la primera pantalla, y «Use Exact rules only» (Usar solo reglas exactas) no les envía absolutamente nada. La única solicitud que Shoo hace por su cuenta es a la propia YouTube: cuando una regla está configurada para no afectar a los canales a los que estás suscrito, Shoo lee tu página de suscripciones, con tu sesión iniciada, y guarda la lista en tu dispositivo.
+Nada llega a un proveedor de modelos hasta que aceptas en la primera pantalla, y «Use Exact rules only» (Usar solo reglas exactas) no les envía absolutamente nada. Aparte de las solicitudes al modelo, Shoo solo se comunica con los sitios en los que funciona. Carga miniaturas de los servidores de imágenes de YouTube y Bilibili, para comprobarlas con una regla de miniatura y para mostrarlas en las páginas propias de Shoo. Cuando una regla está configurada para no afectar a los canales a los que estás suscrito, Shoo lee tu página de suscripciones de YouTube, con tu sesión iniciada, y guarda la lista en tu dispositivo.
 
-Una vez que aceptas, Shoo envía de cada vídeo su título, el nombre del canal, la duración y el lugar de YouTube donde apareció, y la miniatura solo si tienes una regla de miniatura. Cada solicitud incluye además el texto de tus reglas de tema, de tus reglas de conservación de tema (Topic Keep rules) y de tus reglas de miniatura, y los títulos y nombres de canal de hasta 10 vídeos que conservaste. Todo ello va al proveedor de decisión (Decision provider) que elegiste: OpenRouter y el proveedor del modelo al que OpenRouter lo dirige (Cloudflare por defecto, TypeSafe u OpenAI como alternativas, o el proveedor de otro modelo que elijas), Cloudflare, TypeSafe o Perplexity directamente, o un modelo en tu ordenador, en cuyo caso nada sale del dispositivo. Si configuras un modelo de chat en Settings, es ese modelo el que recibe los mismos datos, sin las miniaturas.
+Una vez que aceptas, Shoo envía de cada vídeo su título, el nombre del canal, la duración y el lugar de YouTube o Bilibili donde apareció, y la miniatura solo si tienes una regla de miniatura. Cada solicitud incluye además el texto de tus reglas de tema, de tus reglas de conservación de tema (Topic Keep rules) y de tus reglas de miniatura que funcionan en ese sitio, y los títulos y nombres de canal de hasta 10 vídeos que conservaste. Todo ello va al proveedor de decisión (Decision provider) que elegiste: OpenRouter y el proveedor del modelo al que OpenRouter lo dirige (Cloudflare por defecto, TypeSafe u OpenAI como alternativas, o el proveedor de otro modelo que elijas), Cloudflare, TypeSafe o Perplexity directamente, o un modelo en tu ordenador, en cuyo caso nada sale del dispositivo. Si configuras un modelo de chat en Settings, es ese modelo el que recibe los mismos datos, sin las miniaturas.
 
 Shoo nunca envía a un proveedor de modelos direcciones web, ID de vídeo, cookies, historial de reproducciones, comentarios ni datos de tu cuenta. No se envía nada al desarrollador y no hay analítica. La lista completa, el almacenamiento y la conservación de los datos están en la [política de privacidad](https://laoweek.github.io/shoo/release/privacy-policy.html). Preguntas: shoo@piran.xyz.
 
@@ -107,7 +108,7 @@ El sistema de calibración de [`scripts/calibration/`](../../scripts/calibration
 | Lee | Para |
 |---|---|
 | [CONTEXT.md](../../CONTEXT.md) | Las palabras que se usan en el código, la documentación y la interfaz (Tile, Surface, Rule, Verdict, Exception…) |
-| [docs/spec/](../spec/) | Los requisitos y las especificaciones de la arquitectura, el motor de decisión, la integración con YouTube, la interfaz y la publicación en tiendas. La fuente de verdad sobre el comportamiento |
+| [docs/spec/](../spec/) | Los requisitos y las especificaciones de la arquitectura, el motor de decisión, la integración con YouTube y Bilibili, la interfaz y la publicación en tiendas. La fuente de verdad sobre el comportamiento |
 | [docs/adr/](../adr/) | Por qué se tomaron las decisiones difíciles de revertir |
 | [DESIGN.md](../../DESIGN.md) | El sistema visual, generado a partir de la compilación |
 | [PRODUCT.md](../../PRODUCT.md) | Para quién es Shoo y qué promete |

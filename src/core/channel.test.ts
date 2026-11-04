@@ -64,6 +64,7 @@ describe('Rule and Tile identities', () => {
       key: 'jake reacts',
       handle: 'jakereacts',
       id: 'UC9',
+      site: 'youtube', // only YouTube has handles
     });
     expect(ruleChannelIdentity(rule())).toEqual({ key: 'jake reacts' });
     expect(ruleChannelIdentity(rule({}, ' '))).toBeUndefined();
@@ -81,7 +82,15 @@ describe('Rule and Tile identities', () => {
       isUpcoming: false,
       isMembersOnly: false,
     };
-    expect(tileChannelIdentity(tile)).toEqual({ key: 'jake reacts', handle: 'jakereacts' });
+    expect(tileChannelIdentity(tile)).toEqual({ key: 'jake reacts', handle: 'jakereacts', site: 'youtube' });
     expect(tileChannelIdentity({ ...tile, channelName: undefined, channelHandle: undefined })).toBeUndefined();
+  });
+
+  it('never matches channels on different Sites, while a Rule without a Site matches by name on either', () => {
+    const tile: TileFacts = { videoId: 'BV1FIXTURE01', surface: 'bilibiliHome', title: 't', channelName: 'Jake Reacts', isShort: false, isLive: false, isUpcoming: false, isMembersOnly: false };
+    const onBilibili = tileChannelIdentity(tile)!;
+    expect(channelsMatch(ruleChannelIdentity({ ...rule({ channelName: 'Jake Reacts' }), site: 'youtube' })!, onBilibili)).toBe(false);
+    expect(channelsMatch(ruleChannelIdentity({ ...rule({ channelName: 'Jake Reacts' }), site: 'bilibili' })!, onBilibili)).toBe(true);
+    expect(channelsMatch(ruleChannelIdentity(rule({ channelName: 'Jake Reacts' }))!, onBilibili)).toBe(true);
   });
 });

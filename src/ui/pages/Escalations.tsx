@@ -47,7 +47,7 @@ export function Escalations({ rules, variant, class: cls }: EscalationsProps) {
         return (
           <li
             key={e.channelKey}
-            class={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-[10px] bg-lit ${variant === 'popup' ? 'px-3 py-2.5' : 'px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]'}`}
+            class={`grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-[14px] bg-lit ${variant === 'popup' ? 'px-3 py-2.5' : 'px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]'}`}
           >
             <span aria-hidden="true" class="mt-[7px] size-[7px] self-start rounded-full bg-ink" />
             {variant === 'popup' ? (

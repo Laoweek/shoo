@@ -4,15 +4,16 @@
 import { ChevronDown, Plus, Trash2 } from 'lucide-preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { validateRegex } from '~/core/regex';
-import { isBannedChannel, RULE_NAME_MAX } from '~/core/rules';
+import { isBannedChannel, RULE_NAME_MAX, ruleSite, siteChoosable } from '~/core/rules';
+import { SITE_IDS, SITE_NAMES } from '~/core/sites';
 import { SUBSCRIPTIONS_MAX_AGE_MS } from '~/core/subscriptions';
-import type { Polarity, Rule, RuleKind, RuleOp } from '~/core/types';
+import type { Polarity, Rule, RuleKind, RuleOp, SiteId } from '~/core/types';
 import { t } from '~/i18n';
 import { sendMessage } from '~/messaging/protocol';
 import { hitsThisWeek, type RuleStats, type StoredSubscriptions } from '~/store/local';
 import { readActivity, readSubscriptions, watchSubscriptions } from '~/store/read';
 import { Button, RuleRef, Switch, ruleLabel } from '../components';
-import { count, weekStart, when } from './format';
+import { count, ruleSiteLabel, weekStart, when } from './format';
 import { useAsync } from './hooks';
 import { Select, Status, TextInput, focusHeading } from './parts';
 import {
@@ -26,6 +27,7 @@ import {
   needsModel,
   offeredKinds,
   ruleHints,
+  sitePatch,
   sortByActivity,
   takesHints,
   textPatch,
@@ -65,18 +67,18 @@ export function RuleTable({ rules, stats, now, regexEnabled, truncatedRefs, onHo
   const [open, setOpen] = useState<string>();
   const sorted = sortByActivity(rules, stats, now);
   return (
-    <table aria-labelledby={labelledBy} class="w-full table-fixed border-collapse border-t border-line-strong text-left">
+    <table aria-labelledby={labelledBy} class="w-full table-fixed border-collapse text-left">
       {/* Narrow windows shrink the Kind column to zero width (it keeps its place, so the expanded row's colSpan holds)
           and show the kind under the Rule text instead. */}
       <thead>
-        <tr class="h-[30px] border-b border-line-strong text-[12px] text-muted">
-          <th scope="col" class="w-[64px] px-2 font-semibold">{t('rules.table.rule')}</th>
-          <th scope="col" class="w-[176px] px-2 font-semibold max-sm:w-0 max-sm:p-0">
+        <tr class="h-[34px] border-b border-line-strong text-[13px] text-muted">
+          <th scope="col" class="w-[64px] px-2 font-medium max-sm:w-[60px]">{t('rules.table.rule')}</th>
+          <th scope="col" class="w-[176px] px-2 font-medium max-sm:w-0 max-sm:p-0">
             <span class="max-sm:hidden">{t('rules.table.kind')}</span>
           </th>
-          <th scope="col" class="px-2 font-semibold">{t('rules.table.text')}</th>
-          <th scope="col" class="w-[76px] px-2 text-right font-semibold">{t('rules.table.week')}</th>
-          <th scope="col" class="w-[48px] px-2 font-semibold">{t('rules.table.on')}</th>
+          <th scope="col" class="px-2 font-medium">{t('rules.table.text')}</th>
+          <th scope="col" class="w-[76px] px-2 text-right font-medium max-sm:w-[52px] max-sm:px-1">{t('rules.table.week')}</th>
+          <th scope="col" class="w-[54px] px-2 font-medium">{t('rules.table.on')}</th>
           <th scope="col" class="w-[36px] px-0">
             <span class="sr-only">{t('rules.table.more')}</span>
           </th>
@@ -131,6 +133,8 @@ function RuleRow({ rule, stats, now, regexEnabled, truncated, open, onToggle, on
   const hintId = `rule-hint-${rule.id}`;
   const hints = takesHints(rule.polarity, rule.kind) ? (editing ? ruleHints(text) : []) : undefined;
   const notes: string[] = [];
+  const site = ruleSite(rule);
+  if (site) notes.push(ruleSiteLabel(site));
   if (rule.kind === 'channel' && !keep) notes.push(t('rules.kind.channelAction'));
   if (rule.skipSubscribed && offersSkipSubscribed(rule)) notes.push(t('rules.skipSubscribed.note'));
   if (regexOff) notes.push(t('rules.regex.disabledNote'));
@@ -175,7 +179,7 @@ function RuleRow({ rule, stats, now, regexEnabled, truncated, open, onToggle, on
   const len = [...text].length;
   const kind = (
     <>
-      {kindLabel(rule.kind, rule.polarity)}
+      <span class="text-ink">{kindLabel(rule.kind, rule.polarity)}</span>
       {notes.map((n) => (
         <small key={n} class="block text-[12px]">
           {n}
@@ -188,15 +192,15 @@ function RuleRow({ rule, stats, now, regexEnabled, truncated, open, onToggle, on
       <tr
         onMouseEnter={() => onHover?.(true)}
         onMouseLeave={() => onHover?.(false)}
-        class={`border-b border-line align-middle ${open ? 'border-b-transparent bg-tint' : 'hover:bg-tint'}`}
+        class={`h-[60px] border-b border-line align-middle ${open ? 'border-b-transparent bg-tint' : 'hover:bg-tint'}`}
       >
-        <td class="px-2 py-2">
+        <td class="px-2 py-1.5 max-sm:pr-0">
           <RuleRef rule={rule} show="ref" off={off} />
         </td>
-        <td class="px-2 py-2 text-[13px] leading-tight text-muted max-sm:p-0">
+        <td class="px-2 py-1.5 text-[13px] leading-tight text-muted max-sm:p-0">
           <div class="max-sm:hidden">{kind}</div>
         </td>
-        <td class="px-2 py-2">
+        <td class="px-2 py-1.5">
           {hasName(rule.kind) && (
             <input
               type="text"
@@ -214,7 +218,7 @@ function RuleRow({ rule, stats, now, regexEnabled, truncated, open, onToggle, on
                   setError(undefined);
                 }
               }}
-              class={`-mx-2 block h-6 w-[calc(100%+16px)] rounded-[6px] border border-transparent bg-transparent px-2 font-semibold text-ellipsis placeholder:font-normal placeholder:text-muted hover:border-line-strong focus:border-edge ${off ? 'text-muted' : 'text-ink'}`}
+              class={`-mx-2 block h-6 w-[calc(100%+16px)] rounded-[8px] border border-transparent bg-transparent px-2 font-semibold text-ellipsis placeholder:font-normal placeholder:text-muted hover:border-line-strong focus:border-ink focus:bg-paper ${off ? 'text-muted' : 'text-ink'}`}
             />
           )}
           <input
@@ -238,7 +242,7 @@ function RuleRow({ rule, stats, now, regexEnabled, truncated, open, onToggle, on
                 setError(undefined);
               }
             }}
-            class={`-mx-2 w-[calc(100%+16px)] rounded-[6px] border border-transparent bg-transparent px-2 text-ellipsis hover:border-line-strong focus:border-edge ${hasName(rule.kind) ? 'block h-6' : 'h-[30px]'} ${off ? 'text-muted' : 'text-ink'}`}
+            class={`-mx-2 w-[calc(100%+16px)] rounded-[8px] border border-transparent bg-transparent px-2 text-ellipsis hover:border-line-strong focus:border-ink focus:bg-paper ${hasName(rule.kind) ? 'block h-6 text-[13px] text-muted' : 'h-[30px]'} ${off ? 'text-muted' : hasName(rule.kind) ? '' : 'text-ink'}`}
           />
           {/* Narrow windows drop the Kind column, so the kind sits under the Rule text instead. */}
           <span class="block text-[13px] leading-tight text-muted sm:hidden">{kind}</span>
@@ -256,7 +260,7 @@ function RuleRow({ rule, stats, now, regexEnabled, truncated, open, onToggle, on
             </span>
           )}
         </td>
-        <td class={`num px-2 py-2 text-right font-semibold ${off ? 'text-muted' : ''}`}>{count(week)}</td>
+        <td class={`num px-2 py-1.5 text-right text-[15px] font-semibold max-sm:px-1 ${off ? 'text-muted' : ''}`}>{count(week)}</td>
         <td class="px-1 py-2">
           <Switch checked={enabled} onChange={(v) => void toggle(v)} label={t('rules.row.on', { ref: rule.ref })} />
         </td>
@@ -267,9 +271,9 @@ function RuleRow({ rule, stats, now, regexEnabled, truncated, open, onToggle, on
             aria-controls={open ? panelId : undefined}
             aria-label={open ? t('rules.row.collapse', { ref: rule.ref }) : t('rules.row.expand', { ref: rule.ref })}
             onClick={onToggle}
-            class="grid size-[30px] cursor-pointer place-items-center rounded-[6px] text-muted hover:bg-lit hover:text-ink"
+            class="press grid size-[30px] cursor-pointer place-items-center rounded-full text-muted hover:bg-tint hover:text-ink"
           >
-            <ChevronDown size={16} strokeWidth={1.75} aria-hidden="true" class={`transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} />
+            <ChevronDown size={16} strokeWidth={2} aria-hidden="true" class={`transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} />
           </button>
         </td>
       </tr>
@@ -303,8 +307,15 @@ function RulePanel({ rule, stats, now }: { rule: Rule; stats: RuleStats; now: nu
     else focusHeading();
   };
 
+  const moveTo = async (site: SiteId | undefined) => {
+    setError(false);
+    const res = await mutate([sitePatch(rule, site)]);
+    if (!res.ok) setError(true);
+  };
+
   return (
     <div class="grid gap-4">
+      <WorksOn rule={rule} onChange={(site) => void moveTo(site)} />
       {events.length > 0 && (
         <div>
           <div class="mb-2 flex items-baseline justify-between gap-3">
@@ -315,7 +326,7 @@ function RulePanel({ rule, stats, now }: { rule: Rule; stats: RuleStats; now: nu
           </div>
           <ThumbWall
             label={wallLabel}
-            items={videos.slice(0, 24).map((e) => ({ id: e.id, videoId: e.videoId!, title: e.title ?? '', colour: rule.colour }))}
+            items={videos.slice(0, 24).map((e) => ({ id: e.id, videoId: e.videoId!, cover: e.cover, title: e.title ?? '', colour: rule.colour }))}
           />
         </div>
       )}
@@ -325,7 +336,7 @@ function RulePanel({ rule, stats, now }: { rule: Rule; stats: RuleStats; now: nu
         {stat?.lastHitAt ? <span class="num">{t('rules.row.lastHit', { time: when(stat.lastHitAt, now) })}</span> : null}
         <span class="flex-1" />
         <Button variant="text" onClick={() => void del()} class="text-[13px]">
-          <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
+          <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
           {t('rules.row.delete', { ref: rule.ref })}
         </Button>
       </div>
@@ -338,10 +349,16 @@ function RulePanel({ rule, stats, now }: { rule: Rule; stats: RuleStats; now: nu
   );
 }
 
-/** Every remove Rule but a Banned channel, which names one channel already (REQ-RULE-14). */
-const offersSkipSubscribed = (rule: Rule): boolean => rule.polarity === 'remove' && !isBannedChannel(rule);
+/**
+ * Every remove Rule but a Banned channel, which names one channel already (REQ-RULE-14). Subscribed channels are
+ * YouTube's list, so a Rule that works only on another Site has nothing to skip.
+ */
+function offersSkipSubscribed(rule: Rule): boolean {
+  const site = ruleSite(rule);
+  return rule.polarity === 'remove' && !isBannedChannel(rule) && (site === undefined || site === 'youtube');
+}
 
-/** The expanded row's "Never shoo channels I'm subscribed to" switch, with what Shoo knows of the list. */
+/** The expanded row's "Never shoo YouTube channels I'm subscribed to" switch, with what Shoo knows of the list. */
 function SkipSubscribed({ rule, now }: { rule: Rule; now: number }) {
   const [on, setOn] = useState(rule.skipSubscribed === true);
   const [error, setError] = useState(false);
@@ -377,6 +394,22 @@ function SkipSubscribed({ rule, now }: { rule: Rule; now: number }) {
   );
 }
 
+/**
+ * Where a Rule works (ADR 0012), with a sentence saying why when it cannot change (a kind bound to YouTube, a channel
+ * Rule made from a video).
+ */
+function WorksOn({ rule, onChange }: { rule: Rule; onChange: (site: SiteId | undefined) => void }) {
+  const site = ruleSite(rule);
+  const locked = !siteChoosable(rule);
+  const why = rule.kind === 'channel' && site ? t('rules.site.channel', { site: SITE_NAMES[site] }) : t('rules.site.youtubeKind');
+  return (
+    <div class="grid gap-1">
+      <SiteChecks id={`works-on-${rule.id}`} site={site} locked={locked} onChange={onChange} />
+      {locked && <p class="m-0 text-[13px] text-muted">{why}</p>}
+    </div>
+  );
+}
+
 function subscriptionsStatus(stored: StoredSubscriptions | undefined, now: number): string {
   const list = stored?.list && now - stored.list.readAt < SUBSCRIPTIONS_MAX_AGE_MS ? stored.list : undefined;
   if (list) {
@@ -384,6 +417,41 @@ function subscriptionsStatus(stored: StoredSubscriptions | undefined, now: numbe
     return t('rules.skipSubscribed.read', { channels, time: when(list.readAt, now) });
   }
   return stored && stored.failures > 0 ? t('rules.skipSubscribed.unreadable') : t('rules.skipSubscribed.pending');
+}
+
+/**
+ * A checkbox per Site, all checked for a Rule on all sites. A Rule works on at least one Site, so the last checked box
+ * cannot be cleared. Rule.site holds one Site, which covers every choice while there are two Sites.
+ */
+function SiteChecks({ id, site, locked, onChange }: { id: string; site: SiteId | undefined; locked: boolean; onChange: (site: SiteId | undefined) => void }) {
+  const on = SITE_IDS.filter((s) => site === undefined || site === s);
+  const toggle = (s: SiteId, checked: boolean) => {
+    const next = checked ? [...on, s] : on.filter((x) => x !== s);
+    onChange(next.length === SITE_IDS.length ? undefined : next[0]);
+  };
+  return (
+    <div role="group" aria-labelledby={`${id}-label`} class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+      <span id={`${id}-label`} class="font-semibold text-muted">
+        {t('rules.site.label')}
+      </span>
+      {SITE_IDS.map((s) => {
+        const checked = on.includes(s);
+        return (
+          <label key={s} class={`flex min-h-6 items-center gap-2 ${locked ? 'text-muted' : 'cursor-pointer'}`}>
+            <input
+              type="checkbox"
+              id={`${id}-${s}`}
+              checked={checked}
+              disabled={locked || (checked && on.length === 1)}
+              onChange={(e) => toggle(s, e.currentTarget.checked)}
+              class="size-4 shrink-0 cursor-pointer disabled:cursor-not-allowed"
+            />
+            {SITE_NAMES[s]}
+          </label>
+        );
+      })}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -395,7 +463,7 @@ export interface AddRuleProps {
   /** Consent and a key: Topic and Thumbnail kinds need the Decision model. */
   modelOk: boolean;
   /** Channel Keep rules go through keepChannel so a ban can be lifted (REQ-EXC-3). */
-  onKeepChannel?: (name: string) => Promise<void>;
+  onKeepChannel?: (name: string, site?: SiteId) => Promise<void>;
   onAdded?: (rule: Rule) => void;
 }
 
@@ -432,7 +500,7 @@ export function AddRule({ polarity, regexEnabled, modelOk, onKeepChannel, onAdde
     setError(undefined);
     try {
       if (polarity === 'keep' && draft.kind === 'channel' && onKeepChannel) {
-        await onKeepChannel(draft.text.trim());
+        await onKeepChannel(draft.text.trim(), draft.site);
         close();
         return;
       }
@@ -466,9 +534,9 @@ export function AddRule({ polarity, regexEnabled, modelOk, onKeepChannel, onAdde
           ref={addButton}
           type="button"
           onClick={() => setOpenForm(true)}
-          class="inline-flex h-[30px] cursor-pointer items-center gap-2 rounded-[6px] border border-edge px-3 font-semibold hover:bg-tint"
+          class="press inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-action pr-[18px] pl-3.5 font-semibold text-on-action hover:bg-action-hover"
         >
-          <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+          <Plus size={16} strokeWidth={2} aria-hidden="true" />
           {polarity === 'keep' ? t('keep.add') : t('rules.add')}
         </button>
       ) : (
@@ -483,7 +551,7 @@ export function AddRule({ polarity, regexEnabled, modelOk, onKeepChannel, onAdde
               class="w-auto"
               onChange={(e) => {
                 const kind = e.currentTarget.value as RuleKind;
-                setDraft((d) => ({ kind, text: d.text, name: d.name }));
+                setDraft((d) => ({ kind, text: d.text, name: d.name, site: d.site }));
                 setError(undefined);
               }}
             >
@@ -496,6 +564,13 @@ export function AddRule({ polarity, regexEnabled, modelOk, onKeepChannel, onAdde
             <DraftFields polarity={polarity} draft={draft} setDraft={setDraft} textRef={textRef} formId={formId} />
           </div>
           <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+            {/* A kind bound to YouTube shows where it works instead of a choice. */}
+            <SiteChecks
+              id={`${formId}-site`}
+              site={siteChoosable({ kind: draft.kind }) ? draft.site : 'youtube'}
+              locked={!siteChoosable({ kind: draft.kind })}
+              onChange={(site) => setDraft((d) => ({ ...d, site }))}
+            />
             {hasName(draft.kind) && (
               <>
                 <label class="sr-only" for={`${formId}-name`}>

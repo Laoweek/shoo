@@ -1,5 +1,7 @@
 /* In-page components (docs/spec/ui-design.md, Section 4). Hand-written, px only, tokens only.
-   Imported by src/ui/in-page.css, which is injected inline into every Shoo shadow root. */
+   Imported by src/ui/in-page.css, which is injected inline into every Shoo shadow root.
+   Floating surfaces are white cards with a soft shadow; in dark they also get a --line-strong ring, since a shadow
+   does not show on the Sites' dark grounds. */
 *,
 *::before,
 *::after {
@@ -23,10 +25,13 @@ button {
 .sw {
   display: inline-block;
   flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px var(--line-strong);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--edge); /* a Keep rule's hollow dot; a Rule's colour fills it (style) */
+}
+.sw[style] {
+  box-shadow: inset 0 0 0 1px var(--dot-ring);
 }
 /* The Rule tag (parts.tsx): swatch + the Rule's label, its name or else its text. The label is what shrinks first on
    every surface, to an ellipsis (the tooltip has the full Rule text). */
@@ -47,7 +52,7 @@ button {
 .muted {
   color: var(--muted);
 }
-/* src/youtube/mount.ts measures the narrowest width of a chip or label with data-measuring set: the label counts only
+/* src/content/mount.ts measures the narrowest width of a chip or label with data-measuring set: the label counts only
    as the room it needs to show a word, or a long label would always look too wide to sit beside YouTube's duration
    badge. With less room than that beside the badge, the chip or label sits above it. */
 :host([data-measuring]) .lb {
@@ -55,7 +60,8 @@ button {
   min-width: 40px;
 }
 
-/* Buttons. Full-chip buttons look 30 px tall and hit 44 px (::after); compact icon buttons are 24 px. */
+/* Buttons: pills ringed in --edge, the solid one in the action colour. Full-chip buttons look 30 px tall and hit
+   44 px (::after); compact icon buttons are 24 px circles. Pressing sinks them a little. */
 .btn {
   position: relative;
   display: inline-flex;
@@ -64,11 +70,12 @@ button {
   height: 30px;
   padding: 0 12px;
   border: 1px solid var(--edge);
-  border-radius: 6px;
-  background: transparent;
+  border-radius: 999px;
+  background: var(--paper);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
+  transition: transform 160ms var(--ease-spring), background-color 120ms ease-out;
 }
 .btn::after {
   content: '';
@@ -79,16 +86,25 @@ button {
   height: 44px;
   transform: translateY(-50%);
 }
-.btn:hover {
+.btn:hover,
+.ib:hover {
   background: var(--tint);
 }
-.btn.solid {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
+.btn:active,
+.ib:active {
+  transform: scale(0.96);
+  transition-duration: 80ms;
 }
-.btn.solid:hover {
-  opacity: 0.9;
+.btn.solid,
+.ib.solid {
+  border-color: var(--action);
+  background: var(--action);
+  color: var(--on-action);
+}
+.btn.solid:hover,
+.ib.solid:hover {
+  border-color: var(--action-hover);
+  background: var(--action-hover);
 }
 .ib {
   display: inline-grid;
@@ -97,23 +113,16 @@ button {
   height: 24px;
   padding: 0;
   border: 1px solid var(--edge);
-  border-radius: 6px;
-  background: transparent;
-}
-.ib:hover {
-  background: var(--tint);
-}
-.ib.solid {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
+  border-radius: 999px;
+  background: var(--paper);
+  transition: transform 160ms var(--ease-spring), background-color 120ms ease-out;
 }
 .ib svg {
   width: 16px;
   height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.75;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -127,16 +136,15 @@ button {
   background: none;
   font-weight: 600;
   white-space: nowrap;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
+  text-decoration: underline 1.5px var(--line-strong);
+  text-underline-offset: 4px;
 }
 .link:hover {
-  text-decoration-thickness: 2px;
+  text-decoration-color: var(--action);
 }
 
 /* Review chip and Dry-run label: overlay the thumbnail's bottom-left, clear of YouTube's duration badge
-   (src/youtube/mount.ts places and sizes the host). */
+   (src/content/mount.ts places and sizes the host). */
 .chip,
 .label {
   display: flex;
@@ -144,21 +152,26 @@ button {
   align-items: center;
   gap: 6px 10px;
   max-width: 100%;
-  border-radius: 10px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--paper) 96%, transparent);
   font-size: 13px;
   line-height: 1.35;
   pointer-events: auto;
 }
+/* The chip floats over a picture: a white card with a soft shadow. */
 .chip {
-  padding: 6px 6px 6px 10px;
-  box-shadow: var(--shadow);
+  padding: 4px 4px 4px 8px;
+  background: var(--paper);
   color: var(--ink);
+  box-shadow: var(--shadow-float);
+}
+:host([data-dark]) .chip {
+  box-shadow: 0 0 0 1px var(--line-strong), var(--shadow-float);
 }
 .chip.compact {
   flex-wrap: nowrap; /* one row: its width is what decides beside or above the badge */
   gap: 6px 8px;
-  padding: 4px 4px 4px 8px;
+  padding: 2px 2px 2px 6px;
 }
 .chip.compact .note {
   flex: none;
@@ -168,7 +181,7 @@ button {
 .chip > .eyes {
   padding-right: 8px;
   box-sizing: content-box;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--line-strong); /* .what's max-width counts this 1 px */
 }
 .what,
 .note {
@@ -214,8 +227,8 @@ button {
 .label {
   flex-wrap: nowrap;
   white-space: nowrap;
-  padding: 4px 10px 4px 8px;
-  border: 1px dashed var(--edge);
+  padding: 3px 9px 3px 7px;
+  border: 1px dashed var(--muted);
   color: var(--muted);
   pointer-events: none;
 }
@@ -390,9 +403,16 @@ button {
 .annot.dup {
   gap: 4px 8px;
   padding: 4px 10px 4px 8px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--paper) 96%, transparent);
   white-space: nowrap;
+}
+/* A placeholder that shows the thumbnail behind it (Bilibili's blurred cover, mount.ts sets data-surface): the same
+   surface, for the same reason. */
+:host([data-surface]) .annot {
+  padding: 4px 10px 4px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
 }
 
 /* Batch summary and notices: one dock fixed at the bottom-right of the viewport. The dock positions
@@ -417,18 +437,12 @@ button {
   gap: 10px;
   width: 320px;
   padding: 14px 14px 12px 16px;
-  border-radius: 10px;
+  border-radius: 16px;
   background: var(--paper);
-  box-shadow: var(--shadow);
   color: var(--ink);
+  box-shadow: var(--shadow-float);
   pointer-events: auto;
   animation: shoo-rise 240ms var(--ease-out-expo) both;
-}
-/* Dark only: YouTube's #0F0F0F ground swallows the shadow under a #121214 panel, so floating panels add a 1 px
-   --line-strong ring (drawn in box-shadow, not a border). ui-design.md Section 2, "Space, shape, elevation". */
-:host([data-dark]) .panel,
-:host([data-dark]) .pill {
-  box-shadow: 0 0 0 1px var(--line-strong), var(--shadow);
 }
 .head {
   display: flex;
@@ -493,14 +507,17 @@ button {
   gap: 8px;
   height: 32px;
   padding: 0 12px 0 10px;
-  border: 0;
   border-radius: 999px;
   background: var(--paper);
-  box-shadow: var(--shadow);
   font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow-float);
   pointer-events: auto;
+}
+:host([data-dark]) .panel,
+:host([data-dark]) .pill {
+  box-shadow: 0 0 0 1px var(--line-strong), var(--shadow-float);
 }
 .moment {
   position: fixed;
@@ -512,9 +529,9 @@ button {
   position: absolute;
   left: 0;
   top: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   background: var(--ink);
   will-change: transform, opacity;
 }
@@ -534,5 +551,12 @@ button {
   .panel,
   .panel.fade {
     animation: shoo-fade 150ms ease-out both;
+  }
+  .btn,
+  .ib,
+  .btn:active,
+  .ib:active {
+    transform: none;
+    transition: none;
   }
 }

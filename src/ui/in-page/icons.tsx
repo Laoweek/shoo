@@ -1,5 +1,5 @@
 // Lucide's `ban`, `check` and `user-check` (ISC licence, `check` also MIT via Feather, texts in THIRD_PARTY_NOTICES.md),
-// hand-copied as paths so the content bundle does not pull in lucide-preact. Drawn at 16 px, stroke 1.75,
+// hand-copied as paths so the content bundle does not pull in lucide-preact. Drawn at 16 px, stroke 2,
 // currentColor (styles in components.css).
 export const BanIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">

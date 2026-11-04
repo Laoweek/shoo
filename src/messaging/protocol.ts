@@ -13,6 +13,7 @@ import type {
   Settings,
   ShooExport,
   ShelfId,
+  SiteId,
   SurfaceId,
   TileFacts,
   TileResult,
@@ -33,6 +34,7 @@ export type ActionReport =
       channelName?: string;
       channelHandle?: string;
       channelId?: string;
+      cover?: string; // Bilibili: the cover path, for Activity's thumbnail
       source?: VerdictSource;
       p?: number;
       mode?: Mode;
@@ -81,7 +83,7 @@ export interface ImportPreview {
 }
 
 export interface ProtocolMap {
-  // content -> background (sender: tab on https://www.youtube.com/*). getRuntimeState is also allowed from pages.
+  // content -> background (sender: a tab on a Site's origin, core/sites.ts). getRuntimeState is also allowed from pages.
   getRuntimeState(): RuntimeSnapshot;
   judgeTiles(req: { items: TileFacts[]; settingsGeneration: number }): {
     results: TileResult[];
@@ -93,7 +95,8 @@ export interface ProtocolMap {
   };
   // escalated: this Removal made an automatic Escalation, the batch summary says so (REQ-ESC-2).
   reportActionResult(req: ActionReport): RuntimeSnapshot & { escalated?: { ruleId: string; channelName: string } };
-  reportUndo(req: { videoId: string; via: 'youtube' | 'shoo' }): void;
+  // via 'site': the site's own Undo button; 'shoo': Shoo clicked it.
+  reportUndo(req: { videoId: string; via: 'site' | 'shoo' }): void;
   recordWouldRemove(req: { results: TileResult[]; batchId: string; tiles?: TileFacts[] }): void;
   reviewPending(req: { count: number }): void;
   reportMarkupCheck(req: { ok: boolean; selectorVersion: string; missing: string[] }): RuntimeSnapshot;
@@ -117,6 +120,8 @@ export interface ProtocolMap {
     channelName?: string;
     channelHandle?: string;
     channelId?: string;
+    /** The Site of the Tile the channel was seen on, so the Keep rule matches that Site only. */
+    site?: SiteId;
     liftBan?: boolean;
   }): { ruleId: string; liftedBanRuleId?: string; bannedRuleId?: string } | { error: 'noChannel' } | { error: 'privateWindow' };
 
@@ -138,7 +143,7 @@ export interface ProtocolMap {
   resumeFromBreaker(req: { category?: 'model' | 'nativeAction' | 'markup' }): RuntimeSnapshot;
   giveConsent(req: { version: number; customHost?: string }): RuntimeSnapshot;
   withdrawConsent(): RuntimeSnapshot;
-  tryTitle(req: { title: string; channelName?: string; durationSec?: number; thumbnailUrl?: string }):
+  tryTitle(req: { title: string; channelName?: string; durationSec?: number; thumbnailUrl?: string; site?: SiteId }):
     | { result: TileResult; costUsd: number }
     | { error: 'noConsent' | 'noKey' | 'invalidInput' | ReasonCode };
   connectOpenRouter(): { ok: true; label: string } | { ok: false; error: 'cancelled' | 'exchangeFailed' | 'unsupported' };

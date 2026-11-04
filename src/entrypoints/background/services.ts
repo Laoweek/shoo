@@ -128,7 +128,7 @@ export function createServices(platform: Platform): Services {
       const all = await writer.getExceptions(fromJudge(ctx));
       return new Set(all.map((x) => x.videoId).filter((id) => want.has(id)));
     },
-    recentExceptions: async (n) => (await writer.getExceptions()).slice(0, n),
+    recentExceptions: async (n, keep) => (await writer.getExceptions()).filter(keep).slice(0, n),
     // A failed storage read or write counts as no list, so the fail safe holds the Tiles (REQ-RULE-14).
     subscriptions: (ctx) => subscriptions.current({ mayRead: !ctx.private }).catch(() => undefined),
     cacheGet: (ids, rv) => getVerdicts(areas.local, ids, rv),

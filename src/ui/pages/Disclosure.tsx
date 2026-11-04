@@ -15,7 +15,7 @@ function Row({ icon: Icon, title, level, children }: { icon: LucideIcon; title: 
   return (
     <div class="grid gap-x-6 gap-y-2 border-b border-line py-3 last:border-b-0 @xl:grid-cols-[11rem_1fr]">
       <H class="m-0 flex items-start gap-2 font-semibold">
-        <Icon size={16} strokeWidth={1.75} aria-hidden="true" class="mt-[2px] shrink-0" />
+        <Icon size={16} strokeWidth={2} aria-hidden="true" class="mt-[2px] shrink-0" />
         {title}
       </H>
       {children}
@@ -26,7 +26,7 @@ function Row({ icon: Icon, title, level, children }: { icon: LucideIcon; title: 
 function Line({ icon: Icon, children }: { icon: LucideIcon; children: ComponentChildren }) {
   return (
     <>
-      <Icon size={16} strokeWidth={1.75} aria-hidden="true" class="mt-[2px] shrink-0 text-muted" />
+      <Icon size={16} strokeWidth={2} aria-hidden="true" class="mt-[2px] shrink-0 text-muted" />
       <span>{children}</span>
     </>
   );

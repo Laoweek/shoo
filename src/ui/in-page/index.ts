@@ -14,6 +14,7 @@ import { BatchSummary, summaryAnnouncement, type SummaryData } from './Summary';
 export type { AnnotationProps, ChipProps, DryRunLabelProps, InPageNoticeKind, MomentSource, SummaryData };
 export type { SummaryRule } from './Summary';
 export { playMoment } from './moment';
+export { setSiteName } from './site';
 
 const styled = new WeakSet<ShadowRoot>();
 const contained = new WeakSet<ShadowRoot>();
@@ -81,6 +82,8 @@ export const SUMMARY_HOST_TAG = 'shoo-summary-host';
 export interface NoticeInput {
   kind: InPageNoticeKind;
   count?: number;
+  /** The Site a breaker names (RuntimeSnapshot.site), when it is not this page's. */
+  site?: string;
   onAction?: () => void;
   onDismiss?: () => void;
 }
@@ -133,6 +136,7 @@ function paint(o: Overlay): void {
           key: 'notice',
           kind: n.kind,
           count: n.count,
+          site: n.site,
           onAction: n.onAction,
           onDismiss: () => {
             n.onDismiss?.();
@@ -170,13 +174,13 @@ function releaseFocus(o: Overlay): void {
   else active.blur();
 }
 
-/** Follow YouTube's theme (html[dark]) on the overlay host. Chip hosts are themed by the caller. */
+/** Follow the site's theme on the overlay host. Chip hosts are themed by the caller. */
 export function setOverlayTheme(dark: boolean): void {
   overlayDark = dark;
   overlay?.host.toggleAttribute('data-dark', dark);
 }
 
-/** Lift the summary and notices above YouTube's miniplayer when it is visible (px, 0 for none). */
+/** Lift the summary and notices above a site layer at the viewport's bottom, such as YouTube's miniplayer (px, 0 for none). */
 export function setOverlayLift(px: number): void {
   overlayLift = px;
   overlay?.host.style.setProperty('--shoo-lift', `${px}px`);
@@ -260,7 +264,7 @@ export function showNotice(input: NoticeInput): void {
   const same = o.notice?.kind === input.kind;
   o.notice = input;
   paint(o);
-  if (!same) announce(o, noticeText(input.kind, input.count), isTripped(input.kind) ? 'assertive' : 'polite');
+  if (!same) announce(o, noticeText(input.kind, input.count, input.site), isTripped(input.kind) ? 'assertive' : 'polite');
 }
 
 export function hideNotice(): void {

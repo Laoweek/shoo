@@ -69,7 +69,8 @@ export function parseSubscribedChannels(html: string): SubscribedChannels | unde
 
 /**
  * Tells whether a Tile is from a Subscribed channel. Any one of its channel id, handle or ChannelKey in the
- * list is enough, so two channels with the same name both count. A Tile that shows no channel never matches.
+ * list is enough, so two channels with the same name both count. A Tile that shows no channel never matches,
+ * and neither does a Tile from another Site, because the list is the user's YouTube subscriptions.
  */
 export function subscribedMatcher(list: SubscribedChannels): (t: TileFacts) => boolean {
   const ids = new Set(list.ids);
@@ -77,7 +78,7 @@ export function subscribedMatcher(list: SubscribedChannels): (t: TileFacts) => b
   const keys = new Set(list.keys);
   return (t) => {
     const tile = tileChannelIdentity(t);
-    if (!tile) return false;
+    if (tile?.site !== 'youtube') return false;
     return (
       (tile.id !== undefined && ids.has(tile.id)) ||
       (tile.handle !== undefined && handles.has(tile.handle)) ||

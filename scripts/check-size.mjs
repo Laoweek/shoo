@@ -6,7 +6,7 @@ import { gzipSync } from 'node:zlib';
 import { join, dirname, normalize } from 'node:path';
 
 const KB = 1024;
-const BUDGETS = { content: 35 * KB, background: 42 * KB, page: 60 * KB };
+const BUDGETS = { content: 37 * KB, background: 43.5 * KB, page: 60 * KB };
 const FORBIDDEN_IN_CONTENT = ['secret:', 'openrouterKey', 'customKey'];
 
 const gz = (path) => gzipSync(readFileSync(path), { level: 9 }).length;

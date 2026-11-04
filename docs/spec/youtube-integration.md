@@ -1,6 +1,6 @@
-# YouTube integration spec (`src/youtube/`)
+# YouTube integration spec (`src/sites/youtube/`, and the content engine in `src/content/`)
 
-How Shoo finds Tiles, reads them, performs Native actions and notices Undo on youtube.com desktop. Build `src/youtube/` from this file. Every selector here was observed on 2026-10-09 (en-GB, signed in) unless marked [inf], [unverified] or "pending fixture". Fixtures: `test/fixtures/youtube/`. Names (`SurfaceId`, `TileFacts`, `NativeActionQueue`, message names) follow `docs/spec/architecture.md`.
+How Shoo finds Tiles, reads them, performs Native actions and notices Undo on youtube.com desktop. The YouTube Site (`src/sites/youtube/`: Surfaces, extraction, menu, placeholder, theme) follows this file. So does the content engine every Site shares (`src/content/`: `watcher.ts` Sections 2 and 3, `actions.ts` Sections 4 and 5, `mount.ts` Section 6), which asks the Site for its selectors, menu and placeholder through `src/sites/site.ts` (ADR 0011). Bilibili's side of that contract is in `docs/spec/bilibili-integration.md`. Every selector here was observed on 2026-10-09 (en-GB, signed in) unless marked [inf], [unverified] or "pending fixture". Fixtures: `test/fixtures/youtube/`. Names (`SurfaceId`, `TileFacts`, `NativeActionQueue`, message names) follow `docs/spec/architecture.md`.
 
 This file is the single source of truth for: the Surface registry (including `actionRoot` and mount anchors), extraction, NativeActionQueue timings, focus safety, decoration state, the markup self-test, and Shelf dismissal (Section 10). Other specs link here instead of restating them.
 
@@ -11,7 +11,7 @@ Rules that override convenience:
 - Never act on the currently playing video (REQ-SURF-3), ads, Mixes, playlists, podcasts or movies (REQ-SURF-2).
 - The content script never judges Tiles. It finds, extracts and decorates Tiles, sends batches with `judgeTiles`, and performs Native actions. The background owns the whole judging pipeline (`docs/spec/architecture.md`, Tile lifecycle).
 
-## 1. Surface registry (`src/youtube/surfaces.ts`)
+## 1. Surface registry (`src/sites/youtube/surfaces.ts`)
 
 One frozen object per `SurfaceId`. Unsupported Surfaces stay in the registry with `supported: false` and a `reason` so Settings can show them disabled (REQ-SURF-1a) and enabling them later is a data change.
 
@@ -54,7 +54,7 @@ interface SurfaceDef {
 }
 ```
 
-## 2. Page scoping, navigation and observers (`src/youtube/watcher.ts`)
+## 2. Page scoping, navigation and observers (`src/content/watcher.ts`, YouTube's page manager and events in `src/sites/youtube/index.ts`)
 
 ### Scope to the visible page
 
@@ -83,7 +83,7 @@ interface SurfaceDef {
 
 - In a hidden tab timers are throttled hard and the player does not load. Send only Tiles that are visible, and pause the `NativeActionQueue` while `document.hidden` is true. Resume on `visibilitychange`.
 
-## 3. Extraction and decoration state (`src/youtube/extract.ts`, `src/youtube/watcher.ts`)
+## 3. Extraction and decoration state (`src/sites/youtube/extract.ts`, `src/content/watcher.ts`)
 
 `extract(tile)` returns `TileFacts` or `null` (skip). Skip order matters: ad check first, then type checks, then the current-video guard.
 
@@ -140,7 +140,7 @@ Artist channel badge: the Official Artist Channel badge and the Verified badge b
 - On every coalesced mutation and on attribute changes to `content-id-*` or the thumbnail `href`, compare the element's current `videoId` with the map. If it changed, unmount Shoo's UI for that element, drop its entry, and treat it as a new Tile.
 - A Tile already decorated on this page is not re-sent unless the background announces a new `rulesVersion` or `settingsGeneration` (stale replies are dropped as defined in architecture.md, Mid-flight changes).
 
-## 4. NativeActionQueue (`src/youtube/actions.ts`)
+## 4. NativeActionQueue (`src/content/actions.ts`, YouTube's dropdown, icon matching and placeholder in `src/sites/youtube/menu.ts`)
 
 A per-tab FIFO queue. One job at a time, at least 350 ms between jobs, paused while `document.hidden`. A job is `{ tileEl, videoId, nativeAction: 'notInterested' | 'dontRecommendChannel', verdict }`. On a Shorts shelf Tile a `dontRecommendChannel` job is downgraded to `notInterested` before it is queued. A Shelf dismissal (Section 10) is a `TargetJob` in the same queue: the same spacing, focus safety, scroll guard, prechecks and steps, with the Shelf's own roles in place of the Surface's, no Undo watch and no markup check.
 
@@ -207,14 +207,14 @@ Home and Shorts shelf placeholders were captured live on 2026-10-10 (fixtures `h
 - **YouTube's own Undo.** For each Tile Shoo removed, keep the `actionRoot` observer (Section 2) until navigation, which starts at `yt-navigate-start`. When `.ytDismissibleItemReplacedContent` disappears without Shoo clicking Undo, the user used YouTube's button: report `undone` and ask for an Exception, exactly like Shoo's Undo. It counts as Undo only when the `actionRoot` is still connected, its page is still the visible page, the URL is unchanged since the Removal, and the element shows the same video's content again. Anything else ends the watch without a report: navigating away is never Undo (live test 2026-10-10).
 - "Tell us why" and "Learn more" are never clicked.
 
-### The user's own Don't recommend channel (REQ-ACT-5, `src/youtube/user-ban.ts`)
+### The user's own Don't recommend channel (REQ-ACT-5, `src/sites/youtube/user-ban.ts`)
 
-When the user picks Don't recommend channel on a Tile themselves, the content script sends `banChannel` with the Tile's facts and the background adds the channel as a Banned channel (architecture.md, Messages). Shoo's own clicks are synthetic (`isTrusted` false, Section 4, step 3), so only trusted clicks count. One `click` capture listener on the document exists while the pipeline runs (Shoo on), and it does nothing for clicks outside Tile menu buttons and dropdowns.
+When the user picks Don't recommend channel on a Tile themselves, the content script sends `banChannel` with the Tile's facts and the background adds the channel as a Banned channel (architecture.md, Messages). Shoo's own clicks are synthetic (`isTrusted` false, Section 4, step 3), so only trusted clicks count. One `click` capture listener on the document exists while the pipeline runs (Shoo on), and it does nothing for clicks outside Tile menu buttons and dropdowns. The pipeline starts it through the YouTube Site's optional `watchUserBans` member (`src/sites/site.ts`), so a Site without one, such as Bilibili, never watches the user's own menu clicks.
 
 1. **Which Tile's menu.** A trusted click inside `menuButton(tile)` of a Tile the watcher knows (enabled Surface, visible page) remembers that Tile and its `extract()` facts, when the Surface offers Don't recommend channel (`home`, `watchSidebar`). Any click on a Tile menu button by Shoo (untrusted), a Shorts shelf menu button, or any other trusted click outside a dropdown forgets it, so Shoo's own menu is never taken for the user's.
 2. **Which item.** A trusted click inside a menu item (`yt-list-item-view-model`, `ytd-menu-service-item-renderer`) of a `ytd-popup-container tp-yt-iron-dropdown` counts when the item matches Don't recommend channel by icon path, or by label (Section 4, steps 5 and 6) while the icon has not rendered. Every trusted item click forgets the remembered Tile.
 3. **Confirm, up to 2 s.** The remembered Tile still shows the same video, and its `actionRoot` gets `.ytDismissibleItemReplacedContent`. Only then is `banChannel` sent. This proves the menu belonged to that Tile.
-4. **Undo.** The queue keeps the same `actionRoot` observer as for Shoo's Removals (`watchRemoval`, job origin `'user'`). YouTube's Undo there sends `liftChannelBan` when `banChannel` answered `added: true`, never `reportUndo`: the Removal was the user's, so there is no Exception. The video is kept in this tab like any undone Removal.
+4. **Undo.** The queue (`src/content/actions.ts`) keeps the same `actionRoot` observer as for Shoo's Removals (`watchRemoval`, job origin `'user'`, through the Site's `placeholder`). YouTube's Undo there sends `liftChannelBan` when `banChannel` answered `added: true`, never `reportUndo`: the Removal was the user's, so there is no Exception. The video is kept in this tab like any undone Removal.
 
 Known limits: a menu item chosen with the keyboard counts only when the browser turns the key press into a trusted `click` (a `button` in sheet menus does) [unverified live]. Nothing is detected in a private window, on Surfaces Shoo does not watch, or while Shoo is off.
 
@@ -259,7 +259,7 @@ Known limits: a menu item chosen with the keyboard counts only when the browser 
 - **Composed page fixture** `test/fixtures/youtube/page-home.html` and `page-watch.html`, built by a documented script from the single-Tile fixtures: a `ytd-page-manager` with one visible page and one `hidden` page holding decoy Tiles, a rich grid `#contents` with several Tiles, a `ytd-rich-section-renderer` holding a Shorts shelf, a continuation batch appended later, and a Watch sidebar `#contents`. Used by watcher tests and the extraction benchmark. Record how it was composed in an HTML comment at the top.
 - **Badge wait** (watcher tests, fake timers): a channel-row icon with a non-English label that renders 300 ms late sends the Tile once, with `isArtistChannel`, and not before. One that never renders sends it once after 1.5 s without the flag. Hidden time does not count. A Verified badge (rendered in any language, or unrendered with its en-GB label), no badge, and an unrendered icon with the en-GB Artist label send at once. A rebind, leaving the eligible area, leaving the page and `stop()` end the wait without a send, a Tile reused for another video starts its own wait, and a moment without a readable video ID keeps it.
 - **SVG-delay harness helper** `withLazyIcons(menuEl, delayMs)`: strips every `<svg>` from a menu fixture and re-inserts them after `delayMs`, to reproduce YouTube's lazy icons (the menu fixtures already contain the SVGs).
-- **Simulated YouTube harness** (`simulateYouTube` in `src/youtube/test-harness.ts`): load a Tile fixture and a menu fixture, wire the menu button to reveal the reused dropdown after a delay, apply `withLazyIcons`, and on item click swap the `actionRoot` children for the placeholder fixture. Test: happy path for both actions, lazy icons, text fallback, stale reused dropdown, timeouts at each step, Escape only on Shoo's dropdown, focus saved and restored, waiting while a user dropdown is open or focus is in an input, Undo by Shoo, YouTube's own Undo detection, queue serialization (two jobs never overlap), pause while hidden, one Native action per `videoId` with duplicate copies annotated, element reuse with a changed video ID unmounting the chip. The user's own Don't recommend channel (`userClick` in the harness gives a trusted click through a label): reported on `home` and `watchSidebar` once the placeholder shows, not for untrusted clicks, not after Shoo opened a menu, not for Not interested.
+- **Simulated YouTube harness** (`simulateYouTube` in `src/sites/youtube/test-harness.ts`): load a Tile fixture and a menu fixture, wire the menu button to reveal the reused dropdown after a delay, apply `withLazyIcons`, and on item click swap the `actionRoot` children for the placeholder fixture. Test: happy path for both actions, lazy icons, text fallback, stale reused dropdown, timeouts at each step, Escape only on Shoo's dropdown, focus saved and restored, waiting while a user dropdown is open or focus is in an input, Undo by Shoo, YouTube's own Undo detection, queue serialization (two jobs never overlap), pause while hidden, one Native action per `videoId` with duplicate copies annotated, element reuse with a changed video ID unmounting the chip. The user's own Don't recommend channel (`userClick` in the harness gives a trusted click through a label): reported on `home` and `watchSidebar` once the placeholder shows, not for untrusted clicks, not after Shoo opened a menu, not for Not interested.
 - **Benchmark**: extraction (`extract()` plus `channelBadgePending`, the watcher's first read of a Tile) over the composed Home page fixture ×50, compared against a stored Vitest bench baseline (relative regression check). Absolute per-Tile timing is to be measured manually on real hardware before release (architecture.md, Performance budgets).
 - **Manual live checklist** (before each release, signed-in account with a populated Home feed that the tester is willing to change):
   1. Home, Watch sidebar and Shorts shelf each produce chips in Review mode, compact on narrow thumbnails.
@@ -281,7 +281,7 @@ Known limits: a menu item chosen with the keyboard counts only when the browser 
 
 ## 9. Subscribed channels (`src/engine/subscriptions.ts`, `src/core/subscriptions.ts`)
 
-Read only for REQ-RULE-14, by the background, never by the content script.
+Read only for REQ-RULE-14, by the background, never by the content script. The list is YouTube's only: only YouTube Tiles are checked against it, and a Bilibili batch never starts a read (`architecture.md` Section 5).
 
 - **Request.** `GET https://www.youtube.com/feed/channels` with `credentials: 'include'`, through the existing `https://www.youtube.com/*` host permission, with `redirect: 'error'` and a 20 s timeout (`engine/net.ts`). A redirect (signed out), a non-200 status, a timeout or a page without Subscribed channels is a failed read.
 - **Page shape** (observed 2026-11-04 in a signed-in Chrome, same-origin fetch from a youtube.com page): about 11 MB of HTML for 1,000 channels, with no continuation items. `var ytInitialData = {...};</script>` holds one `channelRenderer` per channel, with `channelId`, `navigationEndpoint.browseEndpoint.canonicalBaseUrl` (`/@handle`) and `subscriptionButton.subscribed === true`. Shoo also reads `title.simpleText` (or the first run of `title.runs`) as the channel name, because Watch sidebar Tiles show only a name.
@@ -289,7 +289,7 @@ Read only for REQ-RULE-14, by the background, never by the content script.
 - **Not verified.** The page was read live only through a same-origin fetch in Chrome. Whether a background fetch carries the YouTube session on Chrome (service worker) and on Firefox (event page, Total Cookie Protection) is not checked yet. When it does not, every read fails and the fail safe in `architecture.md` Section 5 holds the Tiles. Accounts with many more channels may get continuation items, which Shoo does not follow, so channels past the first page count as not subscribed.
 - **Tests.** `src/core/subscriptions.test.ts` parses a synthetic page shaped like the observed one (no captured fixture), `src/engine/subscriptions.test.ts` covers the refresh and back-off.
 
-## 10. Shelf dismissal (`src/youtube/shelves.ts`, REQ-ACT-6)
+## 10. Shelf dismissal (`src/sites/youtube/shelves.ts`, REQ-ACT-6)
 
 A Shelf dismissal performs a Shelf's own dismiss control on Home for a Shelf the user switched on in Settings (`settings.shelfDismissal`). It acts on the Shelf as a whole and is separate from the `shortsShelf` Surface, which judges the Shorts inside a Shelf one by one. Both can run on the same Shelf: Tile jobs and the Shelf dismissal share the queue, so they never overlap.
 
@@ -309,7 +309,7 @@ A Shelf dismissal performs a Shelf's own dismiss control on Home for a Shelf the
 
 Flow:
 
-- **Watcher.** The content pipeline creates the Shelf watcher only while Shoo runs and at least one Shelf is switched on, and drops it otherwise (REQ-QUAL-2). It offers Shelves only while the Mode acts (Auto or Review, Native actions not tripped). In Dry-run or with the breaker tripped it stays, offering nothing, so what this page already dismissed is remembered across Mode changes. It binds on `yt-navigate-finish` and `yt-page-data-updated`: on the visible Home page it waits up to 10 s (20 tries, 500 ms apart) for the Home grid `#contents`, observes it with one `childList` observer, and scans for Shelves at once, on every mutation, and five more times 1 s apart after each, because a Shelf's heading and Tiles render after the Shelf is added.
+- **Watcher.** The content pipeline gets the Shelf watcher from the YouTube Site's optional `shelves` member (`src/sites/site.ts`), so a Site without one, such as Bilibili, has no Shelf dismissal. It creates the watcher only while Shoo runs and at least one Shelf is switched on, and drops it otherwise (REQ-QUAL-2). It offers Shelves only while the Mode acts (Auto or Review, Native actions not tripped). In Dry-run or with the breaker tripped it stays, offering nothing, so what this page already dismissed is remembered across Mode changes. It binds on `yt-navigate-finish` and `yt-page-data-updated`: on the visible Home page it waits up to 10 s (20 tries, 500 ms apart) for the Home grid `#contents`, observes it with one `childList` observer, and scans for Shelves at once, on every mutation, and five more times 1 s apart after each, because a Shelf's heading and Tiles render after the Shelf is added.
 - **Once per Shelf kind per page.** A Shelf is offered to the queue only when it holds a Tile and its control is found. Each kind is offered once per page: a later Shelf of the same kind on that page, or the same Shelf after the user pressed YouTube's Undo, is left alone. A navigation to another page or URL starts over. YouTube fires both navigation events for one navigation, so an event that leaves the page and URL unchanged keeps what was tried. A job that ends `stale` or `cancelled` (the page changed, Mode left Auto, the tab was hidden) gives the kind back and the watcher offers it again on its next scan.
 - **Queue job.** `shelfTarget(shelf, id, precheck)`: the local precheck requires the Shelf to still be there, not dismissed, with its control, on the same page and URL. The background precheck (`getRuntimeState`) requires Shoo on, Native actions and in-page stages allowed, Mode not Dry-run, and that Shelf still switched on. A direct control is clicked and confirmed (step 8) without a dropdown. A menu button follows steps 3 to 8 of Section 4 with the menu item rule above.
 - **Fail safe.** No control found means the Shelf is never offered. A job that fails (`openMenu`, `findItem`, `clickItem`, `confirmPlaceholder`) presses Escape on Shoo's own dropdown and restores focus like a Tile job, and it is not reported: no `reportFailure`, no `nativeAction` count, no markup check, no notice, so an unverified Shelf selector never trips a breaker or pauses Tile work (ADR 0010). The kind counts as tried for that page.

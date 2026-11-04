@@ -26,7 +26,7 @@ export interface Platform {
   runtimeId: string;
   getURL(path: string): string;
   tabs: {
-    query(q: { url?: string; active?: boolean; lastFocusedWindow?: boolean }): Promise<TabInfo[]>;
+    query(q: { url?: string | string[]; active?: boolean; lastFocusedWindow?: boolean }): Promise<TabInfo[]>;
     get(tabId: number): Promise<TabInfo>;
     create(p: { url: string }): Promise<unknown>;
     update(tabId: number, p: { url?: string; active?: boolean }): Promise<unknown>;
