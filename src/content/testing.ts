@@ -57,6 +57,8 @@ export function fakeBackground() {
     private: false,
     /** The channel is Banned: keepChannel without liftBan creates nothing and answers ruleId ''. */
     banned: false,
+    /** tileVerdictsPending answers: the background still holds the batch. */
+    verdictsPending: false,
     /** reportActionResult replies carry this automatic Escalation. */
     escalated: undefined as { ruleId: string; channelName: string } | undefined,
     release() {
@@ -106,6 +108,8 @@ export function fakeBackground() {
           if (bg.banned && req.liftBan === undefined) return { ruleId: '', bannedRuleId: 'b1' };
           return bg.banned ? { ruleId: 'k1', bannedRuleId: 'b1' } : { ruleId: 'k1' };
         }
+        case 'tileVerdictsPending':
+          return bg.verdictsPending;
         case 'banChannel':
           return bg.banned ? { ruleId: 'b1', added: false } : { ruleId: 'u1', added: true };
         default:

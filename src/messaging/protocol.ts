@@ -78,17 +78,23 @@ export interface ImportPreview {
   syncQuota?: true; // the result would not fit browser sync
 }
 
+/** What a judgeTiles reply and a tileVerdicts push carry. */
+export interface JudgedBatch {
+  results: TileResult[];
+  rulesVersion: string;
+  settingsGeneration: number;
+  runtime: RuntimeSnapshot;
+  rules?: Record<string, RuleDisplay>; // display data for every ruleId in results (content holds no Rules)
+  private?: boolean; // sender tab is incognito: Keep notes say "Kept for this session"
+}
+
 export interface ProtocolMap {
   // content -> background (sender: a tab on a Site's origin, core/sites.ts). getRuntimeState is also allowed from pages.
   getRuntimeState(): RuntimeSnapshot;
-  judgeTiles(req: { items: TileFacts[]; settingsGeneration: number }): {
-    results: TileResult[];
-    rulesVersion: string;
-    settingsGeneration: number;
-    runtime: RuntimeSnapshot;
-    rules?: Record<string, RuleDisplay>; // display data for every ruleId in results (content holds no Rules)
-    private?: boolean; // sender tab is incognito: Keep notes say "Kept for this session"
-  };
+  // batchId names the batch in its tileVerdicts push.
+  judgeTiles(req: { items: TileFacts[]; settingsGeneration: number; batchId?: string }): JudgedBatch;
+  // Whether this tab's batch still has its tileVerdicts push to come. False from a background that stopped since.
+  tileVerdictsPending(req: { batchId: string }): boolean;
   // escalated: this Removal made an automatic Escalation, the batch summary says so (REQ-ESC-2).
   reportActionResult(req: ActionReport): RuntimeSnapshot & { escalated?: { ruleId: string; channelName: string } };
   // via 'site': the site's own Undo button; 'shoo': Shoo clicked it.
@@ -125,6 +131,8 @@ export interface ProtocolMap {
   runtimeStateChanged(snapshot: RuntimeSnapshot): void;
   settingsChanged(req: { settingsGeneration: number; rulesVersion: string; actOnShowingChips?: boolean }): void;
   undoRemoval(req: { videoId: string }): { ok: true } | { ok: false; reason: 'expired' | 'notFound' };
+  // The final results of a batch's thumbnailPending Tiles, to the tab that sent judgeTiles once their thumbnail checks end.
+  tileVerdicts(req: JudgedBatch & { batchId: string }): void;
 
   // pages -> background (sender: extension page URL)
   updateSettings(req: { patch: Partial<Settings> }): { settings: Settings };
