@@ -12,8 +12,8 @@ importers:
         specifier: 0.2.8
         version: 0.2.8(wxt@0.21.5(eslint@10.13.0(jiti@2.7.0))(rolldown@1.2.15)(typescript@6.0.3)(vite@8.3.5(@types/node@26.6.6)(jiti@2.7.0)))
       lucide-preact:
-        specifier: 1.52.0
-        version: 1.52.0(preact@11.0.1)
+        specifier: 1.63.0
+        version: 1.63.0(preact@11.0.1)
       preact:
         specifier: 11.0.1
         version: 11.0.1
@@ -1425,8 +1425,8 @@ packages:
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
-  lucide-preact@1.52.0:
-    resolution: {integrity: sha512-bTWQJ4tzCWZ3UipPGRwj/m4bnojnObP2lD2NvznFNlTbzX6Q8b+F43d2cpegkS88B1zF6ioB7QqAPFgRJnd87A==}
+  lucide-preact@1.63.0:
+    resolution: {integrity: sha512-KBKPbEsmLRgbWGCpnOf5vmQuqT929pJHeV7BAX8K27iXUfyNjt0QxBexo4enWc55YDXqbx5NuEhb4U9VrUmUiQ==}
     peerDependencies:
       preact: ^10.27.2 || ^11.0.0-0
 
@@ -3271,7 +3271,7 @@ snapshots:
     dependencies:
       yallist: 3.1.1
 
-  lucide-preact@1.52.0(preact@11.0.1):
+  lucide-preact@1.63.0(preact@11.0.1):
     dependencies:
       preact: 11.0.1
 
