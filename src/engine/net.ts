@@ -1,4 +1,5 @@
 // Network helpers for engine/. Limits are defined in docs/spec/decision-engine.md Section 5.1.
+import { isRecord } from '~/core/types';
 
 /** Decisions requests (text, keep-only, thumbnail), GET /api/v1/key, /api/v1/models and the OAuth exchange. */
 export const REQUEST_TIMEOUT_MS = 8000;
@@ -64,34 +65,74 @@ export function retryAfterMs(headers: Headers, now: number = Date.now()): number
 
 /** In-memory counting semaphore. Background state is disposable, so losing it on restart is harmless. */
 export class Semaphore {
-  private active = 0;
-  private readonly waiting: (() => void)[] = [];
+  #active = 0;
+  readonly #waiting: (() => void)[] = [];
+  readonly #limit: number;
 
-  constructor(private readonly limit: number) {}
+  constructor(limit: number) {
+    this.#limit = limit;
+  }
 
   async run<T>(task: () => Promise<T>): Promise<T> {
-    if (this.active >= this.limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
-    else this.active++;
+    if (this.#active >= this.#limit) await new Promise<void>((resolve) => this.#waiting.push(resolve));
+    else this.#active++;
     try {
       return await task();
     } finally {
-      const next = this.waiting.shift();
+      const next = this.#waiting.shift();
       if (next) next();
-      else this.active--;
+      else this.#active--;
     }
   }
 }
 
-/** Parsed JSON body, or undefined when it is not JSON. */
+/**
+ * Largest JSON body read from any endpoint. A 16-Tile answer is a few KB and the model list about 35 KB, so a
+ * reply past this is broken or hostile and is never buffered whole.
+ */
+export const MAX_JSON_BYTES = 1024 * 1024;
+
+/**
+ * The body, or undefined once more than `maxBytes` arrive. Reading stops and the stream is cancelled at that point,
+ * so a body with no or a false Content-Length never fills memory.
+ */
+export async function readBody(res: Response, maxBytes: number): Promise<Blob | undefined> {
+  const chunks: BlobPart[] = [];
+  let total = 0;
+  const reader = res.body?.getReader();
+  for (;;) {
+    const next = await reader?.read();
+    if (!next || next.done) return new Blob(chunks);
+    total += next.value.byteLength;
+    if (total > maxBytes) {
+      reader!.cancel().catch(() => {});
+      return undefined;
+    }
+    chunks.push(next.value);
+  }
+}
+
+/** Parsed JSON body, or undefined when it is not JSON or larger than MAX_JSON_BYTES. */
 export async function readJson(res: Response): Promise<unknown> {
   try {
-    return await res.json();
+    const body = await readBody(res, MAX_JSON_BYTES);
+    return body && JSON.parse(await body.text());
   } catch {
     return undefined;
   }
 }
 
-export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** A usage count or cost: finite, not negative and at most `max`. Anything else is treated as absent. */
+export function usageNumber(v: unknown, max: number): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : undefined;
+}
+
+/** More than any one request can cost: a 16-Tile text request costs well under US$0.01. */
+export const MAX_REQUEST_COST_USD = 1;
+/** More input than any one request carries: a text request is a few thousand tokens, a thumbnail about 8,500. */
+export const MAX_REQUEST_INPUT_TOKENS = 1_000_000;
+
+export { isRecord };
 
 /**
  * The loggable part of an OpenRouter error body: `code` and a trimmed `message`, plus the two metadata

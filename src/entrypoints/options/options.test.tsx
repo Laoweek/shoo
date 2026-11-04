@@ -10,12 +10,12 @@ import { fake, reset } from '~/ui/pages/testing/read';
 import { button, click, hasButton, key, mount, radio, settle, snapshot, text, type, unmountAll } from '~/ui/pages/testing/render';
 import { App } from './App';
 import type { PageData } from './context';
-import { Activity } from './sections/Activity';
+import { Activity, SEARCH_PAUSE_MS } from './sections/Activity';
 import { Advanced } from './sections/Advanced';
 import { Banned } from './sections/Banned';
 import { ChatEndpoint } from '~/ui/pages/EndpointSetup';
 import { Connection } from './sections/Connection';
-import { Exceptions } from './sections/Exceptions';
+import { EXCEPTIONS_PAGE, Exceptions } from './sections/Exceptions';
 import { Keep } from './sections/Keep';
 import { Rules } from './sections/Rules';
 import { Sites } from './sections/Sites';
@@ -62,7 +62,6 @@ let permissionListeners: Set<() => void>;
 beforeEach(() => {
   reset();
   resetMessages();
-  replies.listEscalations = () => [];
   replies.listModels = () => ({ models: [{ id: 'cloudflare/clef-flash', images: true, pricePerMInput: 0.02 }], fetchedAt: 1 });
   permissionRequests = [];
   hostsGranted = true;
@@ -92,7 +91,6 @@ describe('Settings sections: loading, empty, error and disabled states', () => {
   ] as const;
 
   it.each(sections)('%s shows skeleton rows while loading', (_name, View) => {
-    replies.listEscalations = () => new Promise(() => {});
     const el = mount(<View data={data({ settings: undefined, rules: undefined, exceptions: undefined })} params={params} />);
     expect(el.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
   });
@@ -223,6 +221,39 @@ describe('Settings sections: loading, empty, error and disabled states', () => {
     expect(text(el)).not.toContain('used of');
   });
 
+  it('Connection: before consent shows the stored key without usage and the model picker without an error, and consent loads the key', async () => {
+    replies.listModels = () => ({ error: 'noConsent' });
+    const d = data({ key: { label: 'Shoo', source: 'oauth', connectedAt: Date.UTC(2026, 9, 1) }, consent: false, settings: { ...fake.settings } });
+    const el = mount(<Connection data={d} params={params} />);
+    await settle();
+    expect(text(el)).toMatch(/Connected .*2026 · Shoo/);
+    expect(text(el)).not.toContain('used');
+    expect(text(el)).not.toContain("Couldn't load models");
+    click(button(el, 'Give consent'));
+    await settle();
+    expect(d.refreshKey).toHaveBeenCalled();
+  });
+
+  it('Connection: on Firefox, withdrawing consent gives back the data collection permission', async () => {
+    vi.stubEnv('BROWSER', 'firefox');
+    const removed: unknown[] = [];
+    browser.permissions.remove = ((p: unknown) => {
+      removed.push(p);
+      return Promise.resolve(true);
+    }) as typeof browser.permissions.remove;
+    replies.withdrawConsent = () => snapshot({ reason: 'noConsent' });
+    try {
+      const el = mount(<Connection data={data()} params={params} />);
+      await settle();
+      click(button(el, 'Withdraw consent'));
+      await settle();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(sent('withdrawConsent')).toHaveLength(1);
+    expect(removed).toEqual([{ data_collection: ['websiteContent', 'authenticationInfo'] }]);
+  });
+
   it('Connection: the model list failure shows clef-flash and Retry', async () => {
     replies.listModels = () => ({ error: 'modelError' });
     const el = mount(<Connection data={data()} params={params} />);
@@ -253,7 +284,7 @@ describe('Settings sections: loading, empty, error and disabled states', () => {
     const el = mount(<Connection data={data({ runtime: snapshot({ reason: 'hostRevoked', eye: 'error' }) })} params={params} />);
     await settle();
     click(button(el, 'Allow access'));
-    expect(permissionRequests).toEqual([{ origins: ['https://www.youtube.com/*', 'https://openrouter.ai/*', 'https://i.ytimg.com/*'] }]);
+    expect(permissionRequests).toEqual([{ origins: ['https://www.youtube.com/*', 'https://openrouter.ai/*'] }]);
   });
 
   it('Connection: missing host access shows Allow access even when another reason outranks hostRevoked', async () => {
@@ -285,22 +316,37 @@ describe('Settings sections: loading, empty, error and disabled states', () => {
     const el = mount(<Advanced data={data()} params={params} />);
     await settle();
     const input = el.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(['{"format":"nope"}'], 'x.json', { type: 'application/json' });
+    const file = new File([JSON.stringify(EMPTY_EXPORT)], 'x.json', { type: 'application/json' });
     Object.defineProperty(input, 'files', { value: [file] });
     input.dispatchEvent(new Event('change', { bubbles: true }));
     await settle();
     expect(text(el)).toContain('Checking file…');
-    finish({ error: 'invalidInput', detail: 'format must be shoo-rules' });
+    finish({ error: 'invalidInput', detail: 'syncQuota' });
     await settle();
     expect(text(el)).toContain("This file isn't a Shoo export, or it's from a newer version.");
-    expect(text(el)).toContain('format must be shoo-rules');
+    expect(text(el)).toContain('syncQuota');
+  });
+
+  it('Advanced import checks the file itself and sends nothing for one that is not a Shoo export', async () => {
+    const el = mount(<Advanced data={data()} params={params} />);
+    await settle();
+    const input = el.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['{"format":"nope"}'], 'x.json', { type: 'application/json' });
+    Object.defineProperty(input, 'files', { value: [file] });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    expect(text(el)).toContain("This file isn't a Shoo export, or it's from a newer version.");
+    expect(text(el)).toContain('format');
+    expect(sent('importData')).toEqual([]);
   });
 });
 
+const EMPTY_EXPORT = { format: 'shoo-rules', version: 1, rules: [], exceptions: [] };
+
 describe('Advanced import modes', () => {
-  async function pickFile(el: HTMLElement) {
+  async function pickFile(el: HTMLElement, content: object = EMPTY_EXPORT) {
     const input = el.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(['{"format":"shoo-rules"}'], 'rules.json', { type: 'application/json' });
+    const file = new File([JSON.stringify(content)], 'rules.json', { type: 'application/json' });
     Object.defineProperty(input, 'files', { value: [file] });
     input.dispatchEvent(new Event('change', { bubbles: true }));
     await settle();
@@ -322,6 +368,19 @@ describe('Advanced import modes', () => {
     await settle();
     expect(sent('importData')[2]).toEqual(expect.objectContaining({ mode: 'replace', dryRun: false }));
     expect(text(el)).toContain('Imported.');
+  });
+
+  it("asks for the image hosts of the file's enabled Thumbnail rules when the import is applied", async () => {
+    replies.importData = () => ({ preview: { add: 2, update: 0, renumber: 0, invalid: [] } }) as never;
+    const thumbnail = { id: 'thumb-1', ref: 'R1', polarity: 'remove', kind: 'thumbnail', text: 'Shocked faces', enabled: true, site: 'youtube', origin: 'user', createdAt: 1, updatedAt: 1 };
+    const el = mount(<Advanced data={data()} params={params} />);
+    await settle();
+    await pickFile(el, { ...EMPTY_EXPORT, rules: [thumbnail, { ...thumbnail, id: 'thumb-2', ref: 'R2', site: 'bilibili', enabled: false }] });
+    expect(sent('importData')[0]).toEqual(expect.objectContaining({ file: expect.objectContaining({ invalid: [] }) }));
+    expect(permissionRequests).toEqual([]);
+    click(button(el, 'Merge with my Rules'));
+    await settle();
+    expect(permissionRequests).toEqual([{ origins: ['https://i.ytimg.com/*'] }]);
   });
 
   it('warns and blocks the apply when the result would not fit browser sync', async () => {
@@ -599,6 +658,36 @@ describe('Rules table', () => {
     expect([box('youtube').disabled, box('bilibili').disabled]).toEqual([true, true]);
   });
 
+  it('saving a Thumbnail rule asks for the image hosts in the click, and saves it even when the browser says no', async () => {
+    browser.permissions.request = ((p: unknown) => {
+      permissionRequests.push(p);
+      return Promise.resolve(false);
+    }) as typeof browser.permissions.request;
+    replies.mutateRules = () => ({ rules, rulesVersion: 'v' });
+    const el = mount(<Rules data={data({ rules })} params={params} />);
+    await settle();
+    click(button(el, 'Add a Rule'));
+    await settle();
+    act(el.querySelector('#add-remove-kind') as HTMLSelectElement, 'change', 'thumbnail');
+    await settle();
+    type(el.querySelector('#add-remove-text') as HTMLInputElement, 'A person pointing at a red arrow');
+    click(button(el, 'Save'));
+    expect(permissionRequests).toEqual([{ origins: ['https://i.ytimg.com/*', 'https://i0.hdslb.com/*'] }]);
+    await settle();
+    expect(sent('mutateRules')).toEqual([{ ops: [{ op: 'add', rule: { polarity: 'remove', kind: 'thumbnail', text: 'A person pointing at a red arrow', enabled: true, origin: 'user' } }] }]);
+  });
+
+  it("turning on a YouTube-only Thumbnail rule asks for YouTube's image host only, and a Topic rule asks for nothing", async () => {
+    replies.mutateRules = () => ({ rules, rulesVersion: 'v' });
+    const thumb = rule({ id: 't', ref: 'R6', colour: 'c6', kind: 'thumbnail', text: 'A red arrow', enabled: false, site: 'youtube' });
+    const el = mount(<Rules data={data({ rules: [...rules, thumb] })} params={params} />);
+    await settle();
+    click(el.querySelector('[role="switch"][aria-label="R3 on"]')!);
+    expect(permissionRequests).toEqual([]);
+    click(el.querySelector('[role="switch"][aria-label="R6 on"]')!);
+    expect(permissionRequests).toEqual([{ origins: ['https://i.ytimg.com/*'] }]);
+  });
+
   it('a Site-only rule says so on its row, and its panel makes it work on all sites again', async () => {
     replies.mutateRules = () => ({ rules, rulesVersion: 'v' });
     const only = rule({ id: 'e', ref: 'R5', colour: 'c5', text: 'Anime openings', site: 'bilibili' });
@@ -863,6 +952,20 @@ describe('Exceptions', () => {
     await settle();
     expect(sent('removeException')).toEqual([{ videoId: 'v2' }]);
   });
+
+  it('renders a page of rows at a time, and search looks through all of them', async () => {
+    const exceptions = Array.from({ length: EXCEPTIONS_PAGE * 2 + 5 }, (_, i) => ({ videoId: `v${i}`, title: `Kept video ${i}`, channelName: 'Channel', at: i }));
+    const el = mount(<Exceptions data={data({ exceptions })} params={params} />);
+    await settle();
+    expect(el.querySelectorAll('li').length).toBe(EXCEPTIONS_PAGE);
+    click(button(el, 'Show more'));
+    expect(el.querySelectorAll('li').length).toBe(EXCEPTIONS_PAGE * 2);
+    click(button(el, 'Show more'));
+    expect(el.querySelectorAll('li').length).toBe(EXCEPTIONS_PAGE * 2 + 5);
+    expect(hasButton(el, 'Show more')).toBe(false);
+    type(el.querySelector('input[type="search"]') as HTMLInputElement, `Kept video ${EXCEPTIONS_PAGE * 2 + 4}`);
+    expect([...el.querySelectorAll('li')].map(text)).toEqual([expect.stringContaining(`Kept video ${EXCEPTIONS_PAGE * 2 + 4}`)]);
+  });
 });
 
 describe('Activity', () => {
@@ -1007,6 +1110,19 @@ describe('Activity', () => {
     void el;
   });
 
+  it('search reads Activity once the typing pauses, not on every keystroke', async () => {
+    fake.activity = events;
+    const el = mount(<Activity data={data()} params={params} />);
+    await settle();
+    const search = el.querySelector('input[type="search"]') as HTMLInputElement;
+    for (const typed of ['a', 'al', 'alt', 'altc', 'altco']) type(search, typed);
+    await settle();
+    expect(fake.queries.filter((q) => q.text)).toEqual([]);
+    await new Promise((r) => setTimeout(r, SEARCH_PAUSE_MS + 50));
+    await settle();
+    expect(fake.queries.filter((q) => q.text).map((q) => q.text)).toEqual(['altco']);
+  });
+
   it('a row scrolled away before 1 s stays unseen', async () => {
     const observed: Element[] = [];
     let callback: IntersectionObserverCallback = () => {};
@@ -1131,6 +1247,39 @@ describe('Connection: where Shoo checks videos (Decision providers)', () => {
     expect(sent('updateSettings')).toEqual([{ patch: { engine: 'openrouter' } }]);
   });
 
+  it("forgets a Decision provider's key on this device, and its form then asks for a key again", async () => {
+    let stored = { direct: true, custom: false };
+    replies.getStoredKeys = () => stored;
+    replies.forgetKey = () => {
+      stored = { direct: false, custom: false };
+    };
+    const el = connection({ direct: { provider: 'typesafe', baseUrl: 'https://api.typesafe.ai/v1', model: 'jev-latest' } });
+    await settle();
+    expect(text(el)).toContain('TypeSafe key for api.typesafe.ai');
+    click(button(el, 'Forget key'));
+    await settle();
+    expect(sent('forgetKey')).toEqual([{ endpoint: 'direct' }]);
+    expect(hasButton(el, 'Forget key')).toBe(false);
+    click(radio(el, 'TypeSafe'));
+    expect(text(el)).not.toContain('Leave blank to keep the saved key.');
+    expect(button(el, 'Use TypeSafe').disabled).toBe(true);
+  });
+
+  it("forgets the chat model's key, and its form then stops offering to keep a saved key", async () => {
+    let stored = { direct: false, custom: true };
+    replies.getStoredKeys = () => stored;
+    replies.forgetKey = () => {
+      stored = { direct: false, custom: false };
+    };
+    const el = connection({ customEndpoint: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-6-luna' } });
+    await settle();
+    expect(text(el)).toContain('Leave blank to keep the saved key.');
+    click(button(el, 'Forget key'));
+    await settle();
+    expect(sent('forgetKey')).toEqual([{ endpoint: 'custom' }]);
+    expect(text(el)).not.toContain('Leave blank to keep the saved key.');
+  });
+
   it('back to OpenRouter needs an OpenRouter key first: without one only Connect and Paste show', async () => {
     const el = mount(
       <Connection
@@ -1209,7 +1358,7 @@ describe('Connection: where Shoo checks videos (Decision providers)', () => {
 
 describe('Connection: chat model (Settings only, less accurate)', () => {
   it('sits in a closed disclosure labelled less accurate, says why and that it reads titles only', () => {
-    const el = mount(<ChatEndpoint settings={fake.settings} />);
+    const el = mount(<ChatEndpoint settings={fake.settings} keyStored={false} />);
     const details = el.querySelector('details')!;
     expect(details.open).toBe(false);
     expect(text(details.querySelector('summary')!)).toBe('Chat modelLess accurate');
@@ -1220,7 +1369,7 @@ describe('Connection: chat model (Settings only, less accurate)', () => {
   it('Save asks for host access synchronously, then consent naming the host, then saves', async () => {
     replies.giveConsent = () => snapshot();
     replies.setCustomEndpoint = () => ({ ok: true });
-    const el = mount(<ChatEndpoint settings={fake.settings} />);
+    const el = mount(<ChatEndpoint settings={fake.settings} keyStored={false} />);
     type(el.querySelector('#custom-url') as HTMLInputElement, 'https://llm.example.com/v1');
     type(el.querySelector('#custom-model') as HTMLInputElement, 'my-model');
     type(el.querySelector('#custom-key') as HTMLInputElement, 'secret');
@@ -1239,7 +1388,7 @@ describe('Connection: chat model (Settings only, less accurate)', () => {
 
   it('Ollama fills in its address and shows the OLLAMA_ORIGINS line, then checks the model before consent', async () => {
     replies.testCustomEndpoint = () => ({ ok: true, latencyMs: 40 });
-    const el = mount(<ChatEndpoint settings={fake.settings} />);
+    const el = mount(<ChatEndpoint settings={fake.settings} keyStored={false} />);
     click(button(el, 'Ollama'));
     expect((el.querySelector('#custom-url') as HTMLInputElement).value).toBe('http://localhost:11434/v1');
     expect(text(el.querySelector('code')!)).toContain(location.origin);
@@ -1256,7 +1405,7 @@ describe('Connection: chat model (Settings only, less accurate)', () => {
 
   it('denied host access names the host and saves nothing', async () => {
     browser.permissions.request = (() => Promise.resolve(false)) as typeof browser.permissions.request;
-    const el = mount(<ChatEndpoint settings={fake.settings} />);
+    const el = mount(<ChatEndpoint settings={fake.settings} keyStored={false} />);
     type(el.querySelector('#custom-url') as HTMLInputElement, 'https://llm.example.com/v1');
     type(el.querySelector('#custom-model') as HTMLInputElement, 'm');
     click(button(el, 'Use this chat model'));
@@ -1267,7 +1416,7 @@ describe('Connection: chat model (Settings only, less accurate)', () => {
   });
 
   it('refuses plain http outside localhost', () => {
-    const el = mount(<ChatEndpoint settings={fake.settings} />);
+    const el = mount(<ChatEndpoint settings={fake.settings} keyStored={false} />);
     type(el.querySelector('#custom-url') as HTMLInputElement, 'http://llm.example.com');
     expect(text(el)).toContain('Use an https address, or http only for localhost.');
   });
@@ -1276,7 +1425,7 @@ describe('Connection: chat model (Settings only, less accurate)', () => {
     replies.giveConsent = () => snapshot();
     replies.setCustomEndpoint = () => ({ ok: true });
     const settings = { ...fake.settings, engine: 'custom' as const, customEndpoint: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-6-luna' } };
-    const el = mount(<ChatEndpoint settings={settings} />);
+    const el = mount(<ChatEndpoint settings={settings} keyStored />);
     expect(el.querySelector('details')!.open).toBe(true);
     expect(text(el)).toContain('Leave blank to keep the saved key.');
     expect(button(el, 'Save changes').disabled).toBe(true);
@@ -1318,6 +1467,41 @@ describe('Settings shell', () => {
     await settle();
     expect(el.querySelector('a[aria-current="page"]')!.getAttribute('href')).toBe('#activity');
     expect(fake.queries.at(-1)).toMatchObject({ batchId: 'b9' });
+    location.hash = '';
+  });
+
+  it('a direct Decision provider without its key leaves Topic and Thumbnail rules off, as the popup does', async () => {
+    fake.settings.onboarding = { step: 0, done: true };
+    fake.settings.engine = 'direct';
+    fake.settings.direct = { provider: 'typesafe', baseUrl: 'https://api.typesafe.ai/v1', model: 'jev-latest' };
+    fake.settings.consent = { version: CONSENT_VERSION, acceptedAt: 1, customHost: 'api.typesafe.ai' };
+    replies.getRuntimeState = () => snapshot({ reason: 'noKey', eye: 'error' });
+    replies.getKeyUsage = () => ({ error: 'noKey' });
+    location.hash = '#rules';
+    const el = mount(<App />);
+    await settle();
+    click(button(el, 'Add a Rule'));
+    const options = [...el.querySelectorAll('option')] as HTMLOptionElement[];
+    expect(options.filter((o) => o.disabled).map((o) => o.value)).toEqual(['topic', 'thumbnail']);
+    location.hash = '';
+  });
+
+  it('counts Exceptions in the index from any section, and lists them in their own', async () => {
+    fake.settings.onboarding = { step: 0, done: true };
+    fake.exceptions = [
+      { videoId: 'a0000000001', title: 'Kept one', at: 2 },
+      { videoId: 'a0000000002', title: 'Kept two', at: 1 },
+    ];
+    replies.getRuntimeState = () => snapshot();
+    replies.getKeyUsage = () => ({ error: 'noKey' });
+    location.hash = '#advanced';
+    const el = mount(<App />);
+    await settle();
+    expect(el.querySelector('a[href="#exceptions"]')!.textContent).toContain('2');
+    location.hash = '#exceptions';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await settle();
+    expect(text(el)).toContain('Kept two');
     location.hash = '';
   });
 
@@ -1379,7 +1563,7 @@ describe('Settings shell', () => {
     expect(text(el)).toContain("Shoo has no access to Bilibili. It was taken away in your browser's settings.");
     expect(text(el)).not.toContain('Shoo has no access to YouTube');
     click(button(el, 'Allow access'));
-    expect(permissionRequests).toEqual([{ origins: ['https://www.bilibili.com/*', 'https://i0.hdslb.com/*'] }]);
+    expect(permissionRequests).toEqual([{ origins: ['https://www.bilibili.com/*'] }]);
     await settle();
     expect(text(el)).toContain("The browser didn't give Shoo access to Bilibili.");
   });
@@ -1394,6 +1578,21 @@ describe('Settings shell', () => {
     click(button(el, 'Delete everything'));
     await settle();
     expect(sent('resetAll')).toHaveLength(1);
+  });
+
+  it('Clear history asks for confirmation first and says checked videos cost model calls again', async () => {
+    replies.clearHistory = () => undefined;
+    const el = mount(<Advanced data={data()} params={params} />);
+    await settle();
+    expect(text(el)).toContain('Your Rules, Keep rules, Banned channels, Exceptions, settings and key stay.');
+    click(button(el, 'Clear history'));
+    expect(text(el)).toContain('which costs model calls');
+    expect(sent('clearHistory')).toEqual([]);
+    click(button(el, 'Delete history'));
+    await settle();
+    expect(sent('clearHistory')).toHaveLength(1);
+    expect(text(el)).toContain("Shoo's history is deleted.");
+    expect(sent('resetAll')).toEqual([]);
   });
 
   it('export downloads a JSON file through an object URL', async () => {

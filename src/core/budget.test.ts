@@ -39,9 +39,21 @@ describe('textBatchSize', () => {
 });
 
 describe('estimateTokens', () => {
-  it('is ceil(JSON length / 4)', () => {
+  it('is ceil(JSON length / 4) for ASCII', () => {
     expect(estimateTokens({})).toBe(1);
     expect(estimateTokens('abcdef')).toBe(2); // "abcdef" is 8 characters of JSON
+  });
+
+  it('counts each Chinese character as a whole token', () => {
+    // "不要推荐游戏直播" is 8 characters plus 2 ASCII quotes.
+    expect(estimateTokens('不要推荐游戏直播')).toBe(9);
+  });
+
+  it('trims a Chinese state the four-characters rule would have let through', () => {
+    const rules = Array.from({ length: 8 }, (_, i) => rule(`R${i + 1}`, `${i}${'游戏直播和电子竞技比赛的精彩集锦'.repeat(14)}`));
+    const out = fitState(rules, [], []);
+    expect(Math.ceil(JSON.stringify(out.state).length / 4)).toBeLessThan(STATE_TOKEN_BUDGET);
+    expect(out.truncatedRefs.length).toBeGreaterThan(0);
   });
 });
 
@@ -65,9 +77,9 @@ describe('fitState', () => {
   });
 
   it('drops Exceptions oldest first before touching Rules', () => {
-    const long = 'x'.repeat(800);
+    const long = 'x'.repeat(290);
     const exceptions = Array.from({ length: 10 }, (_, i) => exception(i, { title: `${i} ${long}` }));
-    const rules = [rule('R1', 'a'.repeat(400)), rule('R2', 'b'.repeat(400))];
+    const rules = Array.from({ length: 10 }, (_, i) => rule(`R${i + 1}`, String(i).repeat(500)));
     const out = fitState(rules, [], exceptions);
     expect(out.droppedExceptions).toBeGreaterThan(0);
     expect(out.truncatedRefs).toEqual([]);
@@ -75,6 +87,11 @@ describe('fitState', () => {
     const kept = out.state.viewer_kept_anyway ?? [];
     expect(kept.length).toBe(10 - out.droppedExceptions);
     expect(kept[0]?.startsWith('9 ')).toBe(true); // newest survives
+  });
+
+  it('cuts a kept example to 300 characters of title and 100 of channel name', () => {
+    const out = fitState([rule('R1', 'Crypto')], [], [exception(1, { title: 'T'.repeat(1000), channelName: 'C'.repeat(1000) })]);
+    expect(out.state.viewer_kept_anyway).toEqual([`${'T'.repeat(300)} (channel: ${'C'.repeat(100)})`]);
   });
 
   it('then truncates the longest Rule texts to 160 characters, longest first, without mutating Rules', () => {

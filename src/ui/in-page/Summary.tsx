@@ -1,6 +1,6 @@
 // The batch summary in Auto mode and its collapsed pill (docs/spec/ui-design.md Section 4,
 // "Batch summary").
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { Component } from 'preact';
 import type { ColourCode } from '~/core/types';
 import { t } from '~/i18n';
 import { EyesSvg } from '../eyes/EyesSvg';
@@ -60,127 +60,159 @@ function escalatedText(channels: readonly string[] | undefined): string | undefi
   return t('summary.escalated', { channels: new Intl.ListFormat(undefined, { type: 'conjunction' }).format(channels) });
 }
 
+interface SummaryState {
+  /** Collapsed for one generation only: an update (new generation) reopens the summary in the same render. */
+  pillGen: number | null;
+  hovered: boolean;
+  focused: boolean;
+}
+
+const phaseOf = (state: SummaryState, props: BatchSummaryProps) => (state.pillGen === props.generation ? 'pill' : 'open');
+
 /**
  * Batch summary: open for 6 s (paused while hovered or focused), then an eyes-and-count pill for
  * 30 s, then gone. Timers restart when `generation` changes.
  */
-export function BatchSummary(props: BatchSummaryProps) {
-  // Collapsed for one generation only: an update (new generation) reopens the summary in the same render.
-  const [pillGen, setPillGen] = useState<number | null>(null);
-  const phase = pillGen === props.generation ? 'pill' : 'open';
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const el = useRef<HTMLElement>(null);
-  const remaining = useRef(SUMMARY_OPEN_MS);
-  const seenGeneration = useRef(props.generation);
-  const focusOnOpen = useRef(false);
-  const gone = useRef(props.onGone);
-  gone.current = props.onGone;
+export class BatchSummary extends Component<BatchSummaryProps, SummaryState> {
+  override state: SummaryState = { pillGen: null, hovered: false, focused: false };
+  private el: HTMLElement | null = null;
+  private remaining = SUMMARY_OPEN_MS;
+  private seenGeneration = this.props.generation;
+  private focusOnOpen = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  /** When the open timer started, or null while the pill's timer runs. */
+  private openSince: number | null = null;
 
-  // focusout does not fire when the focused node is removed (Firefox), so re-check after each render.
-  useEffect(() => {
-    const node = el.current;
-    const active = node && (node.getRootNode() as ShadowRoot).activeElement;
-    if (focused && !(active && node.contains(active))) setFocused(false);
-  });
+  override componentDidMount(): void {
+    this.startTimer();
+  }
 
-  // The pill had focus and was expanded: keep focus on the panel's first button.
-  useEffect(() => {
-    if (phase !== 'open' || !focusOnOpen.current) return;
-    focusOnOpen.current = false;
-    el.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
-  }, [phase]);
+  override componentDidUpdate(prevProps: BatchSummaryProps, prev: SummaryState): void {
+    const { state, props } = this;
+    // focusout does not fire when the focused node is removed (Firefox), so re-check after each render.
+    const active = this.el && (this.el.getRootNode() as ShadowRoot).activeElement;
+    if (state.focused && !(active && this.el?.contains(active))) this.setState({ focused: false });
 
-  useEffect(() => {
-    if (seenGeneration.current !== props.generation) {
-      seenGeneration.current = props.generation;
-      remaining.current = SUMMARY_OPEN_MS;
+    const phase = phaseOf(state, props);
+    const phaseChanged = phase !== phaseOf(prev, prevProps);
+    // The pill had focus and was expanded: keep focus on the panel's first button.
+    if (phaseChanged && phase === 'open' && this.focusOnOpen) {
+      this.focusOnOpen = false;
+      this.el?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
     }
-    if (hovered || focused) return;
-    if (phase === 'pill') {
-      const id = setTimeout(() => gone.current(), SUMMARY_PILL_MS);
-      return () => clearTimeout(id);
+    if (phaseChanged || state.hovered !== prev.hovered || state.focused !== prev.focused || props.generation !== prevProps.generation) {
+      this.stopTimer();
+      this.startTimer();
     }
-    const start = Date.now();
-    const id = setTimeout(() => setPillGen(props.generation), remaining.current);
-    return () => {
-      clearTimeout(id);
-      remaining.current = Math.max(0, remaining.current - (Date.now() - start));
-    };
-  }, [phase, hovered, focused, props.generation]);
+  }
 
-  const hold = {
-    onMouseEnter: () => setHovered(true),
-    onMouseLeave: () => setHovered(false),
-    onFocusIn: () => setFocused(true),
+  override componentWillUnmount(): void {
+    this.stopTimer();
+  }
+
+  private startTimer(): void {
+    const { state, props } = this;
+    if (this.seenGeneration !== props.generation) {
+      this.seenGeneration = props.generation;
+      this.remaining = SUMMARY_OPEN_MS;
+    }
+    if (state.hovered || state.focused) return;
+    if (phaseOf(state, props) === 'pill') {
+      this.timer = setTimeout(() => this.props.onGone(), SUMMARY_PILL_MS);
+      return;
+    }
+    this.openSince = Date.now();
+    this.timer = setTimeout(() => this.setState({ pillGen: this.props.generation }), this.remaining);
+  }
+
+  /** Also when the open timer ran out, so `remaining` is spent before a hover pauses the pill. */
+  private stopTimer(): void {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    if (this.openSince !== null) this.remaining = Math.max(0, this.remaining - (Date.now() - this.openSince));
+    this.openSince = null;
+  }
+
+  private setEl = (n: HTMLElement | null) => {
+    this.el = n;
+  };
+
+  private hold = {
+    onMouseEnter: () => this.setState({ hovered: true }),
+    onMouseLeave: () => this.setState({ hovered: false }),
+    onFocusIn: () => this.setState({ focused: true }),
     onFocusOut: (e: FocusEvent) => {
       const next = e.relatedTarget as Node | null;
-      if (!next || !(e.currentTarget as Node).contains(next)) setFocused(false);
+      if (!next || !(e.currentTarget as Node).contains(next)) this.setState({ focused: false });
     },
   };
 
-  if (phase === 'pill') {
+  private expand = () => {
+    this.focusOnOpen = this.state.focused;
+    this.remaining = SUMMARY_OPEN_MS;
+    this.setState({ hovered: false, pillGen: null });
+  };
+
+  override render() {
+    const { props, hold } = this;
+    if (phaseOf(this.state, props) === 'pill') {
+      return (
+        <button
+          ref={this.setEl}
+          type="button"
+          class="pill"
+          aria-label={`${t('summary.shooed', props.count)}. ${t('summary.expand')}`}
+          {...hold}
+          onClick={this.expand}
+        >
+          <EyesSvg state="watching" width={22} />
+          <span class="num">{props.count}</span>
+        </button>
+      );
+    }
+
+    const ordered = byCount(props.rules);
+    const rows = ordered.length > SUMMARY_ROWS ? ordered.slice(0, SUMMARY_ROWS - 1) : ordered;
+    const more = ordered.slice(rows.length);
+
     return (
-      <button
-        ref={(n) => void (el.current = n)}
-        type="button"
-        class="pill"
-        aria-label={`${t('summary.shooed', props.count)}. ${t('summary.expand')}`}
+      <section
+        ref={this.setEl}
+        class={props.entrance === 'fade' ? 'panel fade' : 'panel'}
+        aria-label={t('summary.label')}
         {...hold}
-        onClick={() => {
-          focusOnOpen.current = focused;
-          remaining.current = SUMMARY_OPEN_MS;
-          setHovered(false);
-          setPillGen(null);
-        }}
       >
-        <EyesSvg state="watching" width={22} />
-        <span class="num">{props.count}</span>
-      </button>
+        <div class="head">
+          <EyesSvg state="watching" width={34} blinkKey={props.blinkKey} />
+          <h2>{t('summary.shooed', props.shown)}</h2>
+        </div>
+        <ul class="rules">
+          {rows.map((r) => (
+            <li key={r.ruleRef}>
+              <RuleTag ruleRef={r.ruleRef} ruleName={r.ruleName} ruleText={r.ruleText} colour={r.colour} />
+              <span class="n num">{t('summary.times', { count: r.count })}</span>
+            </li>
+          ))}
+          {more.length > 0 && (
+            <li key="more" class="more">
+              {/* Where the moment's squares for these Rules land (moment.ts), in line with the swatches above. */}
+              <span class="sw" data-refs={more.map((r) => r.ruleRef).join(' ')} />
+              {t('summary.more', more.length)}
+            </li>
+          )}
+        </ul>
+        {props.escalated?.length ? <p class="esc">{escalatedText(props.escalated)}</p> : null}
+        <div class="foot">
+          <button type="button" class="btn" onClick={() => props.onReview(props.batchId)}>
+            {t('summary.review')}
+          </button>
+          {(typeof props.undoAvailable === 'function' ? props.undoAvailable() : props.undoAvailable) && (
+            <button type="button" class="link" onClick={() => props.onUndoAll(props.batchId)}>
+              {t('summary.undoAll')}
+            </button>
+          )}
+        </div>
+      </section>
     );
   }
-
-  const ordered = byCount(props.rules);
-  const rows = ordered.length > SUMMARY_ROWS ? ordered.slice(0, SUMMARY_ROWS - 1) : ordered;
-  const more = ordered.slice(rows.length);
-
-  return (
-    <section
-      ref={(n) => void (el.current = n)}
-      class={props.entrance === 'fade' ? 'panel fade' : 'panel'}
-      aria-label={t('summary.label')}
-      {...hold}
-    >
-      <div class="head">
-        <EyesSvg state="watching" width={34} blinkKey={props.blinkKey} />
-        <h2>{t('summary.shooed', props.shown)}</h2>
-      </div>
-      <ul class="rules">
-        {rows.map((r) => (
-          <li key={r.ruleRef}>
-            <RuleTag ruleRef={r.ruleRef} ruleName={r.ruleName} ruleText={r.ruleText} colour={r.colour} />
-            <span class="n num">{t('summary.times', { count: r.count })}</span>
-          </li>
-        ))}
-        {more.length > 0 && (
-          <li key="more" class="more">
-            {/* Where the moment's squares for these Rules land (moment.ts), in line with the swatches above. */}
-            <span class="sw" data-refs={more.map((r) => r.ruleRef).join(' ')} />
-            {t('summary.more', more.length)}
-          </li>
-        )}
-      </ul>
-      {props.escalated?.length ? <p class="esc">{escalatedText(props.escalated)}</p> : null}
-      <div class="foot">
-        <button type="button" class="btn" onClick={() => props.onReview(props.batchId)}>
-          {t('summary.review')}
-        </button>
-        {(typeof props.undoAvailable === 'function' ? props.undoAvailable() : props.undoAvailable) && (
-          <button type="button" class="link" onClick={() => props.onUndoAll(props.batchId)}>
-            {t('summary.undoAll')}
-          </button>
-        )}
-      </div>
-    </section>
-  );
 }

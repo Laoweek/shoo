@@ -1,59 +1,10 @@
-/* The living wordmark's eyes (docs/spec/ui-design.md, Section 3). Shared by extension pages and the
-   in-page UI. Geometry lives in src/ui/eyes/EyesSvg.tsx (52 x 26 viewBox, eye radius 9.6).
-   Pupil offsets are fractions of the travel (30% of the eye radius = 2.88 units).
-   Lengths in transforms on SVG elements are user units, so 'px' here means viewBox units. */
-.eyes {
-  /* The lids are filled with the ground the eyes sit on: extension pages set --eyes-bg to --ground (pages.css). */
-  --eye-bg: var(--eyes-bg, var(--paper));
-  display: inline-block;
-  flex: none;
-  overflow: visible;
-  color: var(--ink);
-  vertical-align: middle;
-}
-.eyes .ring {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: var(--ring-w, 3.6);
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: scale(var(--rs, 1));
-  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.25, 1);
-}
-.eyes .pupil {
-  fill: currentColor;
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: translate(calc(var(--px, 0) * 2.88px), calc(var(--py, 0.15) * 2.88px)) scale(var(--ps, 1));
-  transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.25, 1);
-}
+/* The eyes on extension pages: the shared rules, then what only pages use (the judging, review and paused states,
+   wide, reading, drift and pointer tracking). The in-page UI imports eyes-shared.css alone. */
+@import './eyes-shared.css';
+
 .eyes.tracking .pupil {
   transition: none;
 }
-.eyes .lid rect {
-  fill: var(--eye-bg);
-}
-.eyes .lid line {
-  stroke: currentColor;
-  stroke-width: 2.4;
-  stroke-linecap: round;
-}
-.eyes .lid {
-  transition: transform 0.16s cubic-bezier(0.3, 0.8, 0.3, 1);
-}
-.eyes .lid-top {
-  transform: translateY(var(--lt, 0px));
-}
-.eyes .lid-bot {
-  transform: translateY(var(--lb, 0px));
-}
-.eyes[data-size='tiny'] {
-  --ring-w: 4.6;
-}
-.eyes[data-size='tiny'] .pupil {
-  r: 4.8px;
-}
-
 .eyes[data-state='judging'] {
   --px: 1;
   --py: 0.35;
@@ -66,43 +17,15 @@
   --lt: 13px;
   --lb: -13px;
 }
-.eyes[data-state='error'] {
-  --ps: 0.58;
-  --px: 0;
-  --py: 0;
-  --rs: 1.1;
-}
 .eyes[data-wide] {
   --ps: 0.8;
   --rs: 1.08;
-}
-
-/* One-shot motions. Each restarts when its element remounts (see EyesSvg's motion keys). */
-.eyes[data-glance] .pupil {
-  animation: shoo-eyes-glance 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .eyes[data-reading] .pupil {
   animation: shoo-eyes-read 0.9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
 }
 .eyes[data-drift] .drift {
   animation: shoo-eyes-drift 9s ease-in-out infinite alternate;
-}
-.eyes .blink.lid-top {
-  animation: shoo-eyes-blink-top 200ms linear;
-}
-.eyes .blink.lid-bot {
-  animation: shoo-eyes-blink-bot 200ms linear;
-}
-
-@keyframes shoo-eyes-glance {
-  0%,
-  100% {
-    transform: translate(0, 0.43px);
-  }
-  35%,
-  65% {
-    transform: translate(var(--gx, 1.7px), var(--gy, -2.2px));
-  }
 }
 @keyframes shoo-eyes-read {
   from {
@@ -123,42 +46,5 @@
   70%,
   100% {
     transform: translate(1px, -0.2px);
-  }
-}
-/* Blink: lids 120 ms down, 80 ms up (60% of 200 ms). */
-@keyframes shoo-eyes-blink-top {
-  0% {
-    transform: translateY(var(--lt, 0px));
-    animation-timing-function: cubic-bezier(0.3, 0, 0.7, 1);
-  }
-  60% {
-    transform: translateY(13px);
-    animation-timing-function: cubic-bezier(0.3, 0, 0.3, 1);
-  }
-  100% {
-    transform: translateY(var(--lt, 0px));
-  }
-}
-@keyframes shoo-eyes-blink-bot {
-  0% {
-    transform: translateY(var(--lb, 0px));
-    animation-timing-function: cubic-bezier(0.3, 0, 0.7, 1);
-  }
-  60% {
-    transform: translateY(-13px);
-    animation-timing-function: cubic-bezier(0.3, 0, 0.3, 1);
-  }
-  100% {
-    transform: translateY(var(--lb, 0px));
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .eyes *,
-  .eyes .pupil,
-  .eyes .drift,
-  .eyes .lid {
-    animation: none !important;
-    transition: none !important;
   }
 }

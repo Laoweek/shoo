@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '~/ui/test/catalogue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FIXTURES, parse } from '~/sites/youtube/test-harness';
+import { FIXTURES, mountTile, parse } from '~/sites/youtube/test-harness';
 import { youtube } from '~/sites/youtube';
 import { createPageUi } from './ui';
 
@@ -36,6 +36,37 @@ describe('page UI theme', () => {
     await new Promise((r) => setTimeout(r, 0)); // the theme MutationObserver
     expect(host.hasAttribute('data-dark')).toBe(true);
     expect(host.style.getPropertyValue('--shoo-ground')).toBe('rgb(15, 15, 15)');
+    ui.clearAll();
+  });
+
+  it('themes a chip mounted after YouTube switched theme', async () => {
+    const chipProps = { ruleRef: 'R1', ruleText: 'Crypto', hasChannel: true, onRemove() {}, onKeep() {}, onAlwaysKeepChannel() {}, onEscape() {} };
+    const first = mountTile(FIXTURES.homeTile, 'home');
+    const second = mountTile(FIXTURES.homeTile, 'home');
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 360, 202));
+    const ui = createPageUi(document, youtube);
+    expect(ui.chip(first, 'home', chipProps)).toBe(true);
+    expect(ui.hostOf(first)?.hasAttribute('data-dark')).toBe(false);
+    document.documentElement.setAttribute('dark', '');
+    await new Promise((r) => setTimeout(r, 0)); // the theme MutationObserver
+    expect(ui.hostOf(first)?.hasAttribute('data-dark')).toBe(true);
+    expect(ui.chip(second, 'home', chipProps)).toBe(true);
+    expect(ui.hostOf(second)?.hasAttribute('data-dark')).toBe(true);
+    ui.clearAll();
+  });
+
+  it("themes a new chip, and the ones showing, after a theme switch the Site's observer missed", () => {
+    const chipProps = { ruleRef: 'R1', ruleText: 'Crypto', hasChannel: true, onRemove() {}, onKeep() {}, onAlwaysKeepChannel() {}, onEscape() {} };
+    const first = mountTile(FIXTURES.homeTile, 'home');
+    const second = mountTile(FIXTURES.homeTile, 'home');
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 360, 202));
+    let siteDark = false;
+    const ui = createPageUi(document, { ...youtube, isDark: () => siteDark, observeTheme: () => () => {} });
+    expect(ui.chip(first, 'home', chipProps)).toBe(true);
+    siteDark = true;
+    expect(ui.chip(second, 'home', chipProps)).toBe(true);
+    expect(ui.hostOf(second)?.hasAttribute('data-dark')).toBe(true);
+    expect(ui.hostOf(first)?.hasAttribute('data-dark')).toBe(true);
     ui.clearAll();
   });
 });

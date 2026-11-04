@@ -1,5 +1,6 @@
 // Exceptions (docs/spec/ui-design.md Section 6): kept videos with title, channel and Site, date and the Rule
-// that wanted them gone. Search and delete.
+// that wanted them gone. Search and delete. The archive holds up to 5,000 Exceptions, so the list renders a page at
+// a time.
 import { Search } from 'lucide-preact';
 import { useMemo, useState } from 'preact/hooks';
 import { normalizeText } from '~/core/exact';
@@ -12,8 +13,11 @@ import { SectionHead, Status, focusHeading } from '~/ui/pages/parts';
 import { byId } from '~/ui/pages/rules';
 import type { SectionProps } from '../context';
 
+export const EXCEPTIONS_PAGE = 100;
+
 export function Exceptions({ data }: SectionProps) {
   const [query, setQuery] = useState('');
+  const [limit, setLimit] = useState(EXCEPTIONS_PAGE);
   const [gone, setGone] = useState<Set<string>>(new Set());
   const [error, setError] = useState(false);
   const rules = byId(data.rules);
@@ -56,13 +60,16 @@ export function Exceptions({ data }: SectionProps) {
               type="search"
               value={query}
               placeholder={t('exceptions.search')}
-              onInput={(e) => setQuery(e.currentTarget.value)}
+              onInput={(e) => {
+                setQuery(e.currentTarget.value);
+                setLimit(EXCEPTIONS_PAGE);
+              }}
               class="w-full min-w-0 border-0 bg-transparent text-[16px] placeholder:text-muted focus:outline-none"
             />
           </label>
           {/* A container, so the Rule and date columns give way to the title in a narrow list. */}
           <ul aria-labelledby="section-exceptions" class="card @container m-0 list-none px-3 py-1 empty:hidden [&>:last-child]:border-b-0">
-            {list.map((x) => {
+            {list.slice(0, limit).map((x) => {
               const rule = x.ruleId ? rules.get(x.ruleId) : undefined;
               const site = videoSite(x.videoId);
               return (
@@ -85,6 +92,11 @@ export function Exceptions({ data }: SectionProps) {
             })}
           </ul>
           {list.length === 0 && <p class="mt-4 text-muted">{t('exceptions.noMatch')}</p>}
+          {list.length > limit && (
+            <Button class="mt-4" onClick={() => setLimit((l) => l + EXCEPTIONS_PAGE)}>
+              {t('exceptions.more')}
+            </Button>
+          )}
         </>
       )}
       <Status tone="danger" class="mt-2">

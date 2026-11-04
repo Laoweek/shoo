@@ -125,18 +125,29 @@ export function scriptedFetch(script: Record<string, (Scripted | ((req: Recorded
 
 export const fromFixture = (f: OpenRouterFixture): Scripted => ({ status: f.response.status, body: f.response.body, headers: { 'content-type': 'application/json', ...f.response.headers } });
 
-/** Answers any Decisions request with valid answers: choice → `choose(title)`, nouls → `noul(title, question)`. */
+/**
+ * Answers any Decisions request with valid answers: text choice → `choose(title)`, nouls → `noul(title, question)`.
+ * The thumbnail choice question has no title: `noul(undefined, ref)` scores each Thumbnail rule, and the answer
+ * gives P(keep) = 1 - the top score, shared among the refs by score, so p and ref come out as the top score and ref.
+ */
 export function answerer(opts: {
   choose?: (title: string) => Record<string, number>;
   noul?: (title: string | undefined, questionId: string) => number;
   cost?: number;
 }): (req: RecordedRequest) => Scripted {
+  const thumbnail = (refs: string[]): Record<string, number> => {
+    const scores = refs.map((ref) => opts.noul?.(undefined, ref) ?? 0.01);
+    const top = Math.max(...scores);
+    const sum = scores.reduce((a, b) => a + b, 0);
+    return Object.fromEntries([['keep', 1 - top], ...refs.map((ref, i) => [ref, sum > 0 ? (top * scores[i]!) / sum : 0])]);
+  };
   return (req) => {
     const answers: Record<string, unknown> = {};
     for (const [id, q] of Object.entries<any>(req.body.questions)) {
       const title = typeof q.instructions === 'string' ? undefined : q.instructions.video.title;
       if (q.type === 'choice') {
-        const probabilities = opts.choose?.(title!) ?? { keep: 1 };
+        const refs = Object.keys(q.criteria).filter((k) => k !== 'keep');
+        const probabilities = title === undefined ? thumbnail(refs) : (opts.choose?.(title) ?? { keep: 1 });
         const full = Object.fromEntries(Object.keys(q.criteria).map((k) => [k, probabilities[k] ?? 0]));
         const choice = Object.entries(full).sort((a, b) => b[1] - a[1])[0]![0];
         answers[id] = { type: 'choice', choice, probabilities: full, confidence: 0.9 };

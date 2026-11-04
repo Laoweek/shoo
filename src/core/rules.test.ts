@@ -5,6 +5,7 @@ import {
   allocateColour,
   allocateRef,
   createRule,
+  exampleOn,
   INITIAL_COUNTERS,
   isBannedChannel,
   isTopicKeep,
@@ -18,7 +19,7 @@ import {
   validateRuleInput,
   type RefCounters,
 } from './rules';
-import type { Rule, TileFacts } from './types';
+import type { Exception, Rule, TileFacts } from './types';
 
 const rule = (over: Partial<Rule>): Rule => ({
   id: 'id',
@@ -276,6 +277,24 @@ describe('Site-only rules', () => {
     expect(ruleSite(views)).toBe('youtube');
     expect(rulesOn([views], 'bilibili')).toEqual([]);
     expect(rulesOn([views], 'youtube')).toEqual([views]);
+  });
+});
+
+describe('exampleOn', () => {
+  const topic = rule({ id: 'topic' });
+  const bilibiliTopic = rule({ id: 'bili', ref: 'R2', site: 'bilibili' });
+  const disabled = rule({ id: 'off', ref: 'R3', enabled: false });
+  const deleted = rule({ id: 'gone', ref: 'R4', deletedAt: 5 });
+  const banned = rule({ id: 'ban', ref: 'R5', kind: 'channel', params: { channelName: 'Jake' } });
+  const exact = rule({ id: 'kw', ref: 'R6', kind: 'keyword', text: 'giveaway' });
+  const thumb = rule({ id: 'th', ref: 'R7', kind: 'thumbnail' });
+  const keptFrom = (ruleId?: string): Exception => ({ videoId: `v-${ruleId}`, title: 't', at: 1, ...(ruleId ? { ruleId } : {}) });
+
+  it('shows the model only Exceptions kept from an enabled remove Topic rule on the Site', () => {
+    const keep = exampleOn([topic, bilibiliTopic, disabled, deleted, banned, exact, thumb], 'youtube');
+    const shown = [undefined, 'topic', 'bili', 'off', 'gone', 'ban', 'kw', 'th', 'unknown'].filter((id) => keep(keptFrom(id)));
+    expect(shown).toEqual(['topic']);
+    expect(exampleOn([topic, bilibiliTopic], 'bilibili')(keptFrom('bili'))).toBe(true);
   });
 });
 

@@ -53,6 +53,7 @@ export function popupNotice(r: RuntimeSnapshot, settings: Settings | undefined):
       return danger(t('popup.state.hostRevoked'), [fix('fixInSettings')]);
     case 'noKey':
       if (r.detail === 'keyRejected' && endpoint) return danger(t('popup.state.endpointRejected', { host: endpoint }), [fix('fixInSettings')]);
+      if (endpoint) return plain(t('popup.state.endpointNoKey', { host: endpoint }), [fix('fixInSettings')]);
       return r.detail === 'keyRejected' ? danger(t('notice.keyRejected'), [fix('connect')]) : plain(t('popup.state.noKey'), [fix('connect')]);
     case 'breakerNativeAction':
     case 'breakerMarkup':

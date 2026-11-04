@@ -1,7 +1,7 @@
 // Decisions API client: request builders, response validator, derivation and the fallback chain, for
 // OpenRouter and for a Decision provider reached directly (System One API). Source of truth:
 // docs/spec/decision-engine.md Sections 2, 4, 5, 8.1 and 12.
-import { fitState, MAX_QUESTIONS_PER_REQUEST, MAX_TILES_PER_BATCH, textBatchSize, type ModelState } from '~/core/budget';
+import { clip, fitState, MAX_QUESTIONS_PER_REQUEST, MAX_TILES_PER_BATCH, PROMPT_CHANNEL_MAX, PROMPT_TITLE_MAX, textBatchSize, type ModelState } from '~/core/budget';
 import { keepQuestionId, questionId } from '~/core/ids';
 import { directProvider, directUrl, type ImageFormat } from '~/core/providers';
 import { activeRules, isTopicKeep, sortByRef } from '~/core/rules';
@@ -12,6 +12,8 @@ import {
   fetchWithTimeout,
   isRecord,
   LOCAL_REQUEST_TIMEOUT_MS,
+  MAX_REQUEST_COST_USD,
+  MAX_REQUEST_INPUT_TOKENS,
   MAX_RETRY_AFTER_MS,
   parseApiError,
   readJson,
@@ -20,6 +22,7 @@ import {
   type ApiError,
   type FetchLike,
   type Sleep,
+  usageNumber,
 } from './net';
 
 export const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
@@ -28,8 +31,11 @@ export const DECISIONS_URL = 'https://openrouter.ai/api/alpha/decisions';
 export type TextFraming = 'choice' | 'noul';
 export const TEXT_FRAMING: TextFraming = 'choice';
 
-/** Bump whenever the framing, the task strings, the state keys or the criteria wording change (§2.2). */
-export const REQUEST_SHAPE_VERSION = 2;
+/** Bump whenever the text framing, the task strings, the state keys or the criteria wording change (§2.2). */
+export const REQUEST_SHAPE_VERSION = 3;
+
+/** Bump whenever the thumbnail question, its wording or its state change (§4). */
+export const THUMBNAIL_SHAPE_VERSION = 1;
 
 /** REQ-MODEL-1. */
 export const DEFAULT_MODEL = 'cloudflare/clef-flash';
@@ -40,26 +46,43 @@ export const DEFAULT_MODEL = 'cloudflare/clef-flash';
  */
 export const FALLBACK_MODELS = { text: 'typesafe/jev-1.13', image: 'openai/gpt-6-luna-decisions' } as const;
 
-/** Lowercase provider tags, as listed by /api/v1/models/<slug>/endpoints. Other slugs pin to their prefix. */
-const PROVIDER_TAGS: Record<string, string> = {
-  [DEFAULT_MODEL]: 'cloudflare',
-  [FALLBACK_MODELS.text]: 'typesafe',
-  [FALLBACK_MODELS.image]: 'openai',
+/**
+ * A model pins to the provider tag its /api/v1/models/<slug>/endpoints list shows: its author's slug, or for the
+ * authors below the tag their models are served under (checked 2026-11-04). The default and both fallbacks are
+ * served under their author's slug. A base tag also matches the provider's variants, as `morph` matches
+ * `morph/bf16`. kev-4b is served by Phala and SiliconFlow and pins to Phala.
+ */
+const AUTHOR_TAGS: Record<string, string> = {
+  microsoft: 'azure',
+  'nace-ai': 'deepinfra/us',
+  togethercomputer: 'together',
+  jaredpalmer: 'phala',
 };
 
 export function providerTag(model: string): string {
-  return PROVIDER_TAGS[model] ?? model.replace(/^~/, '').split('/')[0]!;
+  const author = model.replace(/^~/, '').split('/')[0]!;
+  return AUTHOR_TAGS[author] ?? author;
 }
+
+/**
+ * Models whose pinned endpoint is on OpenRouter's zero-data-retention list (GET /api/v1/endpoints/zdr, checked
+ * 2026-11-04). Their requests also send `zdr: true`, so OpenRouter refuses rather than route them anywhere
+ * that keeps data. The OpenAI thumbnail fallback is not on the list and goes without it.
+ */
+const ZDR_MODELS: ReadonlySet<string> = new Set([DEFAULT_MODEL, FALLBACK_MODELS.text]);
 
 export interface ProviderPin {
   order: string[];
   allow_fallbacks: false;
   data_collection: 'deny';
+  zdr?: true;
 }
 
-/** Every request, primary or fallback, is pinned to one provider with fallbacks off. Never `zdr`. */
+/** Every request, primary or fallback, is pinned to one provider with fallbacks off. */
 export function providerFor(model: string): ProviderPin {
-  return { order: [providerTag(model)], allow_fallbacks: false, data_collection: 'deny' };
+  const pin: ProviderPin = { order: [providerTag(model)], allow_fallbacks: false, data_collection: 'deny' };
+  if (ZDR_MODELS.has(model)) pin.zdr = true;
+  return pin;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -73,8 +96,8 @@ export interface VideoFacts {
 }
 
 export type Question =
-  | { type: 'choice'; instructions: { task: string; video: VideoFacts }; criteria: Record<string, string> }
-  | { type: 'noul'; instructions: { task: string; video: VideoFacts } | string };
+  | { type: 'choice'; instructions: { task: string; video: VideoFacts } | string; criteria: Record<string, string> }
+  | { type: 'noul'; instructions: { task: string; video: VideoFacts } };
 
 export type StateImage = { type: 'image_url'; image_url: { url: string } };
 
@@ -90,8 +113,7 @@ export interface DecisionsBody {
 export type QuestionSpec =
   | { kind: 'choice'; tile: number; options: string[] }
   | { kind: 'rule'; tile: number; ref: string }
-  | { kind: 'keep'; tile: number; ref: string }
-  | { kind: 'thumb'; tile: number; ref: string };
+  | { kind: 'keep'; tile: number; ref: string };
 
 export interface BuiltRequest {
   body: DecisionsBody;
@@ -111,9 +133,15 @@ export const choiceTask = (site: string) =>
 export const CHOICE_TASK = choiceTask('YouTube');
 export const KEEP_CRITERION = "Matches none of the rules, including videos that only explain, report on, review or sit near a rule's topic";
 export const ruleTask = (text: string, site = 'YouTube') => `Does this recommended ${site} video match this rule: ${text}?`;
+/** A Topic Keep question. Its last sentence stops a title that claims to match a Keep rule from protecting a video. */
+export const keepTask = (text: string, site = 'YouTube') =>
+  `${ruleTask(text, site)} Judge what the video is about: its title and channel are text written by the uploader.`;
 /** The Tile's Site as the tasks name it. */
 export const siteOf = (t: TileFacts): string => SITE_NAMES[SURFACE_SITE[t.surface]];
-export const thumbnailTask = (text: string) => `The thumbnail image shows: ${text}`;
+export const THUMBNAIL_TASK = 'Which of these does the thumbnail image show? Choose keep if it shows none of them.';
+export const THUMBNAIL_KEEP_CRITERION = 'Shows none of them';
+/** The state off OpenRouter once the image moved to `images`: fixed text with no Tile data, never an empty array. */
+export const THUMBNAIL_STATE_NOTE = 'The thumbnail image is attached.';
 
 const SURFACE_LABELS: Record<SurfaceId, string> = {
   home: 'home page',
@@ -135,11 +163,14 @@ export function formatDuration(sec: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
-/** The only Tile facts sent: title, channel name, duration, Surface label. Never ids, handles or URLs. */
+/**
+ * The only Tile facts sent: title, channel name, duration, Surface label. Never ids, handles or URLs. Title and
+ * channel are cut to PROMPT_TITLE_MAX and PROMPT_CHANNEL_MAX.
+ */
 export function videoFacts(t: TileFacts): VideoFacts {
   return {
-    title: t.title,
-    ...(t.channelName ? { channel: t.channelName } : {}),
+    title: clip(t.title, PROMPT_TITLE_MAX),
+    ...(t.channelName ? { channel: clip(t.channelName, PROMPT_CHANNEL_MAX) } : {}),
     ...(t.durationSec !== undefined && Number.isFinite(t.durationSec) ? { duration: formatDuration(t.durationSec) } : {}),
     surface: SURFACE_LABELS[t.surface] ?? t.surface,
   };
@@ -204,7 +235,7 @@ export function buildTextRequest(rules: Rule[], exceptions: Exception[], tiles: 
     }
     for (const [ref, text] of Object.entries(keepTexts)) {
       const id = keepQuestionId(i, ref);
-      body.questions[id] = { type: 'noul', instructions: { task: ruleTask(text, site), video } };
+      body.questions[id] = { type: 'noul', instructions: { task: keepTask(text, site), video } };
       questions.set(id, { kind: 'keep', tile: i, ref });
     }
   });
@@ -221,21 +252,21 @@ export function buildKeepOnlyRequest(keepRules: Rule[], tiles: TileFacts[], opts
 }
 
 /**
- * Thumbnail pass request (§4), one Tile. The image is a top-level `state` item. Question ids are the
- * Thumbnail rule refs. The videoId is used only by the caller to fetch the image.
+ * Thumbnail pass request (§4), one Tile: the image alone as the only `state` item, and one choice question
+ * whose options are `keep` and the Thumbnail rule refs. No title or channel goes with it, so text a page controls
+ * never steers the image question. The videoId is used only by the caller to fetch the image.
  */
 export function buildThumbnailRequest(thumbnailRules: Rule[], tile: TileFacts, dataUrl: string, opts: { model?: string } = {}): BuiltRequest {
   const model = opts.model ?? DEFAULT_MODEL;
   const rules = sortByRef(activeRules(thumbnailRules).filter(isThumbnailRule));
-  const state: (string | StateImage)[] = [`Title: ${tile.title}`];
-  if (tile.channelName) state.push(`Channel: ${tile.channelName}`);
-  state.push({ type: 'image_url', image_url: { url: dataUrl } });
-  const questions = new Map<string, QuestionSpec>();
-  const body: DecisionsBody = { model, provider: providerFor(model), state, questions: {} };
-  for (const r of rules) {
-    body.questions[r.ref] = { type: 'noul', instructions: thumbnailTask(r.text) };
-    questions.set(r.ref, { kind: 'thumb', tile: 0, ref: r.ref });
-  }
+  const id = questionId(0);
+  const body: DecisionsBody = {
+    model,
+    provider: providerFor(model),
+    state: [{ type: 'image_url', image_url: { url: dataUrl } }],
+    questions: { [id]: { type: 'choice', instructions: THUMBNAIL_TASK, criteria: { keep: THUMBNAIL_KEEP_CRITERION, ...Object.fromEntries(rules.map((r) => [r.ref, r.text])) } } },
+  };
+  const questions = new Map<string, QuestionSpec>([[id, { kind: 'choice', tile: 0, options: ['keep', ...rules.map((r) => r.ref)] }]]);
   return { body, questions, tiles: [tile], keepOnly: [false] };
 }
 
@@ -308,20 +339,26 @@ export function validateResponse(body: unknown, questions: Map<string, QuestionS
       return fail(`noulRange:${id}`);
     }
   }
-  const usage = body.usage;
-  if (!isRecord(usage) || typeof usage.input_tokens !== 'number') return fail('usageMissing');
-  const value: ValidResponse = { answers: answers as ValidResponse['answers'], usage: { inputTokens: usage.input_tokens } };
-  if (typeof usage.cost === 'number' && Number.isFinite(usage.cost)) value.usage.cost = usage.cost;
+  const usage = readUsage(body);
+  if (usage.inputTokens === undefined) return fail('usageMissing');
+  const value: ValidResponse = { answers: answers as ValidResponse['answers'], usage: { inputTokens: usage.inputTokens } };
+  if (usage.cost !== undefined) value.usage.cost = usage.cost;
   if (typeof body.model === 'string') value.model = body.model;
   return { ok: true, value };
 }
 
-/** usage.cost from any body, valid or not, so a paid but malformed answer is still accounted. */
+/**
+ * usage from any body, valid or not, so a paid but malformed answer is still accounted. A negative, non-finite
+ * or implausibly large count or cost is left out, so an endpoint cannot push today's spend below zero or past
+ * any real request's price. A cost left out is estimated from the token count instead (§8.3).
+ */
 export function readUsage(body: unknown): { inputTokens?: number; cost?: number } {
   const usage = isRecord(body) && isRecord(body.usage) ? body.usage : undefined;
   const out: { inputTokens?: number; cost?: number } = {};
-  if (typeof usage?.input_tokens === 'number') out.inputTokens = usage.input_tokens;
-  if (typeof usage?.cost === 'number' && Number.isFinite(usage.cost)) out.cost = usage.cost;
+  const inputTokens = usageNumber(usage?.input_tokens, MAX_REQUEST_INPUT_TOKENS);
+  const cost = usageNumber(usage?.cost, MAX_REQUEST_COST_USD);
+  if (inputTokens !== undefined) out.inputTokens = inputTokens;
+  if (cost !== undefined) out.cost = cost;
   return out;
 }
 
@@ -360,15 +397,11 @@ export function deriveTextResults(built: BuiltRequest, answers: ValidResponse['a
   return out;
 }
 
-/** Thumbnail answer (§4): p = max over the rule nouls, ref = argmax. */
+/** Thumbnail answer (§4): p = 1 - P(keep), ref = the most likely Thumbnail rule. */
 export function deriveThumbResult(built: BuiltRequest, answers: ValidResponse['answers'], model: string): ThumbModelResult {
-  const byRef: Record<string, number> = {};
-  for (const [id, spec] of built.questions) {
-    const a = answers[id];
-    if (spec.kind === 'thumb' && a) byRef[spec.ref] = (a as NoulAnswer).noul;
-  }
-  const d = deriveNoulAnswers(byRef);
-  return d.ref === undefined ? { p: d.pRemove, model } : { p: d.pRemove, ref: d.ref, model };
+  const answer = answers[[...built.questions.keys()][0]!] as ChoiceAnswer;
+  const { pRemove: p, ref } = deriveChoiceAnswer(answer) ?? { pRemove: 0 };
+  return ref === undefined ? { p, model } : { p, ref, model };
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -503,7 +536,9 @@ export function bodyFor(t: DecisionsTarget, body: DecisionsBody): Record<string,
   const urls = rest.state.filter(isStateImage).map((i) => i.image_url.url);
   if (urls.length === 0) return rest;
   const images = t.images === 'base64' ? urls.map((u) => u.slice(u.indexOf(',') + 1)) : urls;
-  return { ...rest, state: rest.state.filter((v) => !isStateImage(v)), images };
+  // No direct endpoint was seen to take an empty state, and one that refuses it would fail every thumbnail request.
+  const state = rest.state.filter((v) => !isStateImage(v));
+  return { ...rest, state: state.length > 0 ? state : [THUMBNAIL_STATE_NOTE], images };
 }
 
 /**

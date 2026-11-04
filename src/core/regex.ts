@@ -104,111 +104,115 @@ const SYNTAX_CHARS = new Set('^$\\.*+?()[]{}|/');
 const HEX = /^[0-9a-fA-F]+$/;
 
 class Parser {
-  i = 0;
-  constructor(readonly src: string) {}
+  #i = 0;
+  readonly #src: string;
+
+  constructor(src: string) {
+    this.#src = src;
+  }
 
   parse(): Term[][] {
-    const branches = this.alternation();
-    if (this.i < this.src.length) throw new Reject('syntax'); // stray ')'
+    const branches = this.#alternation();
+    if (this.#i < this.#src.length) throw new Reject('syntax'); // stray ')'
     return branches;
   }
 
-  private peek(): string | undefined {
-    return this.src[this.i];
+  #peek(): string | undefined {
+    return this.#src[this.#i];
   }
 
-  private alternation(): Term[][] {
-    const branches = [this.sequence()];
-    while (this.peek() === '|') {
-      this.i++;
-      branches.push(this.sequence());
+  #alternation(): Term[][] {
+    const branches = [this.#sequence()];
+    while (this.#peek() === '|') {
+      this.#i++;
+      branches.push(this.#sequence());
     }
     return branches;
   }
 
-  private sequence(): Term[] {
+  #sequence(): Term[] {
     const terms: Term[] = [];
-    for (let c = this.peek(); c !== undefined && c !== '|' && c !== ')'; c = this.peek()) {
-      const atom = this.atom();
-      const [min, max] = this.quantifier();
+    for (let c = this.#peek(); c !== undefined && c !== '|' && c !== ')'; c = this.#peek()) {
+      const atom = this.#atom();
+      const [min, max] = this.#quantifier();
       if (atom.type === 'anchor' && !(min === 1 && max === 1)) throw new Reject('syntax');
       terms.push({ atom, min, max });
     }
     return terms;
   }
 
-  private quantifier(): [number, number] {
-    const c = this.peek();
+  #quantifier(): [number, number] {
+    const c = this.#peek();
     let q: [number, number];
     if (c === '*') q = [0, Infinity];
     else if (c === '+') q = [1, Infinity];
     else if (c === '?') q = [0, 1];
     else if (c === '{') {
-      const m = /^\{(\d+)(,(\d*))?\}/.exec(this.src.slice(this.i));
+      const m = /^\{(\d+)(,(\d*))?\}/.exec(this.#src.slice(this.#i));
       if (!m) throw new Reject('syntax');
       const min = Number(m[1]);
       const max = m[2] === undefined ? min : m[3] === '' ? Infinity : Number(m[3]);
       if (max < min) throw new Reject('syntax');
-      this.i += m[0].length - 1;
+      this.#i += m[0].length - 1;
       q = [min, max];
     } else return [1, 1];
-    this.i++;
-    if (this.peek() === '?') this.i++; // lazy
+    this.#i++;
+    if (this.#peek() === '?') this.#i++; // lazy
     return q;
   }
 
-  private atom(): Atom {
-    const c = this.peek()!;
+  #atom(): Atom {
+    const c = this.#peek()!;
     if (c === '^' || c === '$') {
-      this.i++;
+      this.#i++;
       return { type: 'anchor' };
     }
     if (c === '.') {
-      this.i++;
+      this.#i++;
       return { type: 'chars', set: ALL };
     }
-    if (c === '(') return this.group();
-    if (c === '[') return { type: 'chars', set: this.charClass() };
-    if (c === '\\') return this.escape();
+    if (c === '(') return this.#group();
+    if (c === '[') return { type: 'chars', set: this.#charClass() };
+    if (c === '\\') return this.#escape();
     if ('*+?{}]'.includes(c)) throw new Reject('syntax'); // nothing to repeat, or a lone bracket under `u`
-    const cp = this.src.codePointAt(this.i)!;
-    this.i += String.fromCodePoint(cp).length;
+    const cp = this.#src.codePointAt(this.#i)!;
+    this.#i += String.fromCodePoint(cp).length;
     return { type: 'chars', set: literal(cp) };
   }
 
-  private group(): Atom {
-    this.i++; // '('
-    const rest = this.src.slice(this.i);
-    if (rest.startsWith('?:')) this.i += 2;
+  #group(): Atom {
+    this.#i++; // '('
+    const rest = this.#src.slice(this.#i);
+    if (rest.startsWith('?:')) this.#i += 2;
     else if (/^\?(=|!|<=|<!)/.test(rest)) throw new Reject('lookaround');
     else if (rest.startsWith('?<')) {
       const m = /^\?<([A-Za-z_$][\w$]*)>/.exec(rest);
       if (!m) throw new Reject('syntax');
-      this.i += m[0].length;
+      this.#i += m[0].length;
     } else if (rest.startsWith('?')) throw new Reject('flags'); // inline modifiers such as (?i) or (?-i:x)
-    const branches = this.alternation();
-    if (this.peek() !== ')') throw new Reject('syntax');
-    this.i++;
+    const branches = this.#alternation();
+    if (this.#peek() !== ')') throw new Reject('syntax');
+    this.#i++;
     return { type: 'group', branches };
   }
 
   /** Escape outside a class. */
-  private escape(): Atom {
-    this.i++; // '\'
-    const c = this.peek();
+  #escape(): Atom {
+    this.#i++; // '\'
+    const c = this.#peek();
     if (c === 'b' || c === 'B') {
-      this.i++;
+      this.#i++;
       return { type: 'anchor' };
     }
     if (c !== undefined && /[1-9k]/.test(c)) throw new Reject('backreference');
-    return { type: 'chars', set: this.escapedChars(false) };
+    return { type: 'chars', set: this.#escapedChars(false) };
   }
 
-  /** Character class escapes and single escaped characters, shared by both contexts. `this.i` sits after '\'. */
-  private escapedChars(inClass: boolean): CharSet {
-    const c = this.peek();
+  /** Character class escapes and single escaped characters, shared by both contexts. `this.#i` sits after '\'. */
+  #escapedChars(inClass: boolean): CharSet {
+    const c = this.#peek();
     if (c === undefined) throw new Reject('syntax');
-    this.i++;
+    this.#i++;
     switch (c) {
       case 'd':
         return DIGIT;
@@ -233,22 +237,22 @@ class Parser {
       case 'f':
         return literal(12);
       case '0':
-        if (/\d/.test(this.peek() ?? '')) throw new Reject('syntax');
+        if (/\d/.test(this.#peek() ?? '')) throw new Reject('syntax');
         return literal(0);
       case 'c': {
-        const letter = this.peek() ?? '';
+        const letter = this.#peek() ?? '';
         if (!/[A-Za-z]/.test(letter)) throw new Reject('syntax');
-        this.i++;
+        this.#i++;
         return literal(letter.charCodeAt(0) % 32);
       }
       case 'x':
-        return literal(this.hex(2));
+        return literal(this.#hex(2));
       case 'u':
-        return literal(this.unicodeEscape());
+        return literal(this.#unicodeEscape());
       case 'p':
       case 'P':
-        if (!/^\{[\w=]+\}/.test(this.src.slice(this.i))) throw new Reject('syntax');
-        this.i = this.src.indexOf('}', this.i) + 1;
+        if (!/^\{[\w=]+\}/.test(this.#src.slice(this.#i))) throw new Reject('syntax');
+        this.#i = this.#src.indexOf('}', this.#i) + 1;
         return ALL;
     }
     if (inClass && c === 'b') return literal(8);
@@ -257,53 +261,53 @@ class Parser {
     throw new Reject('syntax'); // `u` forbids identity escapes of other characters
   }
 
-  private hex(len: number): number {
-    const digits = this.src.slice(this.i, this.i + len);
+  #hex(len: number): number {
+    const digits = this.#src.slice(this.#i, this.#i + len);
     if (digits.length !== len || !HEX.test(digits)) throw new Reject('syntax');
-    this.i += len;
+    this.#i += len;
     return parseInt(digits, 16);
   }
 
-  private unicodeEscape(): number {
-    if (this.peek() !== '{') return this.hex(4);
-    const m = /^\{([0-9a-fA-F]+)\}/.exec(this.src.slice(this.i));
+  #unicodeEscape(): number {
+    if (this.#peek() !== '{') return this.#hex(4);
+    const m = /^\{([0-9a-fA-F]+)\}/.exec(this.#src.slice(this.#i));
     const cp = m ? parseInt(m[1]!, 16) : NaN;
     if (!m || cp > MAX_CP) throw new Reject('syntax');
-    this.i += m[0].length;
+    this.#i += m[0].length;
     return cp;
   }
 
-  private charClass(): CharSet {
-    this.i++; // '['
-    const negate = this.peek() === '^';
-    if (negate) this.i++;
+  #charClass(): CharSet {
+    this.#i++; // '['
+    const negate = this.#peek() === '^';
+    if (negate) this.#i++;
     const set: CharSet = [];
-    while (this.peek() !== ']') {
-      const lo = this.classAtom();
-      if (this.peek() === '-' && this.src[this.i + 1] !== ']') {
-        this.i++;
-        const hi = this.classAtom();
+    while (this.#peek() !== ']') {
+      const lo = this.#classAtom();
+      if (this.#peek() === '-' && this.#src[this.#i + 1] !== ']') {
+        this.#i++;
+        const hi = this.#classAtom();
         if (typeof lo !== 'number' || typeof hi !== 'number' || hi < lo) throw new Reject('syntax');
         set.push([lo, hi]);
       } else if (typeof lo === 'number') set.push([lo, lo]);
       else set.push(...lo);
     }
-    this.i++; // ']'
+    this.#i++; // ']'
     return negate ? complement(set) : set;
   }
 
   /** One class member: a code point, or a set for class escapes such as \d. */
-  private classAtom(): number | CharSet {
-    const c = this.peek();
+  #classAtom(): number | CharSet {
+    const c = this.#peek();
     if (c === undefined) throw new Reject('syntax');
     if (c !== '\\') {
-      const cp = this.src.codePointAt(this.i)!;
-      this.i += String.fromCodePoint(cp).length;
+      const cp = this.#src.codePointAt(this.#i)!;
+      this.#i += String.fromCodePoint(cp).length;
       return cp;
     }
-    this.i++;
-    if (/[1-9k]/.test(this.peek() ?? '')) throw new Reject('syntax');
-    const set = this.escapedChars(true);
+    this.#i++;
+    if (/[1-9k]/.test(this.#peek() ?? '')) throw new Reject('syntax');
+    const set = this.#escapedChars(true);
     return set.length === 1 && set[0]![0] === set[0]![1] ? set[0]![0] : set;
   }
 }

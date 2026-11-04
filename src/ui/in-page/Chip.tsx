@@ -1,6 +1,6 @@
 // The Review chip in Review mode, full or compact, then its kept note (docs/spec/ui-design.md
 // Section 4, "Review chip").
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { Component, createRef } from 'preact';
 import type { ColourCode } from '~/core/types';
 import { t } from '~/i18n';
 import { EyesSvg } from '../eyes/EyesSvg';
@@ -39,108 +39,115 @@ function chipName(p: RuleNaming & Pick<ChipProps, 'probability'>): string {
     : t('chip.label', { rule: ruleLabel(p), p: percent(p.probability) });
 }
 
-export function Chip(props: ChipProps) {
-  const [kept, setKept] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const focusWasInside = useRef(false);
-  const done = useRef(props.onNoteDone);
-  done.current = props.onNoteDone;
+// In-page components are classes, not hooks: preact/hooks would cost the content bundle about 750 B gzipped.
+export class Chip extends Component<ChipProps, { kept: boolean }> {
+  override state = { kept: false };
+  private root = createRef<HTMLDivElement>();
+  private focusWasInside = false;
+  private noteTimer: ReturnType<typeof setTimeout> | undefined;
 
-  useEffect(() => {
-    if (!kept) return;
+  override componentDidUpdate(_: ChipProps, prev: { kept: boolean }): void {
+    if (!this.state.kept || prev.kept) return;
     // The Keep button is gone. Keep focus on the note so it is not lost to the page.
-    if (focusWasInside.current) root.current?.focus({ preventScroll: true });
-    const id = setTimeout(() => {
-      const el = root.current;
-      done.current?.(!!el && (el.getRootNode() as ShadowRoot).activeElement !== null);
+    if (this.focusWasInside) this.root.current?.focus({ preventScroll: true });
+    this.noteTimer = setTimeout(() => {
+      const el = this.root.current;
+      this.props.onNoteDone?.(!!el && (el.getRootNode() as ShadowRoot).activeElement !== null);
     }, KEPT_NOTE_MS);
-    return () => clearTimeout(id);
-  }, [kept]);
+  }
 
-  const onKeyDown = (e: KeyboardEvent) => {
+  override componentWillUnmount(): void {
+    clearTimeout(this.noteTimer);
+  }
+
+  private onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return;
     e.preventDefault();
-    props.onEscape();
+    this.props.onEscape();
   };
-  const style = props.maxWidth ? `max-width:${props.maxWidth}px` : undefined;
-  const compact = props.variant === 'compact';
 
-  if (kept) {
-    const showChannel = props.hasChannel && !props.privateWindow;
-    const note = props.privateWindow ? t('chip.kept.session') : t('chip.kept.note');
-    // Compact: "Kept" and an icon button on one row, the full sentence and button name stay for screen readers.
-    return (
-      <div ref={root} class={compact ? 'chip compact' : 'chip'} role="status" tabIndex={-1} style={style} onKeyDown={onKeyDown}>
-        <EyesSvg state="watching" width={22} />
-        {compact ? (
-          <span class="note">
-            <span class="sr">{note}</span>
-            <span aria-hidden="true">{t('chip.kept.short')}</span>
-          </span>
-        ) : (
-          <span class="note">{note}</span>
-        )}
-        {showChannel &&
-          (compact ? (
-            <button type="button" class="ib" aria-label={t('common.keepChannel')} title={t('common.keepChannel')} onClick={props.onAlwaysKeepChannel}>
-              <UserCheckIcon />
-            </button>
+  private keep = () => {
+    this.focusWasInside = (this.root.current?.getRootNode() as ShadowRoot | undefined)?.activeElement != null;
+    this.props.onKeep();
+    this.setState({ kept: true });
+  };
+
+  override render() {
+    const { props, root, onKeyDown, keep } = this;
+    const style = props.maxWidth ? `max-width:${props.maxWidth}px` : undefined;
+    const compact = props.variant === 'compact';
+
+    if (this.state.kept) {
+      const showChannel = props.hasChannel && !props.privateWindow;
+      const note = props.privateWindow ? t('chip.kept.session') : t('chip.kept.note');
+      // Compact: "Kept" and an icon button on one row, the full sentence and button name stay for screen readers.
+      return (
+        <div ref={root} class={compact ? 'chip compact' : 'chip'} role="status" tabIndex={-1} style={style} onKeyDown={onKeyDown}>
+          <EyesSvg state="watching" width={22} />
+          {compact ? (
+            <span class="note">
+              <span class="sr">{note}</span>
+              <span aria-hidden="true">{t('chip.kept.short')}</span>
+            </span>
           ) : (
-            <button type="button" class="link" onClick={props.onAlwaysKeepChannel}>
-              {t('common.keepChannel')}
-            </button>
-          ))}
+            <span class="note">{note}</span>
+          )}
+          {showChannel &&
+            (compact ? (
+              <button type="button" class="ib" aria-label={t('common.keepChannel')} title={t('common.keepChannel')} onClick={props.onAlwaysKeepChannel}>
+                <UserCheckIcon />
+              </button>
+            ) : (
+              <button type="button" class="link" onClick={props.onAlwaysKeepChannel}>
+                {t('common.keepChannel')}
+              </button>
+            ))}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        ref={root}
+        class={compact ? 'chip compact' : 'chip'}
+        role="group"
+        aria-label={chipName(props)}
+        style={style}
+        onKeyDown={onKeyDown}
+      >
+        <EyesSvg state="watching" width={22} glanceKey={1} glance={{ x: 1.7, y: -2.2 }} />
+        {compact ? (
+          <>
+            <RuleTag ruleRef={props.ruleRef} ruleName={props.ruleName} ruleText={props.ruleText} colour={props.colour} hidden />
+            <span class="acts">
+              <button type="button" class="ib solid" aria-label={t('chip.removeLabel')} onClick={props.onRemove}>
+                <BanIcon />
+              </button>
+              <button type="button" class="ib" aria-label={t('chip.keepLabel')} onClick={keep}>
+                <CheckIcon />
+              </button>
+            </span>
+          </>
+        ) : (
+          <>
+            <span class="what" aria-hidden="true">
+              <b>{t('chip.question')}</b>
+              <RuleTag ruleRef={props.ruleRef} ruleName={props.ruleName} ruleText={props.ruleText} colour={props.colour} />
+              {props.probability !== undefined && (
+                <span class="muted num">{t('verdict.percent', { p: percent(props.probability) })}</span>
+              )}
+            </span>
+            <span class="acts">
+              <button type="button" class="btn solid" aria-label={t('chip.removeLabel')} onClick={props.onRemove}>
+                {t('chip.remove')}
+              </button>
+              <button type="button" class="btn" aria-label={t('chip.keepLabel')} onClick={keep}>
+                {t('chip.keep')}
+              </button>
+            </span>
+          </>
+        )}
       </div>
     );
   }
-
-  const keep = () => {
-    focusWasInside.current = (root.current?.getRootNode() as ShadowRoot | undefined)?.activeElement != null;
-    props.onKeep();
-    setKept(true);
-  };
-
-  return (
-    <div
-      ref={root}
-      class={compact ? 'chip compact' : 'chip'}
-      role="group"
-      aria-label={chipName(props)}
-      style={style}
-      onKeyDown={onKeyDown}
-    >
-      <EyesSvg state="watching" width={22} glanceKey={1} glance={{ x: 1.7, y: -2.2 }} />
-      {compact ? (
-        <>
-          <RuleTag ruleRef={props.ruleRef} ruleName={props.ruleName} ruleText={props.ruleText} colour={props.colour} hidden />
-          <span class="acts">
-            <button type="button" class="ib solid" aria-label={t('chip.removeLabel')} onClick={props.onRemove}>
-              <BanIcon />
-            </button>
-            <button type="button" class="ib" aria-label={t('chip.keepLabel')} onClick={keep}>
-              <CheckIcon />
-            </button>
-          </span>
-        </>
-      ) : (
-        <>
-          <span class="what" aria-hidden="true">
-            <b>{t('chip.question')}</b>
-            <RuleTag ruleRef={props.ruleRef} ruleName={props.ruleName} ruleText={props.ruleText} colour={props.colour} />
-            {props.probability !== undefined && (
-              <span class="muted num">{t('verdict.percent', { p: percent(props.probability) })}</span>
-            )}
-          </span>
-          <span class="acts">
-            <button type="button" class="btn solid" aria-label={t('chip.removeLabel')} onClick={props.onRemove}>
-              {t('chip.remove')}
-            </button>
-            <button type="button" class="btn" aria-label={t('chip.keepLabel')} onClick={keep}>
-              {t('chip.keep')}
-            </button>
-          </span>
-        </>
-      )}
-    </div>
-  );
 }

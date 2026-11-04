@@ -112,6 +112,8 @@ export function Disclosure({ level = 4, compact = false, class: cls = '' }: { le
         <ul class={`${list} flex flex-wrap gap-x-4 gap-y-1`}>
           <Item icon={X}>{t('onboarding.what.sends.never.urls')}</Item>
           <Item icon={X}>{t('onboarding.what.sends.never.ids')}</Item>
+          <Item icon={X}>{t('onboarding.what.sends.never.channels')}</Item>
+          <Item icon={X}>{t('onboarding.what.sends.never.subscriptions')}</Item>
           <Item icon={X}>{t('onboarding.what.sends.never.history')}</Item>
           <Item icon={X}>{t('onboarding.what.sends.never.cookies')}</Item>
           <Item icon={X}>{t('onboarding.what.sends.never.comments')}</Item>

@@ -6,9 +6,9 @@ Rules that override convenience are the same as YouTube's: never hide, restyle o
 
 ## 0. Bilibili in the manifest
 
-- The manifest's content scripts run `content-scripts/bilibili.js` on `https://www.bilibili.com/*`, and `host_permissions` holds `https://www.bilibili.com/*` and `https://i0.hdslb.com/*` (covers for Thumbnail rules). Bilibili is on from install.
+- The manifest's content scripts run `content-scripts/bilibili.js` on Home only (`https://www.bilibili.com/` and `https://www.bilibili.com/?*`), the one page with a supported Surface. Home is a page of its own, so no in-app navigation reaches it from a page without the script. Widen the matches when a Surface on another page becomes supported. `host_permissions` holds `https://www.bilibili.com/*`, and `https://i0.hdslb.com/*` (covers for Thumbnail rules) is an optional host permission asked for with a Thumbnail rule. Bilibili is on from install.
 - Settings, Sites turns Bilibili off (`settings.sites.bilibili`). The script then reads settings once at load and does nothing more. Its Surfaces have their own switches under it.
-- When the user takes the access away in the browser, the browser stops running the script. Settings, Sites says so with Allow access (`permissions.request` for both origins, first statement of the click handler), and the popup says so while Bilibili is on, linking there.
+- When the user takes the access away in the browser, the browser stops running the script. Settings, Sites says so with Allow access (`permissions.request` for `https://www.bilibili.com/*` only, first statement of the click handler), and the popup says so while Bilibili is on, linking there.
 
 ## 1. Surface registry (`src/sites/bilibili/surfaces.ts`)
 

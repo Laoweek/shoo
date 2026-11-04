@@ -14,6 +14,15 @@ export const SUPPORTED_SURFACES: readonly SurfaceId[] = ['home', 'watchSidebar',
 export type ShelfId = 'shorts' | 'games';
 export const SHELF_IDS: readonly ShelfId[] = ['shorts', 'games'];
 
+/**
+ * Firefox data collection categories Shoo asks for when the user agrees, all of which must stay granted
+ * before anything is sent (cross-browser-and-stores.md Section 1, "Data collection and consent").
+ */
+export const DATA_COLLECTION = ['websiteContent', 'authenticationInfo'] as const;
+
+/** A plain object, not null or an array. */
+export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
 export type RuleKind =
   | 'topic'
   | 'thumbnail'
@@ -98,6 +107,13 @@ export interface TileFacts {
   /** Bilibili only: the cover image's path on Bilibili's image host (BILIBILI_COVER_PATH). Never sent to a model. */
   cover?: string;
 }
+
+/**
+ * Longest title and channel field a Tile carries, far above what YouTube and Bilibili allow. Content cuts a longer
+ * title or channel name and drops a longer handle or channel ID, and the background rejects a batch with one.
+ */
+export const TILE_TITLE_MAX = 1000;
+export const TILE_CHANNEL_MAX = 120;
 
 export type VerdictSource = 'keepRule' | 'exception' | 'exact' | 'model' | 'modelThumbnail';
 

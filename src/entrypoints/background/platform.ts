@@ -2,9 +2,11 @@
 // permissions.contains, and tests need to capture messages sent to tabs). `browserPlatform()` is the real one.
 // The browser differences it hides: docs/spec/cross-browser-and-stores.md Section 2.
 import { browser } from 'wxt/browser';
+import { DATA_COLLECTION } from '~/core/types';
 import type { IdentityLike } from '~/engine/oauth';
 import type { FetchLike, Sleep } from '~/engine/net';
-import { sendMessage, type ProtocolMap } from '~/messaging/protocol';
+import type { ProtocolMap } from '~/messaging/protocol';
+import { sendWire } from '~/messaging/wire';
 import { browserAreas, type Areas } from '~/store/areas';
 
 /** Background → content messages, sent to one tab. */
@@ -39,8 +41,8 @@ export interface Platform {
   /** permissions.contains for one origin pattern, e.g. 'https://www.youtube.com/*'. */
   hasHost(origin: string): Promise<boolean>;
   /**
-   * Firefox: whether the optional data collection permission `websiteContent` is granted (the user can
-   * revoke it in about:addons). Chrome has no such permission and answers true.
+   * Firefox: whether every optional data collection category Shoo asked for (DATA_COLLECTION) is still
+   * granted. The user can revoke each one in about:addons. Chrome has no such permission and answers true.
    */
   dataCollection(): Promise<boolean>;
   action: {
@@ -79,11 +81,11 @@ export function browserPlatform(): Platform {
       (await browser.runtime.getContexts({ contextTypes: [browser.runtime.ContextType.TAB] })).flatMap((c) =>
         c.tabId >= 0 && c.documentUrl ? [{ tabId: c.tabId, windowId: c.windowId, url: c.documentUrl }] : [],
       ),
-    sendToTab: (type, data, tabId) => (sendMessage as (t: string, d: unknown, tab: number) => Promise<never>)(type, data, tabId),
+    sendToTab: (type, data, tabId) => sendWire(type, data, tabId) as never,
     hasHost: (origin) => browser.permissions.contains({ origins: [origin] }),
     dataCollection: () =>
-      import.meta.env.FIREFOX
-        ? (browser.permissions.contains as (p: { data_collection: string[] }) => Promise<boolean>)({ data_collection: ['websiteContent'] })
+      import.meta.env.BROWSER === 'firefox'
+        ? (browser.permissions.contains as (p: { data_collection: readonly string[] }) => Promise<boolean>)({ data_collection: DATA_COLLECTION })
         : Promise.resolve(true),
     action: {
       setIcon: async (d) => void (await browser.action.setIcon(d)),

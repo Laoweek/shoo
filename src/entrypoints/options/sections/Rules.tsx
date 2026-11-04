@@ -10,6 +10,7 @@ import { Notice, SkeletonRows } from '~/ui/components';
 import { Escalations } from '~/ui/pages/Escalations';
 import { useAsync, useNow } from '~/ui/pages/hooks';
 import { SectionHead, SubHead } from '~/ui/pages/parts';
+import { PROVIDER_NAMES } from '~/ui/pages/providers';
 import { AddRule, RuleTable } from '~/ui/pages/RuleTable';
 import { StarterChips } from '~/ui/pages/StarterChips';
 import { EyesControl, type SectionProps } from '../context';
@@ -47,7 +48,7 @@ export function Rules({ data }: SectionProps) {
           <Escalations rules={data.rules} variant="strip" class="mb-6" />
           {overLimit && (
             <Notice tone="danger" class="mb-6">
-              {t('rules.tooManyRules', { provider: provider.name, max: String(topicRuleLimit(provider)), count: String(topicOn) })}
+              {t('rules.tooManyRules', { provider: PROVIDER_NAMES[provider.id], max: String(topicRuleLimit(provider)), count: String(topicOn) })}
             </Notice>
           )}
           {hasTopic && <BudgetMeter fit={fit} />}

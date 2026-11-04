@@ -2,9 +2,22 @@
 // src/engine/decisions.ts sends, and the dataset files must stay consistent. No network.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import type { TileFacts } from '../../src/core/types';
-import { buildTextRequest, buildThumbnailRequest, CHOICE_TASK, KEEP_CRITERION, ruleTask, textBatchSizeFor, thumbnailTask, validateResponse } from '../../src/engine/decisions';
+import {
+  buildTextRequest,
+  buildThumbnailRequest,
+  CHOICE_TASK,
+  KEEP_CRITERION,
+  keepTask,
+  providerFor,
+  ruleTask,
+  textBatchSizeFor,
+  THUMBNAIL_KEEP_CRITERION,
+  THUMBNAIL_TASK,
+  validateResponse,
+} from '../../src/engine/decisions';
 import { rule } from '../../src/engine/testing';
 
 // A variable specifier keeps tsc from resolving the untyped .mjs module.
@@ -30,13 +43,52 @@ const toFacts = (t: CalTile): TileFacts => ({
 });
 const srcRules = (texts: Record<string, string>, over = {}) => Object.entries(texts).map(([ref, text]) => rule(ref, text, over));
 
+/** The AUTHOR_TAGS object literal in src/engine/decisions.ts, which the module does not export. */
+function srcAuthorTags(): Record<string, string> {
+  const path = resolve(__dirname, '../../src/engine/decisions.ts');
+  const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest);
+  let literal: ts.ObjectLiteralExpression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'AUTHOR_TAGS' && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
+      literal = node.initializer;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (!literal) throw new Error('AUTHOR_TAGS not found in src/engine/decisions.ts');
+  const tags: Record<string, string> = {};
+  for (const prop of literal.properties) {
+    if (!ts.isPropertyAssignment(prop) || !ts.isStringLiteral(prop.initializer)) throw new Error(`Unexpected AUTHOR_TAGS entry: ${prop.getText(source)}`);
+    const name = ts.isStringLiteral(prop.name) || ts.isIdentifier(prop.name) ? prop.name.text : prop.name.getText(source);
+    tags[name] = prop.initializer.text;
+  }
+  return tags;
+}
+
 describe('calibration request builders mirror src/engine/decisions.ts', () => {
   it('uses the shipped wording', () => {
     expect(lib.CHOICE_TASK).toBe(CHOICE_TASK);
     expect(lib.CHOICE_TASKS.shipped).toBe(CHOICE_TASK);
     expect(lib.KEEP_CRITERION).toBe(KEEP_CRITERION);
     expect(lib.fillRule(lib.NOUL_TASKS.shipped, 'True crime')).toBe(ruleTask('True crime'));
-    expect(lib.fillRule('The thumbnail image shows: {rule}', 'X')).toBe(thumbnailTask('X'));
+    expect(lib.fillRule(lib.KEEP_TASKS.shipped, 'True crime')).toBe(keepTask('True crime'));
+    expect(lib.keepTask('True crime')).toBe(keepTask('True crime'));
+    expect([lib.THUMBNAIL_TASK, lib.THUMBNAIL_KEEP_CRITERION]).toEqual([THUMBNAIL_TASK, THUMBNAIL_KEEP_CRITERION]);
+  });
+
+  it.each(['cloudflare/clef-flash', 'typesafe/jev-1.13', 'openai/gpt-6-luna-decisions', 'microsoft/microsoft-decision-1', 'nace-ai/drex-v1.5', 'togethercomputer/m', 'jaredpalmer/kev-4b', '~typesafe/jev-latest'])(
+    'pins %s like the shipped providerFor',
+    (model) => {
+      expect(lib.providerFor(model)).toEqual(providerFor(model));
+    },
+  );
+
+  it('lists the same AUTHOR_TAGS as src', () => {
+    expect(lib.AUTHOR_TAGS).toEqual(srcAuthorTags());
+  });
+
+  it('keeps the earlier wording and shapes as variants', () => {
+    expect(lib.KEEP_TASKS.plain).toBe(lib.NOUL_TASKS.shipped);
   });
 
   it.each([

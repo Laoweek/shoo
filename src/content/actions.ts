@@ -39,6 +39,7 @@
 // scroll guard below).
 import type { ActionStep, NativeAction, SurfaceId, Verdict } from '~/core/types';
 import { surfaceOf, type MenuSignature, type Site, type TargetJob } from '~/sites/site';
+import { shadowRootOf } from '~/ui/in-page/roots';
 import { CHIP_HOST_TAG } from './mount';
 
 export const TIMING = {
@@ -54,11 +55,11 @@ export const TIMING = {
   undoMs: 2000,
   precheckMs: 5000, // a background that never answers makes the job stale instead of stalling the queue
   guardFrames: 10, // animation frames after a job during which YouTube's late focus is still kept from moving the page
-  scrollQuietMs: 500, // no menu opens until the user has not scrolled for this long
+  scrollQuietMs: 500, // no menu opens until the user has not scrolled or pressed a key for this long
 } as const;
 
-// Keys that scroll the page. Typing in a field never counts.
-const SCROLL_KEYS = new Set(['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' ']);
+// Pressed alone, these are no key press of the user's: they only change what the next key means.
+const LONE_MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'Fn', 'NumLock', 'ScrollLock']);
 
 // iframe: focus inside an embedded frame such as the Watch page live chat. Not in the spec's list, same intent.
 const TYPING_SEL = 'input, textarea, select, iframe, [contenteditable]:not([contenteditable="false"])';
@@ -207,23 +208,37 @@ export function createActionQueue(opts: QueueOptions): NativeActionQueue {
   // back, observed 2026-10-10), so Shoo closes its own menu before the event reaches the site, the job tries again,
   // and no menu opens until the page has been quiet for `scrollQuietMs`. Listening on the window in the capture
   // phase runs ahead of YouTube's listeners on the document.
-  let lastScroll = -Infinity;
+  let lastScroll = -Infinity; // the user's last scroll or key press
   let scrolls = 0;
-  const onScrollIntent = (ev: Event) => {
-    if (ev instanceof KeyboardEvent) {
-      if (!SCROLL_KEYS.has(ev.key) || ev.altKey || ev.ctrlKey || ev.metaKey) return;
-      const path = ev.composedPath();
-      if (path[0] instanceof Element && path[0].matches(TYPING_SEL)) return;
-      if (path.some((n) => n instanceof Element && n.localName.startsWith('shoo-'))) return; // Space on a chip's Remove
-    }
-    // A press counts only for middle-button autoscroll or on the root element (its scrollbar) [unverified live].
-    if (ev.type === 'pointerdown' && (ev as MouseEvent).button !== 1 && ev.composedPath()[0] !== doc.documentElement) return;
+  const userActed = () => {
     lastScroll = now();
     scrolls += 1;
     escapeOwn();
   };
-  const SCROLL_INTENTS = ['wheel', 'touchstart', 'touchmove', 'keydown', 'pointerdown'] as const;
+  const onScrollIntent = (ev: Event) => {
+    // A press counts only for middle-button autoscroll or on the root element (its scrollbar) [unverified live].
+    if (ev.type === 'pointerdown' && (ev as MouseEvent).button !== 1 && ev.composedPath()[0] !== doc.documentElement) return;
+    userActed();
+  };
+  const SCROLL_INTENTS = ['wheel', 'touchstart', 'touchmove', 'pointerdown'] as const;
   for (const t of SCROLL_INTENTS) doc.defaultView?.addEventListener(t, onScrollIntent, { capture: true, passive: true });
+
+  // The user pressing a key yields the same way. A YouTube dropdown takes focus when it opens, so a key pressed while
+  // Shoo's menu is open lands on that menu, where Enter or Space would run an item the user never chose: that key is
+  // stopped before the menu sees it (the open menu would have taken it from the page anyway). Keys with Ctrl, Alt or
+  // Meta are browser and system shortcuts, and keys in a text field or in Shoo's own UI are the user working there.
+  const onKeyIntent = (ev: KeyboardEvent) => {
+    if (selfKey || ev.altKey || ev.ctrlKey || ev.metaKey || LONE_MODIFIERS.has(ev.key)) return;
+    const path = ev.composedPath();
+    if (path[0] instanceof Element && path[0].matches(TYPING_SEL)) return;
+    if (path.some((n) => n instanceof Element && n.localName.startsWith('shoo-'))) return; // Space on a chip's Remove
+    if (ownDropdown && path.includes(ownDropdown) && isOwnOpen(ownDropdown)) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }
+    userActed();
+  };
+  doc.defaultView?.addEventListener('keydown', onKeyIntent, true);
 
   // A menu element can be reused (YouTube), so "Shoo's menu" means: the element Shoo opened, still open, still
   // showing the same items at the same position. Once it closes, any reopening belongs to the user.
@@ -254,10 +269,14 @@ export function createActionQueue(opts: QueueOptions): NativeActionQueue {
     return t.scope.contains(a) || a.closest(CHIP_HOST_TAG) !== null;
   }
 
+  // Through the site's open roots and Shoo's closed ones, which `shadowRoot` does not return.
   function deepActive(el: Element | null): Element | null {
     let cur = el;
-    while (cur?.shadowRoot?.activeElement) cur = cur.shadowRoot.activeElement;
-    return cur;
+    for (;;) {
+      const inner = cur && shadowRootOf(cur)?.activeElement;
+      if (!inner) return cur;
+      cur = inner;
+    }
   }
 
   function backgroundPrecheck(check: () => Promise<boolean>): Promise<boolean> {
@@ -431,8 +450,8 @@ export function createActionQueue(opts: QueueOptions): NativeActionQueue {
     else putBack(how === 'frameEnd' || scrolls === knownScrolls);
   }
   const onFocusIn = (ev: FocusEvent) => {
-    const el = ev.composedPath()[0];
-    if (el instanceof Element) judge(el, 'focusin');
+    const el = ev.composedPath()[0]; // a host of Shoo's for focus inside its closed root
+    if (el instanceof Element) judge(deepActive(el) ?? el, 'focusin');
   };
   function look(how: 'frameEnd' | 'found' = 'found'): void {
     if (!guarding) return;
@@ -822,6 +841,7 @@ export function createActionQueue(opts: QueueOptions): NativeActionQueue {
       doc.defaultView?.removeEventListener('blur', onUp);
       doc.removeEventListener('pointerover', onOver, true);
       for (const t of SCROLL_INTENTS) doc.defaultView?.removeEventListener(t, onScrollIntent, true);
+      doc.defaultView?.removeEventListener('keydown', onKeyIntent, true);
     },
   };
 }

@@ -51,7 +51,7 @@ Nichts geht an einen Modellanbieter, bevor du auf dem ersten Bildschirm zustimms
 
 Nachdem du zugestimmt hast, sendet Shoo für jedes Video den Titel, den Kanalnamen, die Länge und die Stelle auf YouTube oder Bilibili, an der es erschienen ist, und das Thumbnail nur, wenn du eine Thumbnail-Regel hast. Jede Anfrage enthält außerdem den Text deiner Themenregeln, Themen-Behalten-Regeln (Topic Keep rules) und Thumbnail-Regeln, die auf dieser Website gelten, sowie die Titel und Kanalnamen von bis zu 10 Videos, die du behalten hast. Das geht an den Entscheidungsanbieter (Decision provider), den du gewählt hast: OpenRouter und den Modellanbieter, an den OpenRouter weiterleitet (standardmäßig Cloudflare, ersatzweise TypeSafe oder OpenAI, oder der Anbieter eines anderen Modells, das du auswählst), Cloudflare, TypeSafe oder Perplexity direkt, oder ein Modell auf deinem Computer, bei dem nichts das Gerät verlässt. Ein Chat-Modell, das du in Settings einrichtest, bekommt stattdessen dieselben Daten, ohne Thumbnails.
 
-Shoo sendet einem Modellanbieter nie Webadressen, Video-IDs, Cookies, Wiedergabeverlauf, Kommentare oder Kontodaten. Nichts geht an den Entwickler, und es gibt keine Analyse-Tools. Die vollständige Liste, Speicherung und Aufbewahrung stehen in der [Datenschutzerklärung](https://laoweek.github.io/shoo/release/privacy-policy.html). Fragen: shoo@piran.xyz.
+Shoo sendet einem Modellanbieter nie Webadressen, Video-IDs, Kanal-IDs oder Handles, deine Abos, Cookies, Wiedergabeverlauf, Kommentare oder Kontodaten. Eine Regel, die abonnierte Kanäle überspringt, schickt die Videos dieser Kanäle in eigenen Anfragen, sodass ein Modellanbieter erkennen könnte, welche der Kanäle, die er sieht, du abonniert hast. Nichts geht an den Entwickler, und es gibt keine Analyse-Tools. Die vollständige Liste, Speicherung und Aufbewahrung stehen in der [Datenschutzerklärung](https://laoweek.github.io/shoo/release/privacy-policy.html). Fragen: shoo@piran.xyz.
 
 ## Status
 
@@ -78,7 +78,7 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 
 ## Builds und Releases
 
-Die [CI](../../.github/workflows/ci.yml) führt `pnpm check` bei jedem Pull Request und jedem Push auf `main` aus. Jeder Push auf `main` baut danach die Distributionspakete: das Chrome-Zip, das Firefox-Zip und das Firefox-Quellcode-Zip. Du kannst sie aus den Artefakten des Workflow-Laufs herunterladen.
+Die [CI](../../.github/workflows/ci.yml) führt `pnpm check` bei jedem Pull Request und jedem Push auf `main` aus. Jeder Push auf `main` baut danach die Distributionspakete: das Chrome-Zip, das Firefox-Zip und das Firefox-Quellcode-Zip. Du kannst sie aus den Artefakten des Workflow-Laufs herunterladen. Derselbe Lauf baut das Firefox-Zip aus dem Quellcode-Zip neu und schlägt fehl, wenn nicht jede Datei übereinstimmt.
 
 Für ein Release setzt du `version` in `package.json`, committest und pushst dann einen passenden Tag:
 
@@ -87,7 +87,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-Die CI prüft, ob der Tag zu `package.json` passt, und veröffentlicht ein GitHub Release mit den drei Zips. Das Hochladen in den Chrome Web Store und zu Firefox Add-ons ist ein manueller Schritt. Die Texte für die Store-Einträge und die Store-Formulare liegen in [docs/release/](../release/).
+Die CI prüft, ob der Tag zu `package.json` passt, und veröffentlicht ein GitHub Release mit den drei Zips. Das Hochladen in den Chrome Web Store und zu Firefox Add-ons ist ein manueller Schritt, der die Zips aus diesem GitHub Release verwendet, nie einen lokalen Build. Die Texte für die Store-Einträge und die Store-Formulare liegen in [docs/release/](../release/).
 
 ## Entwicklung
 

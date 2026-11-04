@@ -1,7 +1,7 @@
 /* In-page UI on YouTube, injected inline into each shadow root (ADR 0006).
    px only, never rem: YouTube sets html { font-size: 10px }. System font stack, no FontFace. */
-@import './tokens.css';
-@import './eyes.css';
+@import './tokens-shared.css';
+@import './eyes-shared.css';
 @import './in-page/components.css';
 
 :host {

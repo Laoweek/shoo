@@ -4,7 +4,7 @@
 // Save: host access for the endpoint is the first statement of the click (Firefox rejects the prompt
 // after any await, cross-browser-and-stores.md Section 2), a model on this computer is then checked with
 // one synthetic title, and consent naming the host comes before anything is saved.
-import { ChevronRight, Cloud, Copy, ExternalLink, Gauge, Image, ImageOff, Laptop, TriangleAlert } from 'lucide-preact';
+import { ChevronRight, Cloud, Copy, ExternalLink, Gauge, Image, ImageOff, Laptop, Scale, TriangleAlert } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { CALIBRATED_MODEL, cloudflareAccount, directProvider, readsImages, topicRuleLimit, type DirectProvider, type DirectProviderId } from '~/core/providers';
@@ -21,16 +21,15 @@ import {
   desktopOs,
   isLocalUrl,
   isOllamaUrl,
+  KEY_URLS,
   LLAMACPP_COMMAND,
   LOCAL,
   OLLAMA_FAQ_URL,
   ollamaOriginsCommand,
   ONLINE,
+  PROVIDER_NAMES,
   type ProviderId,
 } from '~/ui/pages/providers';
-
-/** The provider's display name, a brand name. */
-const providerName = (id: ProviderId): string => (id === 'openrouter' ? 'OpenRouter' : directProvider(id)!.name);
 
 const LINK = 'inline-flex items-center gap-1 text-[13px] text-muted underline underline-offset-[3px] hover:text-ink';
 
@@ -52,7 +51,7 @@ export function ProviderPicker({ value, onChange, inUse }: { value: ProviderId |
           <label key={p} class={`flex min-h-11 cursor-pointer items-start gap-3 border-b border-line px-2 py-3 ${value === p ? 'bg-tint' : 'hover:bg-tint'}`}>
             <input type="radio" name="provider" value={p} checked={value === p} onChange={() => onChange(p)} class="mt-1 size-4 shrink-0 cursor-pointer" />
             <span class="min-w-0">
-              <span class="font-semibold">{providerName(p)}</span>
+              <span class="font-semibold">{PROVIDER_NAMES[p]}</span>
               {p === 'openrouter' && <span class="ml-2 text-[12px] text-muted">{t('connection.provider.recommended')}</span>}
               {p === inUse && <span class="ml-2 text-[12px] text-muted">{t('connection.provider.inUse')}</span>}
               <span class="block text-[13px] text-muted">{t(`connection.provider.${p}.hint`)}</span>
@@ -394,6 +393,7 @@ export interface DirectSetupProps {
  */
 export function DirectSetup({ provider, initial, active, topicRules = 0, disclosure, consentLabel, large, onSaved }: DirectSetupProps) {
   const p = directProvider(provider) as DirectProvider;
+  const name = PROVIDER_NAMES[provider];
   const cloudflare = provider === 'cloudflare';
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? p.baseUrl);
   const [account, setAccount] = useState(initial ? cloudflareAccount(initial.baseUrl) : '');
@@ -410,7 +410,7 @@ export function DirectSetup({ provider, initial, active, topicRules = 0, disclos
     request: () => ({ provider, baseUrl: url, model: model.trim(), ...(p.local || keepKey ? {} : { key: key.trim() }) }),
     test: (r) => sendMessage('testDirectEndpoint', r),
     save: (r) => sendMessage('setDirectEndpoint', r),
-    checkFailed: (error, h, r) => checkError(error, p.name, h, r.model, provider === 'ollama'),
+    checkFailed: (error, h, r) => checkError(error, name, h, r.model, provider === 'ollama'),
     onSaved,
     clearKey: () => setKey(''),
   });
@@ -423,7 +423,7 @@ export function DirectSetup({ provider, initial, active, topicRules = 0, disclos
       : !p.local && !key.trim() && !keepKey
         ? cloudflare
           ? t('connection.provider.missing.token')
-          : t('connection.provider.missing.key', { provider: p.name })
+          : t('connection.provider.missing.key', { provider: name })
         : !model.trim()
           ? t('connection.provider.missing.model')
           : undefined;
@@ -455,14 +455,15 @@ export function DirectSetup({ provider, initial, active, topicRules = 0, disclos
       <div class="grid gap-1 text-[13px] text-muted">
         <Fact icon={p.local ? Laptop : Cloud}>{t(p.local ? 'connection.provider.sendsToLocal' : 'connection.provider.sendsTo', { host: flow.host || new URL(p.baseUrl.replace('{account}', 'x')).host })}</Fact>
         <Fact icon={images ? Image : ImageOff}>{t(images ? 'connection.provider.images' : 'connection.provider.textOnly')}</Fact>
+        {!p.local && <Fact icon={Scale}>{t('connection.provider.ownTerms', { provider: name })}</Fact>}
         {topicRules > topicRuleLimit(p) && (
           <p class="m-0 flex items-start gap-2 text-danger">
             <TriangleAlert size={14} strokeWidth={2} aria-hidden="true" class="mt-[3px] shrink-0" />
-            <span>{t('connection.provider.tooManyRules', { provider: p.name, max: String(topicRuleLimit(p)), count: String(topicRules) })}</span>
+            <span>{t('connection.provider.tooManyRules', { provider: name, max: String(topicRuleLimit(p)), count: String(topicRules) })}</span>
           </p>
         )}
         {/* Filtering strength was tuned on clef-flash at Cloudflare (decision-engine.md Section 2.3). */}
-        {!(tuned && !p.local) && <Fact icon={Gauge}>{tuned ? t('connection.provider.tunedLocal') : t('connection.provider.untuned', { model: model.trim() || p.name })}</Fact>}
+        {!(tuned && !p.local) && <Fact icon={Gauge}>{tuned ? t('connection.provider.tunedLocal') : t('connection.provider.untuned', { model: model.trim() || name })}</Fact>}
       </div>
 
       {p.local && <LocalSteps provider={provider} model={model} />}
@@ -505,13 +506,13 @@ export function DirectSetup({ provider, initial, active, topicRules = 0, disclos
         <div class="grid gap-2">
           <KeyField
             id="direct-key"
-            label={cloudflare ? t('connection.provider.cloudflare.token') : t('connection.provider.keyLabel', { provider: p.name })}
+            label={cloudflare ? t('connection.provider.cloudflare.token') : t('connection.provider.keyLabel', { provider: name })}
             value={key}
             disabled={busy}
             keep={!!initial}
             onInput={edit(setKey)}
           />
-          {!cloudflare && p.keyUrl && <Ext href={p.keyUrl}>{t('connection.provider.howKey')}</Ext>}
+          {!cloudflare && KEY_URLS[provider] && <Ext href={KEY_URLS[provider]}>{t('connection.provider.howKey')}</Ext>}
         </div>
       )}
       {!p.local && modelField}
@@ -519,8 +520,8 @@ export function DirectSetup({ provider, initial, active, topicRules = 0, disclos
 
       <SaveArea
         flow={flow as ReturnType<typeof useSaveFlow<unknown>>}
-        label={active ? t('connection.provider.saveChanges') : t('connection.provider.use', { provider: p.name })}
-        checking={t('connection.provider.checking', { provider: p.name })}
+        label={active ? t('connection.provider.saveChanges') : t('connection.provider.use', { provider: name })}
+        checking={t('connection.provider.checking', { provider: name })}
         missing={missing}
         unchanged={unchanged}
         local={p.local}
@@ -541,7 +542,7 @@ type ChatRequest = { baseUrl: string; model: string; key?: string };
  * completions address. Less accurate than a Decision model and titles only, which the form says first.
  * Ollama and LM Studio fill in their address on this computer.
  */
-export function ChatEndpoint({ settings }: { settings: Settings }) {
+export function ChatEndpoint({ settings, keyStored }: { settings: Settings; keyStored: boolean }) {
   const saved = settings.customEndpoint;
   const [baseUrl, setBaseUrl] = useState(saved?.baseUrl ?? '');
   const [model, setModel] = useState(saved?.model ?? '');
@@ -609,7 +610,7 @@ export function ChatEndpoint({ settings }: { settings: Settings }) {
               <OllamaOrigins />
             </Steps>
           )}
-          <KeyField id="custom-key" label={t('connection.chat.keyOptional')} value={key} disabled={busy} keep={!!saved && endpointOrigin(saved.baseUrl) === origin} onInput={edit(setKey)} />
+          <KeyField id="custom-key" label={t('connection.chat.keyOptional')} value={key} disabled={busy} keep={keyStored && !!saved && endpointOrigin(saved.baseUrl) === origin} onInput={edit(setKey)} />
           <div>
             <FieldLabel for="custom-model">{t('connection.custom.model')}</FieldLabel>
             <TextInput id="custom-model" spellcheck={false} autoComplete="off" value={model} disabled={busy} aria-describedby="custom-model-hint" onInput={edit(setModel)} />

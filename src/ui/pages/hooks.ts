@@ -42,6 +42,16 @@ export function useAsync<T>(load: () => Promise<T>, watchers: readonly Watch[] =
   return { ...state, reload };
 }
 
+/** `value` once it has stopped changing for `ms`, for search boxes whose every change costs a storage read. */
+export function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return settled;
+}
+
 /** The RuntimeSnapshot from the background, refreshed when settings, Rules or failure counters change. */
 export function useRuntime(): Async<RuntimeSnapshot> {
   return useAsync(() => sendMessage('getRuntimeState'), [watchSettings, watchRuntime, watchRules]);

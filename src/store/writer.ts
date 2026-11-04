@@ -2,38 +2,54 @@
 // (docs/spec/architecture.md Section 8 "Writers"). Every mutation runs through one promise queue, so
 // concurrent calls from the popup, Settings and content never lose updates or duplicate refs.
 import { channelKey } from '~/core/channel';
-import { dayKey, type EscalationRecord } from '~/core/escalation';
+import { dayKey } from '~/core/escalation';
 import { newId as defaultNewId } from '~/core/ids';
-import { createRule, parseRef, resolveRefCollisions, sortByRef, trimName, validateRuleInput, type RefCounters } from '~/core/rules';
+import { activeRules, createRule, parseRef, resolveRefCollisions, rulesOn, sortByRef, trimName, validateRuleInput, type RefCounters } from '~/core/rules';
 import type { FailureState } from '~/core/runtime';
 import { SUPPORTED_SURFACES, SURFACE_IDS, type ActivityEvent, type Exception, type Rule, type RuleOp, type Settings, type ShooExport } from '~/core/types';
 import { browserAreas, type Areas, type StorageChange } from './areas';
-import { parseImportFile, type ImportPreview } from './import';
+import type { ImportPreview, ParsedImport } from './import';
 import {
   addCounters,
   appendActivity,
   bumpCounters as bumpLocalCounters,
+  countersKey,
   getArchive,
+  getArchiveSummary,
+  getArchived,
   getCounters,
+  clearEscalation,
+  escalationDayFull,
   getEscalation,
+  getEscalationMeta,
   getRuntime,
   getSettings,
   markActivitySeen,
   pruneRetention,
   putVerdicts,
+  recordEscalationJudged,
   recordRuleHits,
+  removeLegacyVerdicts,
   setRuntime,
   setSettings,
+  setSubscriptions,
+  splitEscalationDays,
+  SUBSCRIPTIONS_KEY,
   updateArchive,
   updateEscalation as updateLocalEscalation,
   type DayCounters,
+  type EscalationMeta,
+  type EscalationMetaStore,
   type EscalationStore,
+  type JudgedTile,
+  type StoredSubscriptions,
   type VerdictPut,
 } from './local';
 import { runMigrations, SCHEMA, DEFAULT_SETTINGS, META_KEY } from './schema';
 import {
   addPrivateException,
   bumpPrivateCounters,
+  clearRemovalTabs,
   getPrivateCounters,
   getPrivateExceptions,
   removePrivateException,
@@ -69,6 +85,10 @@ export interface ExceptionInput {
 export type Writer = ReturnType<typeof createWriter>;
 
 const isPrivate = (ctx?: PrivacyContext): ctx is { incognitoTabId: number } => ctx?.incognitoTabId !== undefined;
+/** Whether a Rule needs the Subscribed channels list: an enabled remove Rule that skips them and works on YouTube (REQ-RULE-14). */
+const readsSubscriptions = (rules: Rule[]): boolean => activeRules(rulesOn(rules, 'youtube')).some((r) => r.polarity === 'remove' && r.skipSubscribed === true);
+/** What Clear history removes from storage.local: what Shoo saw and did, never Rules, Exceptions, settings or keys. */
+const HISTORY_KEY = /^(activity:|vc:|verdicts:|counters:|escalation(:|$)|ruleStats$|subscriptions$)/;
 /** Surfaces with no Native action stay off (REQ-SURF-1a). */
 const LOCKED_SURFACES = Object.fromEntries(SURFACE_IDS.filter((s) => !SUPPORTED_SURFACES.includes(s)).map((s) => [s, false]));
 
@@ -132,7 +152,15 @@ export function createWriter(deps: WriterDeps = {}) {
   async function applyRemote(result: RemoteMergeResult, rulesBefore?: string): Promise<void> {
     await updateArchive(areas.local, result.archive, sync.syncedExceptions().map((x) => x.videoId), result.removed, result.excEpoch);
     await recordRenumbered(result.renumbered);
-    if (rulesBefore !== undefined && rulesBefore !== liveKey(sync.allRules())) deps.onRulesChanged?.(sortByRef(sync.liveRules()));
+    if (rulesBefore !== undefined && rulesBefore !== liveKey(sync.allRules())) {
+      await forgetUnusedSubscriptions();
+      deps.onRulesChanged?.(sortByRef(sync.liveRules()));
+    }
+  }
+
+  /** The Subscribed channels list is kept only while a Rule needs it. */
+  async function forgetUnusedSubscriptions(): Promise<void> {
+    if (!readsSubscriptions(sync.liveRules())) await areas.local.remove(SUBSCRIPTIONS_KEY);
   }
 
   async function recordRenumbered(list: { ruleId: string; from: string; to: string }[]): Promise<void> {
@@ -148,6 +176,12 @@ export function createWriter(deps: WriterDeps = {}) {
   function init(): Promise<void> {
     ready ??= (async () => {
       await runMigrations(areas);
+      // Nothing is kept while Escalation is Off, also counts an older version stored while Off. Otherwise counts
+      // still work in the old layout, so a failed split waits for the next start instead of blocking every write.
+      const escalation = (await escalationOff()) ? clearEscalation(areas.local) : splitEscalationDays(areas.local);
+      await escalation.catch((e: unknown) => deps.onError?.(e));
+      // Until it succeeds the old buckets only take space: nothing reads them.
+      await removeLegacyVerdicts(areas.local).catch((e: unknown) => deps.onError?.(e));
       await applyRemote(await sync.load());
       loaded = true;
     })().catch((e: unknown) => {
@@ -156,6 +190,9 @@ export function createWriter(deps: WriterDeps = {}) {
     });
     return ready;
   }
+
+  /** Read inside a queued task, so an Escalation write queued before Escalation was turned Off is cleared with the rest. */
+  const escalationOff = async (): Promise<boolean> => (await getSettings(areas.local)).escalationMode === 'off';
 
   /** Queued task that waits for init first. */
   const task = <T>(fn: () => Promise<T>): Promise<T> =>
@@ -259,6 +296,27 @@ export function createWriter(deps: WriterDeps = {}) {
       return sortByRef(sync.liveRules());
     },
 
+    /** Which of these videos have an Exception that applies to this sender. Reads only the archive buckets they fall in. */
+    exceptedIds: async (videoIds: string[], ctx?: PrivacyContext): Promise<Set<string>> => {
+      await init();
+      const want = new Set(videoIds);
+      const found = [...sync.syncedExceptions(), ...(await getArchived(areas.local, [...want], sync.excEpoch()))];
+      if (isPrivate(ctx)) found.push(...(await getPrivateExceptions(areas.session, ctx.incognitoTabId)));
+      return new Set(found.map((x) => x.videoId).filter((v) => want.has(v)));
+    },
+
+    /**
+     * The `n` newest Exceptions `keep` accepts, the kept examples a request shows. The archive is read only when an
+     * archived Exception could be among them: newer than the `n`th accepted synced one.
+     */
+    recentExceptions: async (n: number, keep: (x: Exception) => boolean): Promise<Exception[]> => {
+      await init();
+      const synced = sync.syncedExceptions().filter(keep);
+      const { newestAt } = await getArchiveSummary(areas.local, sync.excEpoch());
+      if (synced.length >= n && (n === 0 || synced[n - 1]!.at > newestAt)) return synced.slice(0, n);
+      return (await allExceptions()).filter(keep).slice(0, n);
+    },
+
     /** Exceptions that apply to this sender: synced, archived and, in a private window, the tab's own. */
     getExceptions: async (ctx?: PrivacyContext): Promise<Exception[]> => {
       await init();
@@ -272,7 +330,10 @@ export function createWriter(deps: WriterDeps = {}) {
 
     getRuntime: (): Promise<FailureState> => getRuntime(areas.local),
 
-    getEscalation: (): Promise<EscalationStore> => getEscalation(areas.local),
+    getEscalationMeta: (): Promise<EscalationMetaStore> => getEscalationMeta(areas.local),
+
+    /** Escalation records with their judged videos in the 30-day window. `pick` limits them to some channels. */
+    getEscalation: (pick?: (key: string, meta: EscalationMeta) => boolean): Promise<EscalationStore> => getEscalation(areas.local, now(), pick),
 
     // Mutations -------------------------------------------------------------------------------------
 
@@ -285,6 +346,8 @@ export function createWriter(deps: WriterDeps = {}) {
         next.sites = { ...current.sites, ...rest.sites };
         next.surfaces = { ...current.surfaces, ...rest.surfaces, ...LOCKED_SURFACES };
         await setSettings(areas.local, next);
+        // Nothing is counted while Off, and turning it on again starts from zero.
+        if (next.escalationMode === 'off' && current.escalationMode !== 'off') await clearEscalation(areas.local);
         return next;
       }),
 
@@ -300,6 +363,7 @@ export function createWriter(deps: WriterDeps = {}) {
         if ('error' in applied) return { error: 'invalidInput' as const, detail: applied.error };
         const shrinkOnly = ops.every((op) => op.op === 'delete');
         if (!(await sync.commitRules(applied.rules, applied.counters, { shrinkOnly }))) return { error: 'syncQuota' as const, detail: 'rules' };
+        await forgetUnusedSubscriptions();
         return { rules: sortByRef(sync.liveRules()) };
       }),
 
@@ -348,9 +412,27 @@ export function createWriter(deps: WriterDeps = {}) {
         await recordRuleHits(areas.local, hits);
       }),
 
-    /** Escalation counts. A no-op returning the stored records for private windows. */
-    updateEscalation: (fn: (all: Record<string, EscalationRecord>) => Record<string, EscalationRecord>, ctx?: PrivacyContext): Promise<EscalationStore> =>
-      task(() => (isPrivate(ctx) ? getEscalation(areas.local) : updateLocalEscalation(areas.local, fn))),
+    /** Escalation channel records (suggestion, "Not now"). A no-op returning them for private windows and while Escalation is Off. */
+    updateEscalation: (fn: (all: EscalationMetaStore) => EscalationMetaStore, ctx?: PrivacyContext): Promise<EscalationMetaStore> =>
+      task(async () => (isPrivate(ctx) || (await escalationOff()) ? getEscalationMeta(areas.local) : updateLocalEscalation(areas.local, fn))),
+
+    /**
+     * Counts a Topic removal on `day` through `fn`. Nothing while Escalation is Off, or once `day` left judged
+     * videos uncounted at its size limit, so a channel's share of removed Tiles never rests on a cut judged count.
+     * Returns the channel records, or undefined when nothing was counted.
+     */
+    recordTopicRemoval: (day: string, fn: (all: EscalationMetaStore) => EscalationMetaStore): Promise<EscalationMetaStore | undefined> =>
+      task(async () => {
+        if ((await escalationOff()) || (await escalationDayFull(areas.local, day))) return undefined;
+        return updateLocalEscalation(areas.local, fn);
+      }),
+
+    /** Judged Tiles for Escalation, each video once a day per channel. Nothing for private windows or while Escalation is Off. */
+    recordEscalationJudged: (day: string, tiles: JudgedTile[], ctx?: PrivacyContext): Promise<void> =>
+      task(async () => {
+        if (isPrivate(ctx) || (await escalationOff())) return;
+        await recordEscalationJudged(areas.local, day, tiles);
+      }),
 
     /** Failure counters (`local:runtime`). A no-op returning the stored state for private windows (Section 8). */
     updateRuntime: (fn: (state: FailureState) => FailureState, ctx?: PrivacyContext): Promise<FailureState> =>
@@ -359,6 +441,12 @@ export function createWriter(deps: WriterDeps = {}) {
         const next = fn(await getRuntime(areas.local));
         await setRuntime(areas.local, next);
         return next;
+      }),
+
+    /** The Subscribed channels list after a read. Not stored when no Rule needs it any more. */
+    setSubscriptions: (value: StoredSubscriptions): Promise<void> =>
+      task(async () => {
+        if (readsSubscriptions(sync.liveRules())) await setSubscriptions(areas.local, value);
       }),
 
     /** Verdict cache writes. Never for private windows. */
@@ -379,15 +467,13 @@ export function createWriter(deps: WriterDeps = {}) {
       })),
 
     /**
-     * Validates the file, returns the preview, and unless `dryRun` merges (new ids added, same id with a
-     * newer `updatedAt` wins) or replaces (every Rule and Exception not in the file is removed on every
-     * device). Ref collisions are renumbered and recorded in Activity. The dry run runs the same quota
-     * check (`syncQuota` in the preview) and, for replace, counts what would be removed.
+     * Returns the preview of a file the options page checked (store/import.ts), and unless `dryRun` merges (new
+     * ids added, same id with a newer `updatedAt` wins) or replaces (every Rule and Exception not in the file is
+     * removed on every device). Ref collisions are renumbered and recorded in Activity. The dry run runs the same
+     * quota check (`syncQuota` in the preview) and, for replace, counts what would be removed.
      */
-    importData: (file: unknown, mode: 'merge' | 'replace', dryRun: boolean): Promise<{ preview: ImportPreview } | { error: 'invalidInput'; detail: string }> =>
+    importData: (file: ParsedImport, mode: 'merge' | 'replace', dryRun: boolean): Promise<{ preview: ImportPreview } | { error: 'invalidInput'; detail: string }> =>
       task(async () => {
-        const parsed = parseImportFile(file, now());
-        if (!parsed.ok) return { error: 'invalidInput' as const, detail: parsed.detail };
         const at = sync.ruleTime(now());
         const current = sync.allRules();
         const liveIds = new Set(current.filter((r) => r.deletedAt === undefined).map((r) => r.id));
@@ -397,7 +483,7 @@ export function createWriter(deps: WriterDeps = {}) {
         const byId = new Map(mode === 'merge' ? current.map((r) => [r.id, r]) : []);
         let add = 0;
         let update = 0;
-        for (const r of parsed.value.rules) {
+        for (const r of file.rules) {
           const existing = byId.get(r.id);
           // Merge: same id with a newer updatedAt wins, so an old backup never revives a later delete.
           if (existing && r.updatedAt <= existing.updatedAt) continue;
@@ -409,11 +495,11 @@ export function createWriter(deps: WriterDeps = {}) {
         const resolved = resolveRefCollisions([...byId.values()], countersCovering([...byId.values()], sync.counters()), stamp);
         const resolvedLive = new Set(resolved.rules.filter((r) => r.deletedAt === undefined).map((r) => r.id));
         const renumbered = resolved.renumbered.filter((x) => resolvedLive.has(x.ruleId));
-        const preview: ImportPreview = { add, update, renumber: renumbered.length, invalid: parsed.value.invalid };
+        const preview: ImportPreview = { add, update, renumber: renumbered.length, invalid: file.invalid };
         const currentExceptions = await allExceptions();
         if (mode === 'replace') {
-          const fileRules = new Set(parsed.value.rules.map((r) => r.id));
-          const fileExceptions = new Set(parsed.value.exceptions.map((x) => x.videoId));
+          const fileRules = new Set(file.rules.map((r) => r.id));
+          const fileExceptions = new Set(file.exceptions.map((x) => x.videoId));
           preview.remove = {
             rules: [...liveIds].filter((id) => !fileRules.has(id)).length,
             exceptions: currentExceptions.filter((x) => !fileExceptions.has(x.videoId)).length,
@@ -425,10 +511,10 @@ export function createWriter(deps: WriterDeps = {}) {
         const counters = countersCovering(resolved.rules, resolved.counters);
         if (!(await sync.commitRules(resolved.rules, counters, clearedAt === undefined ? {} : { clearedAt }))) return { error: 'invalidInput' as const, detail: 'syncQuota' };
 
-        if (mode === 'replace') await placeExceptions(parsed.value.exceptions, [], { newEpoch: true });
+        if (mode === 'replace') await placeExceptions(file.exceptions, [], { newEpoch: true });
         else {
           const candidates = new Map<string, Exception>(currentExceptions.map((x) => [x.videoId, x]));
-          for (const imported of parsed.value.exceptions) {
+          for (const imported of file.exceptions) {
             // An Exception removed since the backup would be deleted again by its removal record.
             const x = { ...imported, at: Math.max(imported.at, sync.exceptionFloor(imported.videoId)) };
             const prev = candidates.get(x.videoId);
@@ -437,6 +523,7 @@ export function createWriter(deps: WriterDeps = {}) {
           await placeExceptions([...candidates.values()]);
         }
         await recordRenumbered(renumbered);
+        await forgetUnusedSubscriptions();
         deps.onRulesChanged?.(sortByRef(sync.liveRules()));
         return { preview };
       }),
@@ -467,6 +554,19 @@ export function createWriter(deps: WriterDeps = {}) {
         return { syncPending: !synced };
       }),
 
+    /**
+     * Clear history: deletes Activity, the Verdict cache, Rule hit and Rescue counts, past days' counters, Escalation
+     * counts and records, the Subscribed channels list and the Removals' tabs. Today's counters stay, so the Daily cap
+     * and today's spend still hold. Rules, Exceptions, settings, keys and consent stay, and nothing is written to sync.
+     */
+    clearHistory: (): Promise<void> =>
+      task(async () => {
+        const today = countersKey(dayKey(now()));
+        const keys = Object.keys(await areas.local.get(null)).filter((k) => HISTORY_KEY.test(k) && k !== today);
+        if (keys.length > 0) await areas.local.remove(keys);
+        await clearRemovalTabs(areas.session);
+      }),
+
     /** The daily `shoo:retention` alarm: local retention plus purging Rule tombstones older than 30 days. */
     runRetention: (): Promise<void> =>
       task(async () => {
@@ -475,6 +575,7 @@ export function createWriter(deps: WriterDeps = {}) {
         const rules = sync.allRules();
         const kept = rules.filter((r) => r.deletedAt === undefined || at - r.deletedAt <= TOMBSTONE_TTL_MS);
         if (kept.length !== rules.length) await sync.commitRules(kept, sync.counters());
+        await forgetUnusedSubscriptions();
       }),
 
     /** Local day key for counters ('YYYY-MM-DD'). */

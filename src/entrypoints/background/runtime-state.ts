@@ -11,6 +11,8 @@
 //   Both clear on setKey, connect, disconnect, setCustomEndpoint, setDirectEndpoint and an engine switch.
 //   Resuming the model category clears `creditsExhausted`. A model success or a 200 from GET /api/v1/key
 //   clears `keyRejected`.
+// - `fallbackModel`, also in `local:runtime`: the OpenRouter fallback model that answered while the chosen model
+//   could not, until the chosen model answers again. Settings shows it (getKeyUsage).
 // - offline: navigator.onLine at the time of the request, or an `offline` event not yet followed by `online`.
 //   The engine reports a network error as 'modelError' (indistinguishable from a 5xx), so a failed request
 //   does not by itself set offline. It counts as a model failure instead.
@@ -29,7 +31,7 @@ import { toolbarIconPaths } from '~/ui/toolbar-icon';
 import type { Platform, TabInfo } from './platform';
 
 /** `local:runtime` as the background stores it. */
-export type RuntimeRecord = FailureState & { keyRejected?: number; creditsExhausted?: number };
+export type RuntimeRecord = FailureState & { keyRejected?: number; creditsExhausted?: number; fallbackModel?: string };
 
 export const YOUTUBE_ORIGIN = 'https://www.youtube.com/*';
 export const OPENROUTER_ORIGIN = 'https://openrouter.ai/*';
@@ -72,8 +74,10 @@ export function createRuntimeState(d: RuntimeStateDeps) {
   let lastKey: string | undefined;
   let lastSettingsSig: string | undefined;
   let lastRulesVersion = '';
-  // Only the global icon is memoized: a per-tab icon resets when the tab navigates (MDN action.setIcon).
   let globalIconMemo: string | undefined;
+  // A per-tab icon resets when the tab navigates (MDN action.setIcon), so each memo keeps the tab's URL at
+  // that paint and a new URL repaints. A paint whose URL is unknown is redone at the next refresh.
+  const tabIconMemo = new Map<number, { path: string; url?: string }>();
   let refreshing: Promise<unknown> = Promise.resolve();
   let lastBadge: string | undefined;
 
@@ -103,11 +107,14 @@ export function createRuntimeState(d: RuntimeStateDeps) {
     return (await writer.getRuntime()) as RuntimeRecord;
   }
 
-  async function gather(): Promise<Base> {
+  /** `withRules` false skips reading and hashing the Rules and reuses the last rulesVersion. */
+  async function gather(withRules = true): Promise<Base> {
     const settings = await writer.getSettings();
     const migrating = d.isMigrating();
     const origin = modelOrigin(settings);
-    const [record, hasKey, hostYouTube, hostModel, dataCollection, counters] = await Promise.all([
+    // Rules wait for writer.init, so a migration in progress keeps the last known rulesVersion.
+    const readRules = withRules && !migrating;
+    const [record, hasKey, hostYouTube, hostModel, dataCollection, counters, rules] = await Promise.all([
       getRecord(),
       // A saved custom or direct endpoint counts as keyed even with an empty key: local endpoints need none.
       settings.engine === 'custom'
@@ -119,9 +126,9 @@ export function createRuntimeState(d: RuntimeStateDeps) {
       origin ? safe(platform.hasHost(origin), false) : Promise.resolve(false),
       safe(platform.dataCollection(), false),
       writer.getDayCounters(writer.today()),
+      readRules ? writer.getRules() : undefined,
     ]);
-    // Rules wait for writer.init, so a migration in progress keeps the last known rulesVersion.
-    if (!migrating) lastRulesVersion = computeRulesVersion(await writer.getRules(), settings);
+    if (rules) lastRulesVersion = computeRulesVersion(rules, settings);
     return {
       settings,
       hasKey,
@@ -160,20 +167,28 @@ export function createRuntimeState(d: RuntimeStateDeps) {
     return tabs.filter((t): t is TabInfo & { id: number } => typeof t.id === 'number');
   }
 
-  async function setIcon(target: number | 'all', eye: RuntimeSnapshot['eye'], dark: boolean): Promise<void> {
+  /** `url`: the tab's address now, when known. Without it the tab is painted and repainted at the next refresh. */
+  async function setIcon(target: number | 'all', eye: RuntimeSnapshot['eye'], dark: boolean, url?: string): Promise<void> {
     const path = toolbarIconPaths(eye, dark);
+    const memo = JSON.stringify(path);
     if (target === 'all') {
-      const memo = JSON.stringify(path);
       if (globalIconMemo === memo) return;
       globalIconMemo = memo;
+    } else {
+      const last = tabIconMemo.get(target);
+      if (last && last.path === memo && last.url !== undefined && last.url === url) return;
+      tabIconMemo.set(target, { path: memo, ...(url !== undefined && { url }) });
     }
     await safe(platform.action.setIcon(target === 'all' ? { path } : { tabId: target, path }), undefined);
   }
 
-  async function paintIcons(base: Base, tabs: { id: number }[]): Promise<void> {
+  async function paintIcons(base: Base, tabs: (TabInfo & { id: number })[]): Promise<void> {
     const dark = platform.darkToolbar();
     await setIcon('all', forTab(base).eye, dark);
-    await Promise.all(tabs.map((t) => setIcon(t.id, forTab(base, t.id).eye, dark)));
+    // A tab missing here closed or left the Site, and gets painted afresh if it comes back.
+    const listed = new Set(tabs.map((t) => t.id));
+    for (const id of tabIconMemo.keys()) if (!listed.has(id)) tabIconMemo.delete(id);
+    await Promise.all(tabs.map((t) => setIcon(t.id, forTab(base, t.id).eye, dark, t.url)));
     const removed = (await safe(writer.getDayCounters(writer.today()), { removed: 0 } as { removed: number })).removed;
     const text = removed > 0 ? String(removed) : '';
     if (text !== lastBadge) {
@@ -273,6 +288,7 @@ export function createRuntimeState(d: RuntimeStateDeps) {
     async forgetTab(tabId: number): Promise<void> {
       await loadReview();
       judging.delete(tabId);
+      tabIconMemo.delete(tabId);
       if (review.delete(tabId)) await saveReview();
     },
 
@@ -287,7 +303,8 @@ export function createRuntimeState(d: RuntimeStateDeps) {
      * key, the model host permission and a network.
      */
     async modelAllowed(opts: { ignoreDailyCap: boolean }): Promise<{ ok: true } | { ok: false; reason: ReasonCode }> {
-      const base = await gather();
+      // Runs before every model request, and the answer never reads rulesVersion.
+      const base = await gather(false);
       const inputs: Base = opts.ignoreDailyCap
         ? {
             ...base,
@@ -320,6 +337,15 @@ export function createRuntimeState(d: RuntimeStateDeps) {
       }, ctx);
     },
 
+    /**
+     * Notes that a pass's fallback model answered (`fellBack`), or lifts that note once the pass's chosen model
+     * answers again. Another pass's answer leaves the note alone. Skips the write when nothing changes.
+     */
+    async noteFallback(fallbackModel: string, fellBack: boolean): Promise<void> {
+      if (((await getRecord()).fallbackModel === fallbackModel) === fellBack) return;
+      await writer.updateRuntime((s) => (fellBack ? { ...s, fallbackModel } : without(s as RuntimeRecord, 'fallbackModel')));
+    },
+
     async setFlag(flag: 'keyRejected' | 'creditsExhausted'): Promise<void> {
       await writer.updateRuntime((s) => ({ ...s, [flag]: platform.now() }));
     },
@@ -350,6 +376,7 @@ export function createRuntimeState(d: RuntimeStateDeps) {
       review.clear();
       judging.clear();
       globalIconMemo = undefined;
+      tabIconMemo.clear();
       lastKey = undefined;
       lastSettingsSig = undefined;
       lastBadge = undefined;

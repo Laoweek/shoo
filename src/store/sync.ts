@@ -5,7 +5,7 @@ import { INITIAL_COUNTERS, resolveRefCollisions, type RefCounters } from '~/core
 import { SITE_IDS } from '~/core/sites';
 import type { ColourCode, Exception, Polarity, Rule, RuleKind, RuleParams, SiteId } from '~/core/types';
 import { channelKey } from '~/core/channel';
-import { getDefined, isRateLimitError, isRecord, itemBytes, type AreaLike } from './areas';
+import { getDefined, isRateLimitError, isRecord, itemBytes, stableJson, type AreaLike } from './areas';
 import { withQuotaRetry } from './local';
 import { META_KEY, SCHEMA, type SyncMeta } from './schema';
 
@@ -456,36 +456,40 @@ export interface CommitRulesOptions {
 }
 
 export class SyncStore {
-  private rules = new Map<string, Rule>();
-  private extras = new Map<string, RuleExtras>();
-  private exceptions = new Map<string, Exception>();
-  private meta: StoredSyncMeta = { schema: SCHEMA, ...INITIAL_COUNTERS };
-  private outbox: SyncOutbox = emptyOutbox();
-  /** JSON of every Shoo key as last read from or written to storage.sync. */
-  private stored: Record<string, string> = {};
-  private timer: unknown;
-  private backoff = 0;
-  private savedFloor: ClearFloor = { excEpoch: 0, rulesClearedAt: 0 };
+  #rules = new Map<string, Rule>();
+  #extras = new Map<string, RuleExtras>();
+  #exceptions = new Map<string, Exception>();
+  #meta: StoredSyncMeta = { schema: SCHEMA, ...INITIAL_COUNTERS };
+  #outbox: SyncOutbox = emptyOutbox();
+  /** Key-sorted JSON of every Shoo key as last read from or written to storage.sync. */
+  #stored: Record<string, string> = {};
+  #timer: unknown;
+  #backoff = 0;
+  #savedFloor: ClearFloor = { excEpoch: 0, rulesClearedAt: 0 };
   /** True when the merged Rules do not fit: Rule buckets are not written until Rules are removed. */
   overQuota = false;
 
-  constructor(private readonly deps: SyncStoreDeps) {}
+  readonly #deps: SyncStoreDeps;
+
+  constructor(deps: SyncStoreDeps) {
+    this.#deps = deps;
+  }
 
   /** Reads the outbox and storage.sync and adopts them, purging and renumbering as a merge would. */
   async load(): Promise<RemoteMergeResult> {
-    if (this.deps.local) {
-      const raw = await getDefined(this.deps.local, OUTBOX_KEY);
+    if (this.#deps.local) {
+      const raw = await getDefined(this.#deps.local, OUTBOX_KEY);
       const o = raw[OUTBOX_KEY];
-      if (isRecord(o)) this.outbox = { ...emptyOutbox(), ...(o as Partial<SyncOutbox>) };
+      if (isRecord(o)) this.#outbox = { ...emptyOutbox(), ...(o as Partial<SyncOutbox>) };
       // The outbox's adds belong to its epoch, and a pending Reset must not be forgotten.
-      const { excEpoch, rulesClearedAt } = this.outbox;
-      if (excEpoch !== undefined) this.meta.excEpoch = excEpoch;
-      if (rulesClearedAt !== undefined) this.meta.rulesClearedAt = rulesClearedAt;
-      const f = (await getDefined(this.deps.local, FLOOR_KEY))[FLOOR_KEY];
+      const { excEpoch, rulesClearedAt } = this.#outbox;
+      if (excEpoch !== undefined) this.#meta.excEpoch = excEpoch;
+      if (rulesClearedAt !== undefined) this.#meta.rulesClearedAt = rulesClearedAt;
+      const f = (await getDefined(this.#deps.local, FLOOR_KEY))[FLOOR_KEY];
       if (isRecord(f)) {
-        this.savedFloor = floorOf(parseMeta(f));
+        this.#savedFloor = floorOf(parseMeta(f));
         for (const k of ['excEpoch', 'rulesClearedAt'] as const) {
-          if (this.savedFloor[k] > (this.meta[k] ?? 0)) this.meta[k] = this.savedFloor[k];
+          if (this.#savedFloor[k] > (this.#meta[k] ?? 0)) this.#meta[k] = this.#savedFloor[k];
         }
       }
     }
@@ -493,7 +497,7 @@ export class SyncStore {
   }
 
   allRules(): Rule[] {
-    return [...this.rules.values()];
+    return [...this.#rules.values()];
   }
 
   liveRules(): Rule[] {
@@ -501,31 +505,31 @@ export class SyncStore {
   }
 
   counters(): RefCounters {
-    return { nextR: this.meta.nextR, nextK: this.meta.nextK, nextColour: this.meta.nextColour };
+    return { nextR: this.#meta.nextR, nextK: this.#meta.nextK, nextColour: this.#meta.nextColour };
   }
 
   syncedExceptions(): Exception[] {
-    return [...this.exceptions.values()].sort(newestFirst);
+    return [...this.#exceptions.values()].sort(newestFirst);
   }
 
   /** The current Exception epoch (raised by Reset and a replace import). */
   excEpoch(): number {
-    return this.meta.excEpoch ?? 0;
+    return this.#meta.excEpoch ?? 0;
   }
 
   /** A timestamp for a Rule write: `now`, or just after the Rule watermark when the clock is behind it. */
   ruleTime(now: number): number {
-    return Math.max(now, (this.meta.rulesClearedAt ?? 0) + 1);
+    return Math.max(now, (this.#meta.rulesClearedAt ?? 0) + 1);
   }
 
   /** The earliest `at` an Exception for `videoId` can have without a removal record deleting it. */
   exceptionFloor(videoId: string): number {
-    return (this.meta.excRemoved?.[videoId] ?? -1) + 1;
+    return (this.#meta.excRemoved?.[videoId] ?? -1) + 1;
   }
 
   /** Whether `rules` would fit the sync budget. */
   fits(rules: Rule[]): boolean {
-    return packRules(rules, this.extras) !== null;
+    return packRules(rules, this.#extras) !== null;
   }
 
   /**
@@ -536,27 +540,27 @@ export class SyncStore {
     let kept = rules;
     if (!this.fits(kept)) {
       if (!opts.shrinkOnly) return false;
-      kept = this.purgeOldTombstones(kept);
+      kept = this.#purgeOldTombstones(kept);
     }
     const next = new Map(kept.map((r) => [r.id, r]));
-    const box = copyOutbox(this.outbox);
+    const box = copyOutbox(this.#outbox);
     for (const r of kept) {
-      const prev = this.rules.get(r.id);
+      const prev = this.#rules.get(r.id);
       if (!prev || canonRule(prev) !== canonRule(r)) box.rules[r.id] = r;
     }
     for (const id of Object.keys(box.rules)) if (!next.has(id)) delete box.rules[id];
     box.counters = counters;
-    const clearedAt = opts.clearedAt === undefined ? this.meta.rulesClearedAt : Math.max(opts.clearedAt, this.meta.rulesClearedAt ?? 0);
+    const clearedAt = opts.clearedAt === undefined ? this.#meta.rulesClearedAt : Math.max(opts.clearedAt, this.#meta.rulesClearedAt ?? 0);
     if (opts.clearedAt !== undefined) box.rulesClearedAt = clearedAt;
-    await this.saveOutbox(box);
+    await this.#saveOutbox(box);
 
-    this.outbox = box;
-    this.rules = next;
-    for (const id of [...this.extras.keys()]) if (!this.rules.has(id)) this.extras.delete(id);
-    this.meta = { ...this.meta, ...counters };
-    if (clearedAt !== undefined) this.meta.rulesClearedAt = clearedAt;
+    this.#outbox = box;
+    this.#rules = next;
+    for (const id of [...this.#extras.keys()]) if (!this.#rules.has(id)) this.#extras.delete(id);
+    this.#meta = { ...this.#meta, ...counters };
+    if (clearedAt !== undefined) this.#meta.rulesClearedAt = clearedAt;
     this.overQuota = !this.fits(kept);
-    await this.saveFloor();
+    await this.#saveFloor();
     this.schedule();
     return true;
   }
@@ -566,9 +570,9 @@ export class SyncStore {
    * the set fits or none is left. A tombstone still in the outbox is never dropped: it is the only copy of
    * that delete.
    */
-  private purgeOldTombstones(rules: Rule[]): Rule[] {
+  #purgeOldTombstones(rules: Rule[]): Rule[] {
     const old = rules
-      .filter((r) => r.deletedAt !== undefined && this.rules.get(r.id)?.deletedAt !== undefined && !(r.id in this.outbox.rules))
+      .filter((r) => r.deletedAt !== undefined && this.#rules.get(r.id)?.deletedAt !== undefined && !(r.id in this.#outbox.rules))
       .sort((a, b) => a.deletedAt! - b.deletedAt! || byText(a.id, b.id));
     const dropped = new Set<string>();
     let kept = rules;
@@ -587,24 +591,24 @@ export class SyncStore {
    * archive. Memory changes only after the outbox is persisted.
    */
   async commitExceptions(candidates: Exception[], removedIds: string[] = [], opts: { newEpoch?: boolean } = {}): Promise<Exception[]> {
-    const at = this.deps.now();
+    const at = this.#deps.now();
     const epoch = opts.newEpoch ? Math.max(this.excEpoch() + 1, Math.floor(at / 1000) - EPOCH_ORIGIN_S) : this.excEpoch();
     const { synced, overflow } = packExceptions(candidates, epoch);
     const placed = new Map(synced.map((x) => [x.videoId, x]));
-    const box = copyOutbox(this.outbox);
+    const box = copyOutbox(this.#outbox);
     if (opts.newEpoch) {
       box.added = {};
       box.removed = {};
     }
     for (const x of placed.values()) {
-      const prev = this.exceptions.get(x.videoId);
+      const prev = this.#exceptions.get(x.videoId);
       if (opts.newEpoch || !prev || prev.at !== x.at) box.added[x.videoId] = x;
     }
     const removals: Record<string, number> = {};
     for (const v of removedIds) {
       if (placed.has(v)) continue;
       // Never older than the Exception it removes, even when that came from a device whose clock is ahead.
-      const removedAt = Math.max(at, this.exceptions.get(v)?.at ?? at);
+      const removedAt = Math.max(at, this.#exceptions.get(v)?.at ?? at);
       removals[v] = removedAt;
       box.removed[v] = removedAt;
       delete box.added[v];
@@ -613,20 +617,20 @@ export class SyncStore {
     box.removed = mergeRemovals(box.removed);
     for (const v of Object.keys(box.added)) if (!placed.has(v)) delete box.added[v];
     if (epoch > 0 && (opts.newEpoch || Object.keys(box.added).length + Object.keys(box.removed).length > 0)) box.excEpoch = epoch;
-    await this.saveOutbox(box);
+    await this.#saveOutbox(box);
 
-    this.outbox = box;
-    this.exceptions = placed;
-    this.meta = { ...this.meta, excRemoved: mergeRemovals(opts.newEpoch ? undefined : this.meta.excRemoved, removals) };
-    if (epoch > 0) this.meta.excEpoch = epoch;
-    await this.saveFloor();
+    this.#outbox = box;
+    this.#exceptions = placed;
+    this.#meta = { ...this.#meta, excRemoved: mergeRemovals(opts.newEpoch ? undefined : this.#meta.excRemoved, removals) };
+    if (epoch > 0) this.#meta.excEpoch = epoch;
+    await this.#saveFloor();
     this.schedule();
     return overflow;
   }
 
   /** Writes the outbox to storage.local, evicting Activity and then the Verdict cache on a quota error. */
-  private async saveOutbox(o: SyncOutbox): Promise<void> {
-    const local = this.deps.local;
+  async #saveOutbox(o: SyncOutbox): Promise<void> {
+    const local = this.#deps.local;
     if (!local) return;
     const empty =
       Object.keys(o.rules).length + Object.keys(o.added).length + Object.keys(o.removed).length === 0 &&
@@ -637,12 +641,12 @@ export class SyncStore {
   }
 
   /** Records a raised `excEpoch` or `rulesClearedAt` in storage.local. */
-  private async saveFloor(): Promise<void> {
-    const local = this.deps.local;
-    const floor = floorOf(this.meta);
-    if (!local || (floor.excEpoch <= this.savedFloor.excEpoch && floor.rulesClearedAt <= this.savedFloor.rulesClearedAt)) return;
+  async #saveFloor(): Promise<void> {
+    const local = this.#deps.local;
+    const floor = floorOf(this.#meta);
+    if (!local || (floor.excEpoch <= this.#savedFloor.excEpoch && floor.rulesClearedAt <= this.#savedFloor.rulesClearedAt)) return;
     await withQuotaRetry(local, () => local.set({ [FLOOR_KEY]: floor }));
-    this.savedFloor = floor;
+    this.#savedFloor = floor;
   }
 
   /**
@@ -650,14 +654,14 @@ export class SyncStore {
    * outbox. Writes back only when the merged state differs from storage, so two devices never ping-pong.
    */
   async mergeRemote(previous: Record<string, unknown> = {}): Promise<RemoteMergeResult> {
-    const raw = await getDefined(this.deps.sync, null);
-    const box = this.outbox;
+    const raw = await getDefined(this.#deps.sync, null);
+    const box = this.#outbox;
     const boxBefore = JSON.stringify(box);
     // Everything stored, removed entries included, to compare against at the end.
     const stored = parseSync(raw);
     // The highest Reset seen anywhere wins: memory, storage (meta or an Exception's `ep`), the overwritten
     // value, or the outbox.
-    const metas = [this.meta, stored.meta, parseMeta(previous[META_KEY])];
+    const metas = [this.#meta, stored.meta, parseMeta(previous[META_KEY])];
     const floor: ClearFloor = {
       excEpoch: Math.max(box.excEpoch ?? 0, ...metas.map((m) => m.excEpoch ?? 0), ...stored.excEpochs.values(), ...parseSync(previous).excEpochs.values()),
       rulesClearedAt: Math.max(box.rulesClearedAt ?? 0, ...metas.map((m) => m.rulesClearedAt ?? 0)),
@@ -666,9 +670,9 @@ export class SyncStore {
     // `previous` holds the `oldValue`s of an onChanged event. When another device's write replaced a
     // bucket wholesale (last write wins per item), they are the only copy of what was overwritten.
     const prev = parseSync(previous, floor);
-    const now = this.deps.now();
+    const now = this.#deps.now();
 
-    const oursRules = new Map(this.rules);
+    const oursRules = new Map(this.#rules);
     for (const r of [...prev.rules.values(), ...Object.values(box.rules)]) {
       const cur = oursRules.get(r.id);
       if (!cur || newerRule(r, cur)) oursRules.set(r.id, r);
@@ -676,14 +680,14 @@ export class SyncStore {
     const mergedRules = mergeRules(oursRules, theirs.rules, now);
     for (const [id, m] of mergedRules) if (m.rule.updatedAt <= floor.rulesClearedAt) mergedRules.delete(id);
     const counters: RefCounters = {
-      nextR: Math.max(this.meta.nextR, theirs.meta.nextR, prev.meta.nextR, box.counters?.nextR ?? 0),
-      nextK: Math.max(this.meta.nextK, theirs.meta.nextK, prev.meta.nextK, box.counters?.nextK ?? 0),
-      nextColour: Math.max(this.meta.nextColour, theirs.meta.nextColour, prev.meta.nextColour, box.counters?.nextColour ?? 0),
+      nextR: Math.max(this.#meta.nextR, theirs.meta.nextR, prev.meta.nextR, box.counters?.nextR ?? 0),
+      nextK: Math.max(this.#meta.nextK, theirs.meta.nextK, prev.meta.nextK, box.counters?.nextK ?? 0),
+      nextColour: Math.max(this.#meta.nextColour, theirs.meta.nextColour, prev.meta.nextColour, box.counters?.nextColour ?? 0),
     };
     const resolved = resolveRefCollisions([...mergedRules.values()].map((m) => m.rule), counters, Math.max(now, floor.rulesClearedAt + 1));
     const extras = new Map<string, RuleExtras>();
     for (const [id, m] of mergedRules) {
-      const e = m.from === 'theirs' ? theirs.extras.get(id) : (this.extras.get(id) ?? prev.extras.get(id));
+      const e = m.from === 'theirs' ? theirs.extras.get(id) : (this.#extras.get(id) ?? prev.extras.get(id));
       if (e) extras.set(id, e);
     }
 
@@ -694,12 +698,12 @@ export class SyncStore {
       box.removed = {};
     }
     const removed = mergeRemovals(
-      current(this.meta) ? this.meta.excRemoved : undefined,
+      current(this.#meta) ? this.#meta.excRemoved : undefined,
       current(theirs.meta) ? theirs.meta.excRemoved : undefined,
       current(prev.meta) ? prev.meta.excRemoved : undefined,
       box.removed,
     );
-    const oursExc = current(this.meta) ? new Map(this.exceptions) : new Map<string, Exception>();
+    const oursExc = current(this.#meta) ? new Map(this.#exceptions) : new Map<string, Exception>();
     for (const x of prev.exceptions.values()) if (!oursExc.has(x.videoId)) oursExc.set(x.videoId, x);
     for (const x of Object.values(box.added)) {
       const cur = oursExc.get(x.videoId);
@@ -707,28 +711,28 @@ export class SyncStore {
     }
     const { merged: mergedExc, archive } = mergeExceptions(oursExc, theirs.exceptions, removed, new Set(Object.keys(box.added)));
 
-    this.stored = Object.fromEntries(Object.entries(raw).filter(([k]) => isSyncDataKey(k)).map(([k, v]) => [k, JSON.stringify(v)]));
-    this.rules = new Map(resolved.rules.map((r) => [r.id, r]));
-    this.extras = extras;
+    this.#stored = Object.fromEntries(Object.entries(raw).filter(([k]) => isSyncDataKey(k)).map(([k, v]) => [k, stableJson(v)]));
+    this.#rules = new Map(resolved.rules.map((r) => [r.id, r]));
+    this.#extras = extras;
     // Unknown meta fields: the remote copy wins, it is the freshest.
-    this.meta = { ...this.meta, ...theirs.meta, ...resolved.counters, schema: Math.max(this.meta.schema, theirs.meta.schema), excRemoved: removed };
-    if (Object.keys(removed).length === 0) delete this.meta.excRemoved;
+    this.#meta = { ...this.#meta, ...theirs.meta, ...resolved.counters, schema: Math.max(this.#meta.schema, theirs.meta.schema), excRemoved: removed };
+    if (Object.keys(removed).length === 0) delete this.#meta.excRemoved;
     for (const k of ['excEpoch', 'rulesClearedAt'] as const) {
-      if (floor[k] > 0) this.meta[k] = floor[k];
-      else delete this.meta[k];
+      if (floor[k] > 0) this.#meta[k] = floor[k];
+      else delete this.#meta[k];
     }
     const { synced, overflow } = packExceptions(mergedExc, floor.excEpoch);
-    this.exceptions = new Map(synced.map((x) => [x.videoId, x]));
+    this.#exceptions = new Map(synced.map((x) => [x.videoId, x]));
 
     // Renumbered Rules are local writes too.
-    for (const { ruleId } of resolved.renumbered) box.rules[ruleId] = this.rules.get(ruleId)!;
-    this.confirmOutbox(theirs);
-    if (JSON.stringify(box) !== boxBefore) await this.saveOutbox(box);
-    await this.saveFloor();
+    for (const { ruleId } of resolved.renumbered) box.rules[ruleId] = this.#rules.get(ruleId)!;
+    this.#confirmOutbox(theirs);
+    if (JSON.stringify(box) !== boxBefore) await this.#saveOutbox(box);
+    await this.#saveFloor();
 
     // Logical comparison against everything stored, removed entries included, not bucket layout: a
     // device never rewrites data it agrees with, and does rewrite what a stale device wrote back.
-    const merged = canonState(this.rules, this.extras, this.exceptions.values(), () => floor.excEpoch, this.meta);
+    const merged = canonState(this.#rules, this.#extras, this.#exceptions.values(), () => floor.excEpoch, this.#meta);
     const inStorage = canonState(stored.rules, stored.extras, stored.exceptions.values(), (v) => stored.excEpochs.get(v) ?? 0, stored.meta);
     const changed = merged !== inStorage;
     if (changed) this.schedule();
@@ -736,17 +740,17 @@ export class SyncStore {
   }
 
   /** Drops outbox entries that storage.sync now holds (or something newer), or that no longer apply. */
-  private confirmOutbox(theirs: SyncSnapshot): void {
-    const box = this.outbox;
+  #confirmOutbox(theirs: SyncSnapshot): void {
+    const box = this.#outbox;
     for (const [id, r] of Object.entries(box.rules)) {
       const t = theirs.rules.get(id);
-      const current = this.rules.get(id);
+      const current = this.#rules.get(id);
       if (!current || (t && !newerRule(current, t))) delete box.rules[id];
       else if (canonRule(current) !== canonRule(r)) box.rules[id] = current;
     }
     for (const [v, x] of Object.entries(box.added)) {
       const t = theirs.exceptions.get(v);
-      if (!this.exceptions.has(v) || (t && t.at >= x.at)) delete box.added[v];
+      if (!this.#exceptions.has(v) || (t && t.at >= x.at)) delete box.added[v];
     }
     for (const [v, at] of Object.entries(box.removed)) if ((theirs.meta.excRemoved?.[v] ?? -1) >= at) delete box.removed[v];
     const c = box.counters;
@@ -757,21 +761,21 @@ export class SyncStore {
   }
 
   /** The items to set and keys to remove so storage matches memory. Rule buckets are skipped when over quota. */
-  private pendingWrites(): { set: Record<string, unknown>; remove: string[]; json: Record<string, string> } {
-    const rules = packRules(this.allRules(), this.extras);
+  #pendingWrites(): { set: Record<string, unknown>; remove: string[]; json: Record<string, string> } {
+    const rules = packRules(this.allRules(), this.#extras);
     this.overQuota = rules === null;
-    const exc = packExceptions([...this.exceptions.values()], this.excEpoch()).buckets;
-    const next: Record<string, unknown> = { ...(rules ?? {}), ...exc, [META_KEY]: this.metaForStorage() };
-    const json = Object.fromEntries(Object.entries(next).map(([k, v]) => [k, JSON.stringify(v)]));
+    const exc = packExceptions([...this.#exceptions.values()], this.excEpoch()).buckets;
+    const next: Record<string, unknown> = { ...(rules ?? {}), ...exc, [META_KEY]: this.#metaForStorage() };
+    const json = Object.fromEntries(Object.entries(next).map(([k, v]) => [k, stableJson(v)]));
     const set: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(next)) if (this.stored[k] !== json[k]) set[k] = v;
+    for (const [k, v] of Object.entries(next)) if (this.#stored[k] !== json[k]) set[k] = v;
     const keepRuleKeys = rules === null;
-    const remove = Object.keys(this.stored).filter((k) => k !== META_KEY && !(k in next) && !(keepRuleKeys && RULE_KEY_RE.test(k)));
+    const remove = Object.keys(this.#stored).filter((k) => k !== META_KEY && !(k in next) && !(keepRuleKeys && RULE_KEY_RE.test(k)));
     return { set, remove, json };
   }
 
-  private metaForStorage(): StoredSyncMeta {
-    const { schema, nextR, nextK, nextColour, excRemoved, excEpoch, rulesClearedAt, ...rest } = this.meta;
+  #metaForStorage(): StoredSyncMeta {
+    const { schema, nextR, nextK, nextColour, excRemoved, excEpoch, rulesClearedAt, ...rest } = this.#meta;
     const meta: StoredSyncMeta = { ...rest, schema, nextR, nextK, nextColour };
     if (excRemoved && Object.keys(excRemoved).length > 0) meta.excRemoved = excRemoved;
     if (excEpoch) meta.excEpoch = excEpoch;
@@ -780,13 +784,13 @@ export class SyncStore {
   }
 
   /** Debounced write (1 s by default). */
-  schedule(delay = this.deps.debounceMs ?? SYNC_DEBOUNCE_MS): void {
-    const timers = this.deps.timers ?? defaultTimers;
-    if (this.timer !== undefined) timers.clear(this.timer);
-    this.timer = timers.set(() => {
-      this.timer = undefined;
-      const run = this.deps.runExclusive ?? ((fn) => fn());
-      void run(() => this.flush()).catch((e) => this.deps.onError?.(e));
+  schedule(delay = this.#deps.debounceMs ?? SYNC_DEBOUNCE_MS): void {
+    const timers = this.#deps.timers ?? defaultTimers;
+    if (this.#timer !== undefined) timers.clear(this.#timer);
+    this.#timer = timers.set(() => {
+      this.#timer = undefined;
+      const run = this.#deps.runExclusive ?? ((fn) => fn());
+      void run(() => this.flush()).catch((e) => this.#deps.onError?.(e));
     }, delay);
   }
 
@@ -796,38 +800,38 @@ export class SyncStore {
    * the budget.
    */
   async flush(): Promise<boolean> {
-    const timers = this.deps.timers ?? defaultTimers;
-    if (this.timer !== undefined) {
-      timers.clear(this.timer);
-      this.timer = undefined;
+    const timers = this.#deps.timers ?? defaultTimers;
+    if (this.#timer !== undefined) {
+      timers.clear(this.#timer);
+      this.#timer = undefined;
     }
-    const pending = this.pendingWrites();
+    const pending = this.#pendingWrites();
     try {
-      if (Object.keys(pending.set).length > 0) await this.deps.sync.set(pending.set);
-      if (pending.remove.length > 0) await this.deps.sync.remove(pending.remove);
+      if (Object.keys(pending.set).length > 0) await this.#deps.sync.set(pending.set);
+      if (pending.remove.length > 0) await this.#deps.sync.remove(pending.remove);
     } catch (e) {
       if (isRateLimitError(e)) {
-        const delay = RATE_LIMIT_BACKOFF_MS[Math.min(this.backoff, RATE_LIMIT_BACKOFF_MS.length - 1)]!;
-        this.backoff++;
+        const delay = RATE_LIMIT_BACKOFF_MS[Math.min(this.#backoff, RATE_LIMIT_BACKOFF_MS.length - 1)]!;
+        this.#backoff++;
         this.schedule(delay);
         return false;
       }
       throw e;
     }
-    this.backoff = 0;
-    for (const k of Object.keys(pending.set)) this.stored[k] = pending.json[k]!;
-    for (const k of pending.remove) delete this.stored[k];
+    this.#backoff = 0;
+    for (const k of Object.keys(pending.set)) this.#stored[k] = pending.json[k]!;
+    for (const k of pending.remove) delete this.#stored[k];
     return !this.overQuota;
   }
 
   /** Unconfirmed local writes (tests, diagnostics). */
   pendingOutbox(): SyncOutbox {
-    return this.outbox;
+    return this.#outbox;
   }
 
   dispose(): void {
-    if (this.timer !== undefined) (this.deps.timers ?? defaultTimers).clear(this.timer);
-    this.timer = undefined;
+    if (this.#timer !== undefined) (this.#deps.timers ?? defaultTimers).clear(this.#timer);
+    this.#timer = undefined;
   }
 }
 

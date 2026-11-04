@@ -41,6 +41,8 @@ interface Deco {
   live(): boolean;
   /** Place the host again (the annotation's cover takes the site's ground colour, which changes with the theme). */
   update?(): void;
+  /** Hosts over a thumbnail: its width at the last measurement. */
+  thumbWidth?(): number;
 }
 
 export type ChipInput = Omit<ChipProps, 'variant' | 'maxWidth'>;
@@ -85,20 +87,28 @@ export function createPageUi(doc: Document, site: Site): PageUi {
   let mounted = false;
   let stopTheme: (() => void) | null = null;
   let lastLift = 0;
+  // The Site's theme as the decos show it. The observer keeps it, and each mount reads it again, because a Site's
+  // theme switch may change nothing the observer watches (Bilibili's trigger is unverified).
+  let dark = false;
   let hostLost: ((el: Element, kind: DecoKind) => void) | null = null;
 
   function mountUi(): void {
     if (mounted) return;
     mounted = true;
     setSiteName(SITE_NAMES[site.id]);
-    setOverlayTheme(site.isDark(doc));
-    stopTheme = site.observeTheme(doc, (dark) => {
-      for (const d of decos.values()) {
-        d.host.toggleAttribute('data-dark', dark);
-        if (d.kind === 'annotation') d.update?.();
-      }
-      setOverlayTheme(dark);
-    });
+    dark = site.isDark(doc);
+    setOverlayTheme(dark);
+    stopTheme = site.observeTheme(doc, setTheme);
+  }
+
+  function setTheme(now: boolean): void {
+    if (now === dark) return;
+    dark = now;
+    for (const d of decos.values()) {
+      d.host.toggleAttribute('data-dark', dark);
+      if (d.kind === 'annotation') d.update?.();
+    }
+    setOverlayTheme(dark);
   }
 
   function lift(): void {
@@ -115,7 +125,8 @@ export function createPageUi(doc: Document, site: Site): PageUi {
   }
 
   function adopt(el: Element, kind: DecoKind, handle: Omit<Deco, 'kind'>): Deco {
-    handle.host.toggleAttribute('data-dark', site.isDark(doc));
+    setTheme(site.isDark(doc));
+    handle.host.toggleAttribute('data-dark', dark);
     const d = { kind, ...handle };
     decos.set(el, d);
     return d;
@@ -132,13 +143,14 @@ export function createPageUi(doc: Document, site: Site): PageUi {
   // A host over the thumbnail (chip, label, duplicate note). Re-renders when the compact flag flips.
   function overThumbnail(el: Element, surface: SurfaceId, kind: DecoKind, paint: (root: ShadowRoot, compact: boolean, maxWidth?: number) => void): boolean {
     mountUi();
-    const maxWidth = () => {
-      const w = surfaceOf(site, surface).thumbnail(el)?.getBoundingClientRect().width ?? 0;
+    // The width the host measured last (its ResizeObserver follows the thumbnail), so painting forces no layout.
+    const maxWidth = (d: Pick<Deco, 'thumbWidth'>) => {
+      const w = d.thumbWidth?.() ?? 0;
       return w > 2 * INSET_PX ? Math.floor(w - 2 * INSET_PX) : undefined;
     };
     const cur = decos.get(el);
     if (cur && cur.kind === kind && cur.live()) {
-      paint(cur.shadow, cur.host.dataset.compact === '1', maxWidth());
+      paint(cur.shadow, cur.host.dataset.compact === '1', maxWidth(cur));
       return true;
     }
     clear(el);
@@ -148,14 +160,14 @@ export function createPageUi(doc: Document, site: Site): PageUi {
         const d = own.deco;
         if (!d || decos.get(el) !== d) return;
         d.host.dataset.compact = compact ? '1' : '0';
-        paint(d.shadow, compact, maxWidth());
+        paint(d.shadow, compact, maxWidth(d));
       },
       onLost: () => lost(el, own),
     });
     if (!handle) return false;
     const d = (own.deco = adopt(el, kind, handle));
     d.host.dataset.compact = handle.compact ? '1' : '0';
-    paint(d.shadow, handle.compact, maxWidth());
+    paint(d.shadow, handle.compact, maxWidth(d));
     return true;
   }
 

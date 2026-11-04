@@ -1,10 +1,10 @@
-// Settings, Mode, Rules, breakers, export, import and Reset. Source of truth: docs/spec/architecture.md
+// Settings, Mode, Rules, breakers, export, import, Clear history and Reset. Source of truth: docs/spec/architecture.md
 // Sections 5 (Mode transitions), 6, 7 (Resume) and 8 (writers, export and import, Reset).
 import type { RuleOp, Settings } from '~/core/types';
 import { computeRulesVersion } from '~/engine/judge';
 import { clearCustomKey, clearDirectKey, clearOpenRouterKey } from '~/store/secret';
 import { cleanSettingsPatch, isBool, isCategory, isMode, isRecord, isSite, isStr, optional } from '../guards';
-import type { Routes } from '../router';
+import { InvalidInput, type Routes } from '../router';
 import type { Services } from '../services';
 
 /** Every settings change goes through here: writer (generation +1), settingsChanged, then RuntimeState. */
@@ -45,7 +45,9 @@ const isRuleOp = (v: unknown): v is RuleOp => {
   );
 };
 
-export function settingsRoutes(s: Services): Pick<Routes, 'updateSettings' | 'setMode' | 'mutateRules' | 'resumeFromBreaker' | 'exportData' | 'importData' | 'resetAll'> {
+export function settingsRoutes(
+  s: Services,
+): Pick<Routes, 'updateSettings' | 'setMode' | 'mutateRules' | 'resumeFromBreaker' | 'exportData' | 'importData' | 'clearHistory' | 'resetAll'> {
   const { writer, state } = s;
   return {
     updateSettings: {
@@ -84,10 +86,12 @@ export function settingsRoutes(s: Services): Pick<Routes, 'updateSettings' | 'se
     },
 
     resumeFromBreaker: {
-      // Also accepted from content: the in-page model notice offers Retry (src/content/pipeline.ts).
+      // Also accepted from content, for the model only: the in-page model notice offers Retry
+      // (src/content/pipeline.ts). The other breakers protect every Site's tabs and resume from the popup.
       from: 'both',
       valid: (v) => v === undefined || (isRecord(v) && optional(v.category, isCategory)),
       async run(req, sender) {
+        if (sender.kind === 'content' && req?.category !== 'model') throw new InvalidInput('resumeFromBreaker');
         await state.resume(req?.category);
         return state.refresh(sender.kind === 'content' ? sender.tabId : await state.activeTabId());
       },
@@ -101,7 +105,13 @@ export function settingsRoutes(s: Services): Pick<Routes, 'updateSettings' | 'se
 
     importData: {
       from: 'page',
-      valid: (v) => isRecord(v) && (v.mode === 'merge' || v.mode === 'replace') && isBool(v.dryRun),
+      // The options page checked every entry of the file (store/import.ts) before it sends the result.
+      valid: (v) =>
+        isRecord(v) &&
+        isRecord(v.file) &&
+        [v.file.rules, v.file.exceptions, v.file.invalid].every(Array.isArray) &&
+        (v.mode === 'merge' || v.mode === 'replace') &&
+        isBool(v.dryRun),
       invalid: { error: 'invalidInput', detail: 'request' },
       async run({ file, mode, dryRun }) {
         const res = await s.quietRules(() => writer.importData(file, mode, dryRun));
@@ -110,6 +120,17 @@ export function settingsRoutes(s: Services): Pick<Routes, 'updateSettings' | 'se
           await state.refresh();
         }
         return res;
+      },
+    },
+
+    clearHistory: {
+      from: 'page',
+      valid: () => true,
+      async run() {
+        // Exclusive with the read-modify-writes of session:removalTabs, which the writer clears too.
+        await s.exclusive(() => writer.clearHistory());
+        s.removals.clear();
+        await state.refresh();
       },
     },
 

@@ -51,7 +51,7 @@ Rien ne part chez un fournisseur de modèle tant que vous n'avez pas donné votr
 
 Une fois votre accord donné, Shoo envoie pour chaque vidéo son titre, le nom de la chaîne, sa durée et l'endroit de YouTube ou de Bilibili où elle est apparue, et la miniature seulement si vous avez une règle de miniature. Chaque requête contient aussi le texte de vos règles de sujet, de vos règles de conservation de sujet (Topic Keep rules) et de vos règles de miniature qui s'appliquent à ce site, ainsi que les titres et noms de chaîne de 10 vidéos au plus que vous avez gardées. Le tout part chez le fournisseur de décision (Decision provider) que vous avez choisi : OpenRouter et le fournisseur du modèle vers lequel OpenRouter redirige la requête (Cloudflare par défaut, TypeSafe ou OpenAI en solution de repli, ou le fournisseur d'un autre modèle que vous choisissez), Cloudflare, TypeSafe ou Perplexity en direct, ou un modèle sur votre ordinateur, auquel cas rien ne quitte l'appareil. Un modèle de chat configuré dans Settings reçoit alors les mêmes données à la place, sans les miniatures.
 
-Shoo n'envoie jamais à un fournisseur de modèle d'adresses web, d'identifiants de vidéo, de cookies, d'historique de visionnage, de commentaires ni d'informations de compte. Rien ne part chez le développeur, et il n'y a aucun outil d'analyse d'audience. La liste complète, le stockage et la durée de conservation figurent dans la [politique de confidentialité](https://laoweek.github.io/shoo/release/privacy-policy.html). Questions : shoo@piran.xyz.
+Shoo n'envoie jamais à un fournisseur de modèle d'adresses web, d'identifiants de vidéo ou de chaîne, de handles, de cookies, d'historique de visionnage, de commentaires, d'informations de compte ni la liste de vos abonnements. Une règle réglée pour ignorer les chaînes auxquelles vous êtes abonné envoie les vidéos de ces chaînes dans des requêtes à part, si bien qu'un fournisseur de modèle pourrait deviner auxquelles des chaînes qu'il voit vous êtes abonné. Rien ne part chez le développeur, et il n'y a aucun outil d'analyse d'audience. La liste complète, le stockage et la durée de conservation figurent dans la [politique de confidentialité](https://laoweek.github.io/shoo/release/privacy-policy.html). Questions : shoo@piran.xyz.
 
 ## État du projet
 
@@ -78,7 +78,7 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 
 ## Builds et versions
 
-La [CI](../../.github/workflows/ci.yml) lance `pnpm check` à chaque pull request et à chaque push sur `main`. Chaque push sur `main` compile ensuite les paquets de distribution : le zip Chrome, le zip Firefox et le zip des sources Firefox. Vous pouvez les télécharger dans les artefacts de l'exécution du workflow.
+La [CI](../../.github/workflows/ci.yml) lance `pnpm check` à chaque pull request et à chaque push sur `main`. Chaque push sur `main` compile ensuite les paquets de distribution : le zip Chrome, le zip Firefox et le zip des sources Firefox. Vous pouvez les télécharger dans les artefacts de l'exécution du workflow. La même exécution recompile le zip Firefox à partir du zip des sources et échoue si un seul fichier diffère.
 
 Pour publier une version, renseignez `version` dans `package.json`, faites un commit, puis poussez un tag correspondant :
 
@@ -87,7 +87,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-La CI vérifie que le tag correspond à `package.json` et publie une GitHub Release avec les trois zips. L'envoi sur le Chrome Web Store et sur Firefox Add-ons se fait à la main. Les textes des fiches et les formulaires des boutiques se trouvent dans [docs/release/](../release/).
+La CI vérifie que le tag correspond à `package.json` et publie une GitHub Release avec les trois zips. L'envoi sur le Chrome Web Store et sur Firefox Add-ons se fait à la main, avec les zips de cette GitHub Release, jamais avec une compilation locale. Les textes des fiches et les formulaires des boutiques se trouvent dans [docs/release/](../release/).
 
 ## Développement
 

@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { directProvider, type DirectProviderId } from '~/core/providers';
 import type { DirectEndpoint } from '~/core/types';
-import { buildTextRequest, buildThumbnailRequest, directTarget, FALLBACK_MODELS, sendDecisions, testDirect, validateResponse } from './decisions';
+import { buildTextRequest, buildThumbnailRequest, directTarget, FALLBACK_MODELS, sendDecisions, testDirect, THUMBNAIL_STATE_NOTE, validateResponse } from './decisions';
 import { LOCAL_REQUEST_TIMEOUT_MS, parseApiError, REQUEST_TIMEOUT_MS } from './net';
 import { answerer, rule, scriptedFetch, tile, type Scripted } from './testing';
 
@@ -64,13 +64,13 @@ describe('direct endpoints: address, headers and body', () => {
 
   it.each([
     // Perplexity reads OpenRouter's format: the image stays an item of the state array.
-    ['perplexity', { state: ['Title: Title', 'Channel: Chan', { type: 'image_url', image_url: { url: IMAGE } }] }],
-    // Cloudflare, llama.cpp and LM Studio: a top-level images array of data URLs.
-    ['cloudflare', { state: ['Title: Title', 'Channel: Chan'], images: [IMAGE] }],
-    ['llamacpp', { state: ['Title: Title', 'Channel: Chan'], images: [IMAGE] }],
-    ['lmstudio', { state: ['Title: Title', 'Channel: Chan'], images: [IMAGE] }],
+    ['perplexity', { state: [{ type: 'image_url', image_url: { url: IMAGE } }] }],
+    // Cloudflare, llama.cpp and LM Studio: a top-level images array of data URLs, and a state that is never empty.
+    ['cloudflare', { state: [THUMBNAIL_STATE_NOTE], images: [IMAGE] }],
+    ['llamacpp', { state: [THUMBNAIL_STATE_NOTE], images: [IMAGE] }],
+    ['lmstudio', { state: [THUMBNAIL_STATE_NOTE], images: [IMAGE] }],
     // Ollama: raw base64, it refuses data URLs.
-    ['ollama', { state: ['Title: Title', 'Channel: Chan'], images: ['/9j/AAAA'] }],
+    ['ollama', { state: [THUMBNAIL_STATE_NOTE], images: ['/9j/AAAA'] }],
   ] as const)('%s: puts the thumbnail where the endpoint reads it', async (id, expected) => {
     const { requests } = await send(endpoint(id, { model: 'clef-flash' }), 'k', 'thumbnail', [answerer({})]);
     expect(requests[0]!.body).toMatchObject(expected);

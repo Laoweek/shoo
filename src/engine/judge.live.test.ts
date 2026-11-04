@@ -88,7 +88,7 @@ describe.skipIf(!KEY)('live: Decisions API end to end', () => {
 
     expect(live.bodies).toHaveLength(2);
     expect(live.totals).toMatchObject({ requests: 2, judged: 20 });
-    expect(live.outcomes).toEqual([{ ok: true, model: 'cloudflare/clef-flash', fallback: false }]); // one per call
+    expect(live.outcomes).toEqual([{ ok: true, fallback: false }]); // one per call
     expect(privateDataIn(live.bodies, tiles.map((t) => t.videoId))).toEqual([]);
 
     const cutoff = removeCutoff({ preset: 'balanced', custom: 0.6 }, 'text');

@@ -8,9 +8,10 @@
 //     dryRun + remove  → Dry-run label + recordWouldRemove
 //
 // Freshness. Every settingsChanged starts a new epoch and re-sends every decorated or pending Tile still on the page
-// (watcher.rescan({ all })). A judgeTiles reply is dropped when its settingsGeneration is older than the latest seen,
-// or when it was sent before the latest settingsChanged: Exact rule and Exception edits do not change rulesVersion,
-// so the versions alone cannot tell such a reply apart. The Tiles it held were re-sent by that rescan.
+// (watcher.rescan({ all })), in a hidden tab once it is shown again. A judgeTiles reply is dropped when its
+// settingsGeneration is older than the latest seen, or when it was sent before the latest settingsChanged: Exact rule
+// and Exception edits do not change rulesVersion, so the versions alone cannot tell such a reply apart. The Tiles it
+// held are re-sent by that rescan.
 //
 // Undo ownership. The background is the one owner of the `undone` Activity event and the Exception, recorded when
 // it receives reportUndo({ via }). Content never calls addException for an Undo that happened:
@@ -31,7 +32,7 @@ import { createBatcher, type Batcher } from './batcher';
 import { createNotices, MODEL_FAILURE_REASONS, OPENROUTER_CREDITS_URL, type Notices } from './notices';
 import { withRetry, type Send } from './send';
 import { createPageUi, type PageUi } from './ui';
-import { createWatcher, type DecorState, type MarkupCheck, type TileItem, type Watcher, type WatcherOptions } from './watcher';
+import { createWatcher, withinLimits, type DecorState, type MarkupCheck, type TileItem, type Watcher, type WatcherOptions } from './watcher';
 
 /** A batch summary keeps collecting Removals while it can still be showing (6 s open + 30 s pill). */
 export const SUMMARY_SPAN_MS = 36_000;
@@ -121,6 +122,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
   let stopUserBans: (() => void) | null = null;
   let surfacesKey = '';
   let shelves: ShelfWatcher | null = null; // only while a Shelf dismissal is on and the Mode acts
+  let rescanOnShow = false; // a settingsChanged came while the tab was hidden
   const inflight = new Map<string, number>(); // videoId → epoch it was sent in
 
   // Per page: reset on navigation.
@@ -318,7 +320,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     if (privateWindow || !hasChannel(f)) return;
     userBans.set(
       f.videoId,
-      quiet(send('banChannel', { tile: f })).then((res) => (res && 'added' in res && res.added ? res.ruleId : undefined)),
+      quiet(send('banChannel', { tile: withinLimits(f) })).then((res) => (res && 'added' in res && res.added ? res.ruleId : undefined)),
     );
     actions?.watchRemoval({ tileEl, videoId: f.videoId, surface: f.surface, nativeAction: 'dontRecommendChannel', origin: 'user' });
   }
@@ -449,27 +451,30 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
   function onOutcome(el: Element, o: ActionOutcome, rect: DOMRect): void {
     const { job } = o;
     const verdict = job.verdict as Verdict;
+    // The site already acted: the report goes out before any UI work, so a UI exception cannot lose it.
     if (o.status === 'ok') {
-      ui.clear(el); // the site's placeholder replaced or covered the Tile's content and its chip
-      setDecor(el, 'removed');
-      annotate(el, job, verdict);
-      notices.nativeOk();
-      const batchId = job.origin === 'auto' ? addToSummary(job.videoId, verdict, rect) : newId();
+      const summary = job.origin === 'auto' ? joinSummary(job.videoId, verdict) : null;
+      const batchId = summary?.batchId ?? newId();
       void quiet(send('reportActionResult', okReport(job, batchId))).then((res) => {
         if (!res) return;
         const { escalated, ...s } = res;
         apply(s);
         if (escalated) summaryEscalated(batchId, escalated.channelName);
       });
+      setDecor(el, 'removed');
+      ui.clear(el); // the site's placeholder replaced or covered the Tile's content and its chip
+      annotate(el, job, verdict);
+      notices.nativeOk();
+      if (summary) showSummary(summary, verdict, rect);
       chipsChanged();
       return;
     }
     if (o.status === 'failed') {
-      clearUi(el); // a failed Native action leaves the Tile as the site shows it (ui-design.md "In-page" states)
+      void quiet(send('reportActionResult', failReport(job, o))).then((s) => s && apply(s));
       setDecor(el, 'none');
+      clearUi(el); // a failed Native action leaves the Tile as the site shows it (ui-design.md "In-page" states)
       if (focusLost.has(el)) focusTitle(el, job.surface);
       notices.nativeFailed();
-      void quiet(send('reportActionResult', failReport(job, o))).then((s) => s && apply(s));
       return;
     }
     if (o.status === 'duplicate') {
@@ -556,7 +561,8 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
 
   // ---------- batch summary (Auto) ----------
 
-  function addToSummary(videoId: string, verdict: Verdict, rect: DOMRect): string {
+  /** Count an Auto Removal in the batch summary's state. Nothing shows yet (showSummary). */
+  function joinSummary(videoId: string, verdict: Verdict): SummaryState {
     const t = now();
     const style = snap?.notificationStyle ?? 'summary';
     // perRemoval: the same component once per Removal (one at a time). silent: toolbar badge only.
@@ -569,9 +575,14 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     const key = verdict.ruleId ?? rule.ref;
     const row = s.rules.get(key);
     s.rules.set(key, row ? { ...row, count: row.count + 1 } : { ruleRef: rule.ref, ruleName: rule.name, colour: rule.colour, ruleText: rule.text, count: 1 });
+    return s;
+  }
+
+  function showSummary(s: SummaryState, verdict: Verdict, rect: DOMRect): void {
+    if (snap?.notificationStyle === 'silent') return;
+    const rule = ruleOf(verdict);
     const from: MomentSource[] = [{ rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height }, colour: rule.colour, ruleRef: rule.ref }];
-    if (style !== 'silent') ui.summary(summaryData(s), from);
-    return s.batchId;
+    ui.summary(summaryData(s), from);
   }
 
   function summaryData(s: SummaryState) {
@@ -722,9 +733,26 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
 
   // ---------- lifecycle ----------
 
+  // Every Tile on the page again, once per settingsChanged. A hidden tab acts on nothing (the NativeActionQueue
+  // waits), so it waits to be shown instead of paying for Verdicts the next change may void.
+  function rejudgeAll(): void {
+    if (doc.hidden) {
+      rescanOnShow = true;
+      return;
+    }
+    rescanOnShow = false;
+    watcher?.rescan({ all: true });
+  }
+
+  function onVisibility(): void {
+    if (rescanOnShow && !doc.hidden) rejudgeAll();
+  }
+
   function start(s: RuntimeSnapshot): void {
     run += 1;
     level = 'run';
+    rescanOnShow = false;
+    doc.addEventListener('visibilitychange', onVisibility);
     surfacesKey = JSON.stringify(s.surfaces);
     actions = createActionQueue({
       doc,
@@ -746,8 +774,11 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       enabledSurfaces: s.surfaces,
       onTiles,
       onElementReset: (el) => clearUi(el),
+      // Every scan meets every decorated Tile again: only a Tile whose UI is gone costs more than this check.
       onDecoratedSeen: (els) => {
-        for (const el of els) restoreUi(el, false);
+        const lost = els.filter((el) => !ui.isLive(el));
+        if (lost.length === 0) return;
+        for (const el of lost) restoreUi(el, false);
         chipsChanged();
       },
       onMarkupCheck,
@@ -762,6 +793,8 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
   function stop(next: Level): void {
     run += 1;
     level = next;
+    rescanOnShow = false;
+    doc.removeEventListener('visibilitychange', onVisibility);
     syncShelves();
     batcher?.clear();
     batcher = null;
@@ -825,7 +858,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       precheckSnap = null;
       if (level !== 'run') return;
       batcher?.clear(); // queued items are sent again by the rescan, with the new generation
-      watcher?.rescan({ all: true });
+      rejudgeAll();
     },
     async undoRemoval({ videoId }) {
       if (!actions) return { ok: false, reason: 'expired' };

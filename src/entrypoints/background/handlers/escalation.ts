@@ -1,49 +1,23 @@
 // Escalation: Topic removal counts, suggest and automatic Banned channels, Not now. Source of truth:
 // docs/spec/requirements.md §9, docs/spec/architecture.md Sections 5 ("Counting") and 10 (ChannelKey).
-import { channelIdentity, channelKey, channelsMatch, ruleChannelIdentity, type ChannelIdentity } from '~/core/channel';
+import { channelKey, channelsMatch, ruleChannelIdentity, type ChannelIdentity } from '~/core/channel';
 import {
-  dayKey,
+  bannedRuleFor,
   dismissEscalation,
-  emptyEscalation,
-  ESCALATION_WINDOW_DAYS,
+  ESCALATION_MIN_REMOVALS,
   escalationKey,
   escalationStatus,
+  isProtected,
+  recordIdentity,
+  recordSite,
   recordTopicRemoval,
-  type EscalationRecord,
 } from '~/core/escalation';
 import { newId } from '~/core/ids';
-import { isBannedChannel } from '~/core/rules';
-import { videoSite } from '~/core/sites';
-import type { Exception, Rule, RuleOp, SiteId } from '~/core/types';
-import type { EscalationSuggestion } from '~/messaging/protocol';
-import { queryActivity } from '~/store/local';
+import type { Rule, RuleOp, SiteId } from '~/core/types';
+import type { EscalationMeta } from '~/store/local';
 import { isNonEmpty, isRecord } from '../guards';
 import { InvalidInput, type Routes } from '../router';
 import type { Services } from '../services';
-
-const live = (rules: Rule[]) => rules.filter((r) => r.deletedAt === undefined);
-
-/** A record stored before Sites has no Site and is YouTube's, as its key without a Site prefix says. */
-const recordSite = (rec: EscalationRecord): SiteId => rec.site ?? 'youtube';
-
-export const recordIdentity = (key: string, rec: EscalationRecord): ChannelIdentity => {
-  const identity = channelIdentity(rec.name ?? key, rec.handle, rec.id) ?? { key };
-  return { ...identity, site: recordSite(rec) };
-};
-
-export function bannedRuleFor(rules: Rule[], identity: ChannelIdentity): Rule | undefined {
-  return live(rules).find((r) => isBannedChannel(r) && channelsMatch(ruleChannelIdentity(r) ?? {}, identity));
-}
-
-export function keepRuleFor(rules: Rule[], identity: ChannelIdentity): Rule | undefined {
-  return live(rules).find((r) => r.kind === 'channel' && r.polarity === 'keep' && channelsMatch(ruleChannelIdentity(r) ?? {}, identity));
-}
-
-/** REQ-ESC-3: any Keep rule for the channel (enabled or not) or any Exception with its ChannelKey, on the channel's Site. */
-export function isProtected(identity: ChannelIdentity, rules: Rule[], exceptions: Exception[]): boolean {
-  const kept = (x: Exception) => x.channelKey === identity.key && (!identity.site || videoSite(x.videoId) === identity.site);
-  return keepRuleFor(rules, identity) !== undefined || exceptions.some(kept);
-}
 
 /**
  * The add op for a channel Rule (Banned channel or Keep). The channel name doubles as the Rule text. A Site, when
@@ -77,34 +51,6 @@ export function addedChannelRule(before: Rule[], after: Rule[], polarity: Rule['
   return after.find((r) => !ids.has(r.id) && r.kind === 'channel' && r.polarity === polarity && channelsMatch(ruleChannelIdentity(r) ?? {}, identity));
 }
 
-/**
- * Per ChannelKey, the Rule behind most of the channel's Topic removals (Activity `removed` events with
- * source 'model') in the Escalation window, so a suggestion can say "4 of 6 removed by R2". Ties go to the
- * Rule used most recently. No entry when the Removals carry no Rule or that Rule was deleted since.
- */
-async function topRuleByChannel(s: Services, rules: Rule[]): Promise<Map<string, string>> {
-  const start = new Date(s.now());
-  start.setDate(start.getDate() - (ESCALATION_WINDOW_DAYS - 1));
-  const liveIds = new Set(live(rules).map((r) => r.id));
-  const events = await queryActivity(s.platform.areas.local, { kinds: ['removed'], fromDay: dayKey(start.getTime()) });
-  const counts = new Map<string, Map<string, number>>();
-  for (const e of events) {
-    if (e.source !== 'model' || !e.channelKey || !e.ruleId) continue;
-    const key = escalationKey(e.channelKey, (e.videoId && videoSite(e.videoId)) || 'youtube');
-    const perRule = counts.get(key) ?? new Map<string, number>();
-    perRule.set(e.ruleId, (perRule.get(e.ruleId) ?? 0) + 1);
-    counts.set(key, perRule);
-  }
-  const out = new Map<string, string>();
-  // Events come newest first and Map keeps insertion order, so `>` keeps the most recent Rule on a tie.
-  for (const [key, perRule] of counts) {
-    let best: [string, number] | undefined;
-    for (const entry of perRule) if (!best || entry[1] > best[1]) best = entry;
-    if (liveIds.has(best![0])) out.set(key, best![0]);
-  }
-  return out;
-}
-
 export function createEscalation(s: Services) {
   const { writer, state } = s;
 
@@ -112,10 +58,10 @@ export function createEscalation(s: Services) {
    * Adds the Banned channel Rule (origin 'escalation'), records Activity 'escalated' and broadcasts. Runs
    * exclusively, so two tabs or a double click never add two bans for one channel.
    */
-  const ban = (key: string, rec: EscalationRecord, detail: 'automatic' | 'confirmed', batchId?: string): Promise<string> =>
+  const ban = (key: string, rec: EscalationMeta, detail: 'automatic' | 'confirmed', batchId?: string): Promise<string> =>
     s.exclusive(() => banNow(key, rec, detail, batchId));
 
-  async function banNow(key: string, rec: EscalationRecord, detail: 'automatic' | 'confirmed', batchId?: string): Promise<string> {
+  async function banNow(key: string, rec: EscalationMeta, detail: 'automatic' | 'confirmed', batchId?: string): Promise<string> {
     const rules = await writer.getRules();
     const identity = recordIdentity(key, rec);
     const existing = bannedRuleFor(rules, identity);
@@ -142,10 +88,10 @@ export function createEscalation(s: Services) {
     ban,
 
     /**
-     * A Removal by a Topic rule (source 'model') in a normal window: counts it, then applies the Escalation
-     * setting when the channel qualifies. Suggest stores `suggestedAt` (listEscalations shows it). Automatic
-     * adds the Banned channel at once, records 'escalated' with the Removal's batchId and returns it, so the
-     * batch summary can say so (REQ-ESC-2).
+     * A Removal by a Topic rule (source 'model') in a normal window: unless Escalation is Off, counts it, then
+     * applies the Escalation setting when the channel qualifies. Suggest stores `suggestedAt` (pages show it,
+     * store/read.ts readEscalations). Automatic adds the Banned channel at once, records 'escalated' with the Removal's batchId and
+     * returns it, so the batch summary can say so (REQ-ESC-2).
      */
     async afterTopicRemoval(c: {
       channelName: string;
@@ -157,25 +103,30 @@ export function createEscalation(s: Services) {
       const key = escalationKey(channelKey(c.channelName), c.site ?? 'youtube');
       if (!key) return;
       const day = writer.today();
-      const store = await writer.updateEscalation((all) => {
-        let rec = recordTopicRemoval(all[key] ?? emptyEscalation(), day);
-        rec = {
-          ...rec,
-          name: rec.name ?? c.channelName,
-          ...(c.channelHandle && !rec.handle && { handle: c.channelHandle }),
-          ...(c.channelId && !rec.id && { id: c.channelId }),
+      const store = await writer.recordTopicRemoval(day, (all) => {
+        const prev = all[key] ?? { topicRemoved: {} };
+        const rec: EscalationMeta = {
+          ...recordTopicRemoval(prev, day),
+          name: prev.name ?? c.channelName,
+          ...(c.channelHandle && !prev.handle && { handle: c.channelHandle }),
+          ...(c.channelId && !prev.id && { id: c.channelId }),
           site: c.site ?? 'youtube',
         };
         return { ...all, [key]: rec };
       });
+      const meta = store?.[key];
+      if (!meta) return;
       const settings = await writer.getSettings();
-      const rec = store[key];
-      if (settings.escalationMode === 'off' || !rec) return;
+      if (settings.escalationMode === 'off') return;
       const [rules, exceptions] = await Promise.all([writer.getRules(), writer.getExceptions()]);
-      const identity = recordIdentity(key, rec);
+      const identity = recordIdentity(key, meta);
       if (bannedRuleFor(rules, identity)) return;
-      const status = escalationStatus(rec, s.now(), isProtected(identity, rules, exceptions));
-      if (!status.qualifies) return;
+      const protectedChannel = isProtected(identity, rules, exceptions);
+      // Removals and "Not now" are in the record itself, so the judged days are read only for a channel that may qualify.
+      const removals = escalationStatus({ ...meta, judged: {} }, s.now(), protectedChannel);
+      if (protectedChannel || removals.suppressed || removals.removed < ESCALATION_MIN_REMOVALS) return;
+      const rec = (await writer.getEscalation((k) => k === key))[key];
+      if (!rec || !escalationStatus(rec, s.now(), protectedChannel).qualifies) return;
       if (settings.escalationMode === 'automatic') {
         return { ruleId: await ban(key, rec, 'automatic', c.batchId), channelName: rec.name ?? key };
       }
@@ -187,42 +138,14 @@ export function createEscalation(s: Services) {
   };
 }
 
-export function escalationRoutes(s: Services, esc: ReturnType<typeof createEscalation>): Pick<Routes, 'listEscalations' | 'confirmEscalation' | 'dismissEscalation'> {
+export function escalationRoutes(s: Services, esc: ReturnType<typeof createEscalation>): Pick<Routes, 'confirmEscalation' | 'dismissEscalation'> {
   const { writer } = s;
   return {
-    listEscalations: {
-      from: 'page',
-      valid: () => true,
-      async run() {
-        await s.ensureInit();
-        // Off hides pending suggestions. Automatic keeps showing ones made before the switch.
-        if ((await writer.getSettings()).escalationMode === 'off') return [];
-        const [store, rules, exceptions] = await Promise.all([writer.getEscalation(), writer.getRules(), writer.getExceptions()]);
-        const out: EscalationSuggestion[] = [];
-        for (const [key, rec] of Object.entries(store)) {
-          if (rec.suggestedAt === undefined) continue;
-          const identity = recordIdentity(key, rec);
-          if (bannedRuleFor(rules, identity)) continue;
-          const status = escalationStatus(rec, s.now(), isProtected(identity, rules, exceptions));
-          if (!status.qualifies) continue;
-          out.push({ channelKey: key, channelName: rec.name ?? key, removed: status.removed, judged: status.judged });
-        }
-        if (out.length > 0) {
-          const top = await topRuleByChannel(s, rules);
-          for (const e of out) {
-            const ruleId = top.get(e.channelKey);
-            if (ruleId) e.ruleId = ruleId;
-          }
-        }
-        return out.sort((a, b) => b.removed - a.removed || a.channelKey.localeCompare(b.channelKey));
-      },
-    },
-
     confirmEscalation: {
       from: 'page',
       valid: (v) => isRecord(v) && isNonEmpty(v.channelKey),
       async run({ channelKey: key }) {
-        const rec = (await writer.getEscalation())[key];
+        const rec = (await writer.getEscalationMeta())[key];
         if (!rec) throw new InvalidInput('confirmEscalation');
         return { ruleId: await esc.ban(key, rec, 'confirmed') };
       },
@@ -236,8 +159,9 @@ export function escalationRoutes(s: Services, esc: ReturnType<typeof createEscal
         await writer.updateEscalation((all) => {
           const rec = all[key];
           if (!rec) return all;
-          const { suggestedAt: _s, ...rest } = dismissEscalation(rec, at);
-          return { ...all, [key]: rest };
+          const { suggestedAt: _s, ...rest } = rec;
+          // "Not now": suggested again only after 3 more Topic removals (REQ-ESC-2).
+          return { ...all, [key]: dismissEscalation(rest, at) };
         });
       },
     },

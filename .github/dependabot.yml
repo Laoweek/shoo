@@ -5,3 +5,19 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # A week lets a compromised release be caught and pulled before it reaches CI.
+    cooldown:
+      default-days: 7
+
+  # The cooldown delays version updates only, never security updates.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # Build and test tooling arrives as one PR. Each runtime dependency ships in the extension,
+    # so it keeps its own PR and review.
+    groups:
+      dev-dependencies:
+        dependency-type: development

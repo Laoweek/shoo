@@ -15,6 +15,27 @@ describe('fetchThumbnail', () => {
     expect(requests[0]!.init!.credentials).toBe('omit');
   });
 
+  it('keeps every thumbnail out of the HTTP cache, so a private window leaves no video ID on disk', async () => {
+    const { fetch, requests } = scriptedFetch({ [URL]: [{ status: 200, bytes: new Uint8Array([1]), headers: { 'content-type': 'image/jpeg' } }] });
+    await fetchThumbnail(fetch, { videoId: ID });
+    expect(requests[0]!.init!.cache).toBe('no-store');
+  });
+
+  it('stops reading a body without Content-Length once it passes the size limit', async () => {
+    const chunk = new Uint8Array(64 * 1024);
+    let pulled = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += chunk.byteLength;
+        if (pulled > 50 * 1024 * 1024) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    const fetchFn = async () => new Response(endless, { status: 200, headers: { 'content-type': 'image/jpeg' } });
+    expect(await fetchThumbnail(fetchFn, { videoId: ID })).toBeUndefined();
+    expect(pulled).toBeLessThan(THUMBNAIL_MAX_BYTES + 4 * chunk.byteLength);
+  });
+
   it('fetches a Bilibili cover at 320 x 180 from the path its page showed, without cookies or referrer', async () => {
     const url = `https://i0.hdslb.com${COVER}@320w_180h_1c.jpg`;
     const { fetch, requests } = scriptedFetch({ [url]: [{ status: 200, bytes: new Uint8Array([1, 2, 3]), headers: { 'content-type': 'image/jpeg' } }] });

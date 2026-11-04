@@ -19,6 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A tag can be moved to other code, a commit SHA cannot. Dependabot reads the comment to bump both.
+      - name: Every action is pinned to a full commit SHA with its version
+        run: |
+          if grep -rnE --include='*.yml' --include='*.yaml' '^[[:space:]-]*uses:' .github/ | grep -vE 'uses: [^@[:space:]]+@[0-9a-f]{40} # v[0-9]'; then
+            echo "::error::Pin each action above to a full commit SHA followed by its version comment"
+            exit 1
+          fi
       # Version from package.json packageManager
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -55,6 +62,23 @@ jobs:
       - run: pnpm zip
       # Also writes the sources zip that Firefox Add-ons reviewers rebuild from (README-SOURCES.md).
       - run: pnpm zip:firefox
+      # Rebuilds outside the checkout, where wxt.config.ts finds no .git, as an AMO reviewer does.
+      # Sorting under LC_ALL=C keeps the file order the same on Linux and macOS.
+      - name: Firefox package rebuilds file for file from the sources zip
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          amo="$RUNNER_TEMP/amo"
+          mkdir -p "$amo/src" "$amo/shipped" "$amo/rebuilt"
+          unzip -q ".output/shoo-$VERSION-sources.zip" -d "$amo/src"
+          (cd "$amo/src" && pnpm install --frozen-lockfile && pnpm zip:firefox)
+          unzip -q ".output/shoo-$VERSION-firefox.zip" -d "$amo/shipped"
+          unzip -q "$amo/src/.output/shoo-$VERSION-firefox.zip" -d "$amo/rebuilt"
+          for side in shipped rebuilt; do
+            (cd "$amo/$side" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$amo/$side.sha256"
+          done
+          diff "$amo/shipped.sha256" "$amo/rebuilt.sha256"
+          echo "Rebuilt $(wc -l < "$amo/rebuilt.sha256") files, all match"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           path: .output/shoo-${{ steps.version.outputs.version }}-chrome.zip

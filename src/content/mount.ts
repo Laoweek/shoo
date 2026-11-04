@@ -1,10 +1,11 @@
 // Host elements for Shoo's in-page UI, the same on every Site. Source of truth: docs/spec/youtube-integration.md
-// Section 6. DOM only: this module creates, positions and destroys chip and annotation hosts with open shadow roots.
+// Section 6. DOM only: this module creates, positions and destroys chip and annotation hosts with closed shadow roots.
 // The batch summary and notice host (`shoo-summary-host`) is created and positioned by the in-page UI itself. The UI
 // layer renders into `shadow`. Shoo never sets styles or attributes on the site's own elements and never mounts
 // inside a thumbnail link.
 import type { SurfaceId } from '~/core/types';
-import { surfaceOf, type Site } from '~/sites/site';
+import { surfaceOf, type Site, type SurfaceDef } from '~/sites/site';
+import { attachShooRoot } from '~/ui/in-page/roots';
 
 export const CHIP_HOST_TAG = 'shoo-chip-host';
 export const OVERLAY_TAG = 'shoo-overlay';
@@ -26,12 +27,14 @@ export const DEFAULT_BADGE_ZONE_PX = 64;
 export interface ChipHost {
   host: HTMLElement;
   shadow: ShadowRoot;
-  /** Recompute position and the compact flag. Called by the ResizeObserver, on navigation, or by the caller. */
+  /** Recompute position and the compact flag now (navigation, or the caller). The document's ResizeObserver does it on resizes. */
   update(): void;
   destroy(): void;
   /** False once the site removed the host or replaced the thumbnail it tracks: mount a new one. */
   live(): boolean;
   readonly compact: boolean;
+  /** The thumbnail's width at the last measurement, px (0 before it had a box). */
+  thumbWidth(): number;
   /** True when the host sits above the site's badges because the room beside them is too narrow. */
   readonly lifted: boolean;
   /** True when the chip sits in the page-level overlay (an overlay Surface, or a mountParent that is not a containing block). */
@@ -46,7 +49,11 @@ export interface HostHandle {
   live(): boolean;
 }
 
-type ResizeObserverCtor = new (cb: () => void) => { observe(el: Element): void; disconnect(): void };
+type ResizeObserverCtor = new (cb: (entries: ReadonlyArray<{ target: Element }>) => void) => {
+  observe(el: Element): void;
+  unobserve(el: Element): void;
+  disconnect(): void;
+};
 
 export interface ChipHostOptions {
   /** Called when the compact flag flips after a resize, and on the first real width (the caller repaints). */
@@ -70,7 +77,7 @@ export interface AnnotationHostOptions {
 function makeHost(doc: Document, tag: string, style: string): { host: HTMLElement; shadow: ShadowRoot } {
   const host = doc.createElement(tag);
   host.setAttribute('style', style);
-  return { host, shadow: host.attachShadow({ mode: 'open' }) };
+  return { host, shadow: attachShooRoot(host) };
 }
 
 const platformRO = (win: Window, opt?: ResizeObserverCtor) => opt ?? (win as unknown as { ResizeObserver?: ResizeObserverCtor }).ResizeObserver;
@@ -132,6 +139,119 @@ function watchLoss(nodes: Element[], tile: Element, alive: () => boolean, lost: 
   return () => mo.disconnect();
 }
 
+/** A chip host's placement state, shared by its own update() and the document's ResizeObserver. */
+interface Chip {
+  host: HTMLElement;
+  thumb: Element;
+  parent: Element;
+  def: SurfaceDef;
+  overlay: boolean;
+  compact: boolean;
+  /** False until the thumbnail had a box. */
+  measured: boolean;
+  lifted: boolean;
+  width: number;
+  /** Overlay hosts: the thumbnail's last document position and size, and the host's top above its top edge. */
+  at: { x: number; y: number; w: number; h: number; rise: number } | null;
+  onCompactChange?(compact: boolean): void;
+}
+
+/**
+ * Place every chip in one pass: all reads, then the writes that measure the content, one read of each host's width,
+ * then the final writes. A batch of new chips forces one layout for the measurement, not several per chip.
+ */
+function placeChips(chips: readonly Chip[], win: Window): void {
+  const seen = chips.map((c) => {
+    const t = c.thumb.getBoundingClientRect();
+    if (!hasBox(t)) return null;
+    const origin = c.overlay ? { left: -win.scrollX, top: -win.scrollY } : c.parent.getBoundingClientRect();
+    return { t, zone: badgeZone(c.def.badges(c.thumb), t), origin };
+  });
+  chips.forEach((c, i) => {
+    // No box yet (not laid out, or its page is hidden): stay hidden and keep the variant until a real width arrives,
+    // so a chip never sits above the thumbnail with geometry measured before layout (seen once in a live test, 2026-10-10).
+    c.host.style.visibility = seen[i] ? '' : 'hidden';
+    if (!seen[i]) return;
+    // The narrowest the rendered content can be: one row for the compact variants, the tightest wrap for the full chip.
+    // While data-measuring is set, the in-page CSS lets the Rule label, which truncates, count only as a word's room.
+    c.host.setAttribute('data-measuring', '');
+    c.host.style.width = 'min-content';
+    c.host.style.maxWidth = '';
+  });
+  const needs = chips.map((c, i) => (seen[i] ? c.host.offsetWidth : 0));
+  const flipped: Chip[] = [];
+  chips.forEach((c, i) => {
+    const s = seen[i];
+    if (!s) return;
+    const { t, origin } = s;
+    const { style } = c.host;
+    style.width = 'max-content';
+    c.host.removeAttribute('data-measuring');
+    const place = placeOverThumbnail(t, s.zone, needs[i]!);
+    c.lifted = place.lifted;
+    style.maxWidth = `${place.maxWidth}px`;
+    style.left = `${t.left - origin.left + INSET_PX}px`;
+    style.top = `${place.bottom - origin.top}px`;
+    if (c.overlay) c.at = { x: t.left - origin.left, y: t.top - origin.top, w: t.width, h: t.height, rise: place.bottom - t.top };
+    c.width = t.width;
+    const next = t.width < COMPACT_BELOW_PX;
+    if (next !== c.compact || !c.measured) flipped.push(c);
+    c.compact = next;
+    c.measured = true;
+  });
+  for (const c of flipped) c.onCompactChange?.(c.compact);
+}
+
+/**
+ * One ResizeObserver per document for every chip host: its thumbnail and host, and the body while overlay hosts
+ * exist. A thumbnail or host resize places that chip again in full. A body resize (content inserted above a Tile)
+ * only moves overlay hosts whose thumbnail moved, so an infinite-scroll append does not measure every overlay chip.
+ */
+interface ChipObserver {
+  ro: InstanceType<ResizeObserverCtor>;
+  chips: Map<Element, Chip>;
+  overlays: Set<Chip>;
+}
+// Keyed by the window's ResizeObserver constructor, which is one per window and so one per document.
+const chipObservers = new WeakMap<ResizeObserverCtor, ChipObserver>();
+
+function chipObserver(doc: Document, win: Window, RO: ResizeObserverCtor): ChipObserver {
+  const known = chipObservers.get(RO);
+  if (known) return known;
+  const chips = new Map<Element, Chip>();
+  const overlays = new Set<Chip>();
+  const ro = new RO((entries) => {
+    const full = new Set<Chip>();
+    let bodyMoved = false;
+    for (const { target } of entries) {
+      if (target === doc.body) bodyMoved = true;
+      const c = chips.get(target);
+      if (c) full.add(c);
+    }
+    const sx = win.scrollX;
+    const sy = win.scrollY;
+    const moved: Array<[Chip, DOMRect]> = [];
+    if (bodyMoved) {
+      for (const c of overlays) {
+        if (full.has(c)) continue;
+        const t = c.thumb.getBoundingClientRect();
+        // A new size or no box is a full placement. Only the position: just move the host.
+        if (!c.at || !hasBox(t) || t.width !== c.at.w || t.height !== c.at.h) full.add(c);
+        else if (t.left + sx !== c.at.x || t.top + sy !== c.at.y) moved.push([c, t]);
+      }
+    }
+    placeChips([...full], win);
+    for (const [c, t] of moved) {
+      c.at = { ...c.at!, x: t.left + sx, y: t.top + sy };
+      c.host.style.left = `${c.at.x + INSET_PX}px`;
+      c.host.style.top = `${c.at.y + c.at.rise}px`;
+    }
+  });
+  const observer = { ro, chips, overlays };
+  chipObservers.set(RO, observer);
+  return observer;
+}
+
 /**
  * One `<shoo-chip-host>` per decorated element, over the bottom-left of the thumbnail, inset 8 px, clear of the
  * site's badges (placeOverThumbnail).
@@ -140,6 +260,8 @@ function watchLoss(nodes: Element[], tile: Element, alive: () => boolean, lost: 
  * shelf), and for any `position: static` mountParent, the host sits in the page-level overlay in document coordinates.
  * YouTube's Shorts hover preview (`ytd-video-preview`) is a page-level element drawn over the Tile, so no z-index
  * inside the Tile can keep the chip above it (live test 2026-10-10).
+ * With a ResizeObserver, its first notification places the host, after the caller rendered into it and before the
+ * frame paints. Without one (jsdom) the host is placed at once.
  * Returns null when the Tile has no thumbnail or mount parent, or while the site's placeholder shows.
  */
 export function mountChipHost(site: Site, tile: Element, surface: SurfaceId, opts: ChipHostOptions = {}): ChipHost | null {
@@ -154,59 +276,49 @@ export function mountChipHost(site: Site, tile: Element, surface: SurfaceId, opt
   if (!parent || !thumb || !win || covered()) return null;
 
   const overlay = opts.forceOverlay ?? (def.overlay === true || win.getComputedStyle(parent).position === 'static');
+  // Read before the host joins the page, so this read finds the layout as the site left it.
+  const t0 = thumb.getBoundingClientRect();
   // Only the chip inside the shadow root takes pointer events. translateY(-100%) puts the host's bottom edge on the anchor.
   // width: max-content sizes the host by its content in any containing block (the overlay layer is 0 px wide), and
-  // max-width (set in update) caps it.
+  // max-width (set by placeChips) caps it.
   const { host, shadow } = makeHost(doc, CHIP_HOST_TAG, 'position:absolute;z-index:2;pointer-events:none;transform:translateY(-100%);width:max-content;');
+  const chip: Chip = {
+    host,
+    thumb,
+    parent,
+    def,
+    overlay,
+    compact: hasBox(t0) && t0.width < COMPACT_BELOW_PX,
+    measured: hasBox(t0),
+    lifted: false,
+    width: t0.width,
+    at: null,
+    onCompactChange: opts.onCompactChange,
+  };
+  if (!hasBox(t0)) host.style.visibility = 'hidden';
   if (overlay) overlayLayer(doc).append(host);
   else parent.append(host);
 
-  // No box yet (not laid out, or its page is hidden): stay hidden and keep the variant until a real width arrives,
-  // so a chip never sits above the thumbnail with geometry measured before layout (seen once in a live test, 2026-10-10).
-  let compact = false;
-  let measured = false;
-  let lifted = false;
-  const update = () => {
-    const t = thumb.getBoundingClientRect();
-    if (!hasBox(t)) {
-      host.style.visibility = 'hidden';
-      return;
-    }
-    host.style.visibility = '';
-    // The narrowest the rendered content can be: one row for the compact variants, the tightest wrap for the full chip.
-    // While data-measuring is set, the in-page CSS lets the Rule label, which truncates, count only as a word's room.
-    host.setAttribute('data-measuring', '');
-    host.style.width = 'min-content';
-    host.style.maxWidth = '';
-    const need = host.offsetWidth;
-    host.style.width = 'max-content';
-    host.removeAttribute('data-measuring');
-    const place = placeOverThumbnail(t, badgeZone(def.badges(thumb), t), need);
-    lifted = place.lifted;
-    host.style.maxWidth = `${place.maxWidth}px`;
-    const origin = overlay ? { left: -win.scrollX, top: -win.scrollY } : parent.getBoundingClientRect();
-    host.style.left = `${t.left - origin.left + INSET_PX}px`;
-    host.style.top = `${place.bottom - origin.top}px`;
-    const next = t.width < COMPACT_BELOW_PX;
-    const first = !measured;
-    measured = true;
-    if (next !== compact || first) {
-      compact = next;
-      opts.onCompactChange?.(compact);
-    }
-  };
-  const t0 = thumb.getBoundingClientRect();
-  if (hasBox(t0)) {
-    compact = t0.width < COMPACT_BELOW_PX;
-    measured = true;
-  }
-  update();
-
+  const update = () => placeChips([chip], win);
   const RO = platformRO(win, opts.ResizeObserver);
-  const ro = RO ? new RO(update) : null;
-  ro?.observe(thumb);
-  ro?.observe(host); // a repaint (variant flip, kept note) changes the width the content needs
-  if (overlay) ro?.observe(doc.body); // content inserted above the Tile moves it without resizing the thumbnail
+  const observer = RO ? chipObserver(doc, win, RO) : null;
+  if (observer) {
+    observer.chips.set(thumb, chip);
+    observer.chips.set(host, chip); // a repaint (variant flip, kept note) changes the width the content needs
+    observer.ro.observe(thumb);
+    observer.ro.observe(host);
+    // Content inserted above the Tile moves an overlay host without resizing the thumbnail.
+    if (overlay && observer.overlays.add(chip).size === 1) observer.ro.observe(doc.body);
+  } else update();
+  const unobserve = () => {
+    if (!observer) return;
+    for (const el of [thumb, host]) {
+      if (observer.chips.get(el) !== chip) continue;
+      observer.chips.delete(el);
+      observer.ro.unobserve(el);
+    }
+    if (observer.overlays.delete(chip) && observer.overlays.size === 0) observer.ro.unobserve(doc.body);
+  };
   const onNav = overlay ? update : null;
   if (onNav) for (const ev of site.navigatedEvents) doc.addEventListener(ev, onNav);
   const live = () => host.isConnected && thumb.isConnected && !covered();
@@ -230,17 +342,18 @@ export function mountChipHost(site: Site, tile: Element, surface: SurfaceId, opt
     update,
     live,
     destroy() {
-      ro?.disconnect();
+      unobserve();
       stopLoss();
       coverMo?.disconnect();
       if (onNav) for (const ev of site.navigatedEvents) doc.removeEventListener(ev, onNav);
       host.remove();
     },
     get compact() {
-      return compact;
+      return chip.compact;
     },
+    thumbWidth: () => chip.width,
     get lifted() {
-      return lifted;
+      return chip.lifted;
     },
     overlay,
   };

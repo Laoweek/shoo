@@ -1,6 +1,7 @@
 // Realistic test data and simulated devices for store tests.
 import type { Exception, Rule, RuleKind } from '~/core/types';
 import type { AreaLike, Areas } from '../areas';
+import { parseImportFile, type ParsedImport } from '../import';
 import { createWriter, type WriterDeps } from '../writer';
 import { createMemoryArea } from './quota-storage';
 
@@ -78,4 +79,11 @@ export function makeDevice(sync: AreaLike, t0: number, deps: Partial<WriterDeps>
   const areas: Areas = { sync, local: createMemoryArea(), session: createMemoryArea() };
   const writer = createWriter({ areas, now: () => clock.t, ...deps });
   return { areas, writer, clock };
+}
+
+/** An export file as the options page hands it to the writer: checked by parseImportFile, which must accept it. */
+export function checked(file: unknown): ParsedImport {
+  const parsed = parseImportFile(file);
+  if (!parsed.ok) throw new Error(`import file rejected: ${parsed.detail}`);
+  return parsed.value;
 }

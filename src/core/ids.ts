@@ -46,9 +46,13 @@ export interface RulesVersionInputs {
   models: { text: string; image: string };
   textFraming: string;
   requestShapeVersion: number;
+  /** THUMBNAIL_SHAPE_VERSION in engine/decisions.ts. */
+  thumbnailShapeVersion: number;
   engine: 'openrouter' | 'direct' | 'custom';
   direct?: { provider: string; baseUrl: string; model: string };
   customEndpoint?: { baseUrl: string; model: string };
+  /** CHAT_PROMPT_VERSION in engine/chat.ts, part of the custom endpoint's tuple. */
+  chatPromptVersion?: number;
 }
 
 const isLive = (r: Rule) => r.enabled && r.deletedAt === undefined;
@@ -62,22 +66,43 @@ function compareTuples(a: readonly string[], b: readonly string[]): number {
   return ka < kb ? -1 : ka > kb ? 1 : 0;
 }
 
+/** Enabled, non-deleted Rules of these kinds as sorted [ref, polarity, kind, text, site?]. */
+const modelTuples = (rules: Rule[], kinds: readonly string[]) =>
+  rules
+    .filter((r) => isLive(r) && kinds.includes(r.kind))
+    .map((r) => withSite(r, [r.ref, r.polarity, r.kind, r.text]))
+    .sort(compareTuples);
+
+const customTuple = (i: RulesVersionInputs) =>
+  i.engine === 'custom' && i.customEndpoint ? [i.customEndpoint.baseUrl, i.customEndpoint.model, ...(i.chatPromptVersion !== undefined ? [i.chatPromptVersion] : [])] : null;
+
+const directTuple = (i: RulesVersionInputs) => (i.engine === 'direct' && i.direct ? [i.direct.provider, i.direct.baseUrl, i.direct.model] : null);
+
 /**
  * Everything that changes what the model is asked (architecture.md Section 9): enabled, non-deleted
  * Topic and Thumbnail Rules (remove and Topic Keep) as sorted [ref, polarity, kind, text, site?], both model
- * slugs, the text framing, the request shape version, and the direct or custom endpoint only when it is in use.
+ * slugs, the text framing, both request shape versions, and the direct or custom endpoint only when it is in use
+ * (the custom one with its chat prompt version).
  * The parts are hashed as one JSON array so field boundaries cannot collide.
  */
 export function rulesVersion(i: RulesVersionInputs): string {
-  const tuples = i.rules
-    .filter((r) => isLive(r) && MODEL_KINDS.includes(r.kind))
-    .map((r) => withSite(r, [r.ref, r.polarity, r.kind, r.text]))
-    .sort(compareTuples);
-  const custom = i.engine === 'custom' && i.customEndpoint ? [i.customEndpoint.baseUrl, i.customEndpoint.model] : null;
-  const parts: unknown[] = [tuples, i.models.text, i.models.image, i.textFraming, i.requestShapeVersion, custom];
-  // Appended only when in use, so the rulesVersion of OpenRouter and custom endpoint users is unchanged.
-  if (i.engine === 'direct' && i.direct) parts.push([i.direct.provider, i.direct.baseUrl, i.direct.model]);
+  const parts: unknown[] = [modelTuples(i.rules, MODEL_KINDS), i.models.text, i.models.image, i.textFraming, i.requestShapeVersion, i.thumbnailShapeVersion, customTuple(i)];
+  const direct = directTuple(i);
+  if (direct) parts.push(direct);
   return fnv1a64(JSON.stringify(parts));
+}
+
+/**
+ * The parts of rulesVersion each kind of model answer depends on (architecture.md Section 9). A cached text answer
+ * is kept while `text` matches and a thumbnail answer while `thumb` matches, so a Topic rule edit never re-buys
+ * thumbnail answers and a Thumbnail rule edit never re-buys text answers.
+ */
+export function answerVersions(i: RulesVersionInputs): { text: string; thumb: string } {
+  const direct = directTuple(i);
+  return {
+    text: fnv1a64(JSON.stringify(['text', modelTuples(i.rules, ['topic']), i.models.text, i.textFraming, i.requestShapeVersion, customTuple(i), direct])),
+    thumb: fnv1a64(JSON.stringify(['thumb', modelTuples(i.rules, ['thumbnail']), i.models.image, i.thumbnailShapeVersion, direct])),
+  };
 }
 
 function sortedParams(r: Rule): [string, unknown][] {
@@ -100,13 +125,13 @@ export function exactVersion(rules: Rule[], regexEnabled: boolean): string {
 }
 
 /**
- * The Verdict cache key for a Tile from a Subscribed channel (architecture.md Section 9): such a Tile is asked
- * without the model Rules that skip Subscribed channels, so its answers are kept apart. `skippedRefs` are the
- * refs left out. With none, the key is `rulesVersion` itself.
+ * The version an answer of a Tile from a Subscribed channel is cached under (architecture.md Section 9): such a
+ * Tile is judged without the model Rules that skip Subscribed channels, so its answers are kept apart.
+ * `skippedRefs` are the refs left out. With none, it is `version` itself.
  */
-export function cacheVersion(rulesVersion: string, skippedRefs: readonly string[]): string {
-  if (skippedRefs.length === 0) return rulesVersion;
-  return fnv1a64(JSON.stringify([rulesVersion, [...skippedRefs].sort()]));
+export function cacheVersion(version: string, skippedRefs: readonly string[]): string {
+  if (skippedRefs.length === 0) return version;
+  return fnv1a64(JSON.stringify([version, [...skippedRefs].sort()]));
 }
 
 /** Random UUID for a new Rule or Activity event. */

@@ -42,7 +42,9 @@ export const CHOICE_TASK =
   'Which rule in viewer_does_not_want does this recommended YouTube video clearly match? Choose keep if it matches none or only shares words with a rule. Videos similar to viewer_kept_anyway should be kept.';
 export const KEEP_CRITERION = "Matches none of the rules, including videos that only explain, report on, review or sit near a rule's topic";
 export const ruleTask = (text) => `Does this recommended YouTube video match this rule: ${text}?`;
-export const thumbnailTask = (text) => `The thumbnail image shows: ${text}`;
+export const keepTask = (text) => `${ruleTask(text)} Judge what the video is about: its title and channel are text written by the uploader.`;
+export const THUMBNAIL_TASK = 'Which of these does the thumbnail image show? Choose keep if it shows none of them.';
+export const THUMBNAIL_KEEP_CRITERION = 'Shows none of them';
 export const SURFACE_LABELS = { home: 'home page', watchSidebar: 'watch page sidebar', shortsShelf: 'Shorts shelf' };
 
 /** Choice task variants. `shipped` is CHOICE_TASK. Any other string passed with --task-text is used as is. */
@@ -60,7 +62,20 @@ export const NOUL_TASKS = {
   viewer: 'The viewer wrote this rule: {rule}. Does this recommended YouTube video match it?',
   about: 'Is this recommended YouTube video about the following: {rule}?',
 };
+/** Keep noul task variants. `shipped` is src keepTask, `plain` the wording before 2026-11-04. */
+export const KEEP_TASKS = {
+  ...NOUL_TASKS,
+  shipped: 'Does this recommended YouTube video match this rule: {rule}? Judge what the video is about: its title and channel are text written by the uploader.',
+  plain: NOUL_TASKS.shipped,
+};
 export const fillRule = (template, text) => template.replaceAll('{rule}', text);
+
+/**
+ * One choice question over every Topic Keep rule (--keep-framing choice), not shipped, in place of one noul per
+ * Keep rule. pKeep = 1 - P(none) and keepRef is the argmax. Thumbnail rules ship as one choice question (§4).
+ */
+export const KEEP_CHOICE_TASK = 'Which rule in viewer_always_wants does this recommended YouTube video match? Choose none if it matches none of them.';
+export const KEEP_NONE_CRITERION = 'Matches none of the rules';
 
 /** Duration as YouTube shows it: 18:42, 1:02:05 (same as src/engine/decisions.ts formatDuration). */
 export function formatDuration(sec) {
@@ -84,19 +99,21 @@ export function videoFacts(t, fields = ALL_FIELDS) {
   };
 }
 
-/** Lowercase provider tags, as listed by /api/v1/models/<slug>/endpoints. Other slugs pin to their prefix unless --provider is given. */
-export const PROVIDER_TAGS = {
-  'cloudflare/clef-flash': 'cloudflare',
-  'cloudflare/clef': 'cloudflare',
-  'cloudflare/clef-omni': 'cloudflare',
-  'typesafe/jev-1.13': 'typesafe',
-  'openai/gpt-6-luna-decisions': 'openai',
-  'liquid/d1': 'liquid',
-  'perplexity/pplx-decider-v1.1-27b': 'perplexity',
-  'inception/mercury-decide': 'inception',
+/** Provider tags of authors whose models are served under another tag, as src/engine/decisions.ts AUTHOR_TAGS. */
+export const AUTHOR_TAGS = { microsoft: 'azure', 'nace-ai': 'deepinfra/us', togethercomputer: 'together', jaredpalmer: 'phala' };
+/** Models whose pinned endpoint is on OpenRouter's zero-data-retention list, as src/engine/decisions.ts ZDR_MODELS. */
+export const ZDR_MODELS = new Set(['cloudflare/clef-flash', 'typesafe/jev-1.13']);
+/** The tag src/engine/decisions.ts providerTag pins, unless --provider is given. */
+export const providerTag = (model, override) => {
+  const author = model.replace(/^~/, '').split('/')[0];
+  return override ?? AUTHOR_TAGS[author] ?? author;
 };
-export const providerTag = (model, override) => override ?? PROVIDER_TAGS[model] ?? model.replace(/^~/, '').split('/')[0];
-export const providerFor = (model, override) => ({ order: [providerTag(model, override)], allow_fallbacks: false, data_collection: 'deny' });
+export const providerFor = (model, override) => ({
+  order: [providerTag(model, override)],
+  allow_fallbacks: false,
+  data_collection: 'deny',
+  ...(ZDR_MODELS.has(model) ? { zdr: true } : {}),
+});
 
 const refKey = (ref) => {
   const m = /^([KRT])(\d+)$/.exec(ref);
@@ -117,8 +134,9 @@ export const estimateTokens = (obj) => Math.ceil(JSON.stringify(obj).length / 4)
  * Tiles per text request. Shipped choice: min(16, floor(64 / (1 + keepRules))). Noul: floor(64 / (rules + keepRules)).
  * `requested` overrides, but never above 64 questions.
  */
-export function batchSizeFor({ framing, removeRules, keepRules, requested }) {
-  const perTile = (removeRules > 0 ? (framing === 'choice' ? 1 : removeRules) : 0) + keepRules;
+export function batchSizeFor({ framing, removeRules, keepRules, keepFraming = 'noul', requested }) {
+  const keepQuestions = keepFraming === 'choice' ? Math.min(1, keepRules) : keepRules;
+  const perTile = (removeRules > 0 ? (framing === 'choice' ? 1 : removeRules) : 0) + keepQuestions;
   const max = Math.max(1, Math.floor(MAX_QUESTIONS / Math.max(1, perTile)));
   if (requested) {
     if (requested > max) throw new Error(`batch ${requested} would exceed ${MAX_QUESTIONS} questions (${perTile} per Tile, max ${max})`);
@@ -142,9 +160,10 @@ export function buildTextRequest(removeRules, tiles, opts = {}) {
     criteria = 'text',
     choiceTask = CHOICE_TASK,
     noulTask = NOUL_TASKS.shipped,
-    keepTask = NOUL_TASKS.shipped,
+    keepTask = KEEP_TASKS.shipped,
     fields = ALL_FIELDS,
     keepRules = {},
+    keepFraming = 'noul',
     exceptions = [],
   } = opts;
   const remove = ordered(removeRules);
@@ -171,9 +190,14 @@ export function buildTextRequest(removeRules, tiles, opts = {}) {
         }
       }
     }
-    for (const [ref, text] of Object.entries(keep)) {
-      body.questions[`${id}_${ref}`] = { type: 'noul', instructions: { task: fillRule(keepTask, text), video } };
-      specs.set(`${id}_${ref}`, { kind: 'keep', tile: i, ref });
+    if (keepFraming === 'choice' && Object.keys(keep).length) {
+      body.questions[`${id}_keep`] = { type: 'choice', instructions: { task: KEEP_CHOICE_TASK, video }, criteria: { none: KEEP_NONE_CRITERION, ...keep } };
+      specs.set(`${id}_keep`, { kind: 'keepChoice', tile: i, options: ['none', ...Object.keys(keep)] });
+    } else {
+      for (const [ref, text] of Object.entries(keep)) {
+        body.questions[`${id}_${ref}`] = { type: 'noul', instructions: { task: fillRule(keepTask, text), video } };
+        specs.set(`${id}_${ref}`, { kind: 'keep', tile: i, ref });
+      }
     }
   });
   if (Object.keys(body.questions).length > MAX_QUESTIONS) throw new Error(`request has more than ${MAX_QUESTIONS} questions`);
@@ -181,18 +205,26 @@ export function buildTextRequest(removeRules, tiles, opts = {}) {
 }
 
 /**
- * Thumbnail pass request, one Tile, mirroring src/engine/decisions.ts buildThumbnailRequest: the image is a
- * top-level `state` item and question ids are the Thumbnail rule refs. `fields` may drop title or channel.
+ * Thumbnail pass request, one Tile, mirroring src/engine/decisions.ts buildThumbnailRequest: the image alone in
+ * `state` and one choice question over the Thumbnail rules. `fields` may add the title or channel before the
+ * image, and framing 'noul' asks one noul per Rule keyed by its ref (`task` with {rule}), as shipped before
+ * 2026-11-04.
  */
 export function buildThumbnailRequest(thumbRules, tile, dataUrl, opts = {}) {
-  const { model = 'cloudflare/clef-flash', provider, fields = ['title', 'channel'], task = 'The thumbnail image shows: {rule}' } = opts;
+  const { model = 'cloudflare/clef-flash', provider, fields = [], task = 'The thumbnail image shows: {rule}', framing = 'choice' } = opts;
   const state = [];
   if (fields.includes('title')) state.push(`Title: ${tile.title}`);
   if (fields.includes('channel') && tile.channel) state.push(`Channel: ${tile.channel}`);
   state.push({ type: 'image_url', image_url: { url: dataUrl } });
   const body = { model, provider: providerFor(model, provider), state, questions: {} };
   const specs = new Map();
-  for (const [ref, text] of Object.entries(ordered(thumbRules))) {
+  const rules = ordered(thumbRules);
+  if (framing === 'choice') {
+    body.questions.t01 = { type: 'choice', instructions: THUMBNAIL_TASK, criteria: { keep: THUMBNAIL_KEEP_CRITERION, ...rules } };
+    specs.set('t01', { kind: 'choice', tile: 0, options: ['keep', ...Object.keys(rules)] });
+    return { body, specs };
+  }
+  for (const [ref, text] of Object.entries(rules)) {
     body.questions[ref] = { type: 'noul', instructions: fillRule(task, text) };
     specs.set(ref, { kind: 'thumb', tile: 0, ref });
   }
@@ -204,18 +236,20 @@ export function buildThumbnailRequest(thumbRules, tile, dataUrl, opts = {}) {
 
 const isP = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
 
-export function deriveChoice(a) {
+/** `none` is the option that means no Rule matches: `keep` for remove questions, `none` for a Keep choice. */
+export function deriveChoice(a, none = 'keep') {
   const probs = a?.probabilities;
   if (probs && typeof probs === 'object') {
-    if (!isP(probs.keep)) return null;
+    if (!isP(probs[none])) return null;
     let ref;
     let best = -Infinity;
-    for (const [k, p] of Object.entries(probs)) if (k !== 'keep' && isP(p) && p > best) { best = p; ref = k; }
-    return { pRemove: 1 - probs.keep, ref: ref ?? null, viaConfidence: false };
+    for (const [k, p] of Object.entries(probs)) if (k !== none && isP(p) && p > best) { best = p; ref = k; }
+    return { pRemove: 1 - probs[none], ref: ref ?? null, viaConfidence: false };
   }
   if (typeof a?.choice !== 'string' || !isP(a?.confidence)) return null;
-  return a.choice === 'keep' ? { pRemove: 1 - a.confidence, ref: null, viaConfidence: true } : { pRemove: a.confidence, ref: a.choice, viaConfidence: true };
+  return a.choice === none ? { pRemove: 1 - a.confidence, ref: null, viaConfidence: true } : { pRemove: a.confidence, ref: a.choice, viaConfidence: true };
 }
+const noneOf = (spec) => (spec.kind === 'keepChoice' ? 'none' : 'keep');
 
 export function argmax(pByRef) {
   let ref = null;
@@ -237,7 +271,7 @@ export function validateAnswers(specs, json) {
   for (const [id, spec] of specs) {
     const a = answers[id];
     if (!a || typeof a !== 'object' || Array.isArray(a)) return `missingAnswer:${id}`;
-    if (spec.kind === 'choice') {
+    if (spec.kind === 'choice' || spec.kind === 'keepChoice') {
       if (typeof a.choice !== 'string' || !spec.options.includes(a.choice)) return `choiceNotOption:${id}`;
       if (a.probabilities !== undefined) {
         if (!a.probabilities || typeof a.probabilities !== 'object' || Array.isArray(a.probabilities)) return `probabilitiesShape:${id}`;
@@ -246,7 +280,7 @@ export function validateAnswers(specs, json) {
         if (!values.every(isP)) return `probabilityRange:${id}`;
         if (Math.abs(values.reduce((s, p) => s + p, 0) - 1) > PROB_SUM_TOLERANCE) return `probabilitiesSum:${id}`;
       }
-      if (deriveChoice(a) === null) return `choiceUnusable:${id}`;
+      if (deriveChoice(a, noneOf(spec)) === null) return `choiceUnusable:${id}`;
     } else if (!isP(a.noul)) {
       return `noulRange:${id}`;
     }
@@ -257,16 +291,17 @@ export function validateAnswers(specs, json) {
 
 /** Per-Tile results for one 200 response: { pRemove, ref, probs?, pKeep?, keepRef?, keeps?, invalid? }. */
 export function decodeAnswers(specs, tileCount, answers) {
-  const per = Array.from({ length: tileCount }, () => ({ choice: undefined, rules: {}, keeps: {}, missing: [] }));
+  const per = Array.from({ length: tileCount }, () => ({ choice: undefined, keepChoice: undefined, rules: {}, keeps: {}, missing: [] }));
   for (const [id, spec] of specs) {
     const a = answers?.[id];
     const slot = per[spec.tile];
     if (!a || typeof a !== 'object') { slot.missing.push(id); continue; }
     if (spec.kind === 'choice') slot.choice = a;
+    else if (spec.kind === 'keepChoice') slot.keepChoice = a;
     else if (isP(a.noul)) (spec.kind === 'keep' ? slot.keeps : slot.rules)[spec.ref] = a.noul;
     else slot.missing.push(id);
   }
-  const hasKeep = [...specs.values()].some((s) => s.kind === 'keep');
+  const hasKeep = [...specs.values()].some((s) => s.kind === 'keep' || s.kind === 'keepChoice');
   return per.map((slot) => {
     const out = {};
     if (slot.missing.length) out.invalid = `missing:${slot.missing.join(',')}`;
@@ -278,7 +313,11 @@ export function decodeAnswers(specs, tileCount, answers) {
       const d = argmax(slot.rules);
       Object.assign(out, { pRemove: r4(d.p), ref: d.ref, probs: slot.rules });
     }
-    if (hasKeep) {
+    if (slot.keepChoice) {
+      const d = deriveChoice(slot.keepChoice, 'none');
+      if (!d) out.invalid = 'keepChoiceUnusable';
+      else Object.assign(out, { pKeep: r4(d.pRemove), keepRef: d.ref, keeps: slot.keepChoice.probabilities });
+    } else if (hasKeep) {
       const k = argmax(slot.keeps);
       Object.assign(out, { pKeep: r4(k.p), keepRef: k.ref, keeps: slot.keeps });
     }
@@ -339,14 +378,15 @@ export async function routeTrace() {
 
 /**
  * The endpoint a run pins to, from the public endpoints list: { tag, price ($ per prompt token), name }.
- * Without an explicit tag: the known tag for the model, else its only endpoint, else an error listing the tags.
+ * Without an explicit tag: the tag the shipped providerTag pins, where a base tag also matches its variants
+ * (`morph` matches `morph/bf16`), else an error listing the tags.
  */
 export async function resolveEndpoint(model, tag) {
   const res = await fetch(`https://openrouter.ai/api/v1/models/${model.replace(/^~/, '')}/endpoints`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new Error(`endpoints lookup for ${model}: HTTP ${res.status}`);
   const eps = (await res.json())?.data?.endpoints ?? [];
-  const want = tag ?? PROVIDER_TAGS[model];
-  const ep = want ? eps.find((e) => e.tag === want) : eps.length === 1 ? eps[0] : undefined;
+  const want = tag ?? providerTag(model);
+  const ep = eps.find((e) => e.tag === want) ?? (tag ? undefined : eps.find((e) => e.tag?.startsWith(`${want}/`)));
   if (!ep) throw new Error(`pick a provider for ${model} with --provider (endpoint tags: ${eps.map((e) => e.tag).join(', ') || 'none'})`);
   const price = Number(ep.pricing?.prompt);
   if (!Number.isFinite(price)) throw new Error(`no prompt price for ${model} pinned to ${ep.tag}`);

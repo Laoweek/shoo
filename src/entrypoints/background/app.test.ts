@@ -1,12 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import type { RuntimeSnapshot } from '~/core/types';
+import type { RuntimeSnapshot, TileFacts } from '~/core/types';
+import { dayKey } from '~/core/escalation';
+import { DECISIONS_URL, FALLBACK_MODELS } from '~/engine/decisions';
+import type { FetchLike } from '~/engine/net';
 import { answerer, fixture, fromFixture } from '~/engine/testing';
 import { queryActivity } from '~/store/local';
+import { readEscalations } from '~/store/read';
 import { CONSENT_VERSION } from '~/store/schema';
 import { getCustomKey, getDirectKey, getOpenRouterKey, setOpenRouterKey } from '~/store/secret';
 import { createBackground, RETENTION_ALARM } from './app';
-import { KEPT_BY_RULE_DAY_MAX } from './handlers/judging';
+import { judgingSettled, KEPT_BY_RULE_DAY_MAX } from './handlers/judging';
 import { DroppedMessage, InvalidInput } from './router';
 import { banRule, contentSender, fakeOpenRouter, harness, keywordRule, pageSender, T0, tile, topicRule } from './testing';
 
@@ -107,6 +111,15 @@ describe('sender checks', () => {
     expect(await h.call('mutateRules', { ops: 'nope' } as never)).toEqual({ error: 'invalidInput', detail: 'shape' });
     expect(await h.call('tryTitle', { title: 42 } as never)).toEqual({ error: 'invalidInput' });
     await expect(h.call('updateSettings', { patch: { dailyCap: 'lots' } } as never)).rejects.toBeInstanceOf(InvalidInput);
+  });
+
+  it('rejects a Tile whose channel fields are longer than content ever sends', async () => {
+    const h = harness();
+    const judge = (channel: Partial<TileFacts>) => h.call('judgeTiles', { items: [{ ...tile('ggggggggggg', 't'), ...channel }], settingsGeneration: 0 }, contentSender());
+    await expect(judge({ channelName: 'n'.repeat(120), channelHandle: '@'.padEnd(120, 'h') })).resolves.toBeDefined();
+    for (const field of ['channelName', 'channelHandle', 'channelId'] as const) {
+      await expect(judge({ [field]: 'x'.repeat(121) })).rejects.toBeInstanceOf(InvalidInput);
+    }
   });
 
   it('strips unknown keys, consent and generation from updateSettings', async () => {
@@ -372,6 +385,21 @@ describe('judgeTiles', () => {
     expect(h.areas.session.dump()['private:7:exceptions']).toBeUndefined();
   });
 
+  it("forgets a private tab's in-memory answers when the tab closes", async () => {
+    const fake = fakeOpenRouter();
+    const h = harness({ fetch: fake.fetch, tabs: [{ id: 7, url: 'https://www.youtube.com/', incognito: true }] });
+    await h.addRules(topicRule('Reaction videos'));
+    await h.connect();
+    const priv = contentSender(7, true);
+    const items = [tile('ggggggggggg', 'Jake reacts')];
+    await h.call('judgeTiles', { items, settingsGeneration: 1 }, priv);
+    await h.call('judgeTiles', { items, settingsGeneration: 1 }, priv);
+    expect(fake.decisionRequests()).toHaveLength(1);
+    await h.bg.onTabRemoved(7);
+    await h.call('judgeTiles', { items, settingsGeneration: 1 }, priv);
+    expect(fake.decisionRequests()).toHaveLength(2);
+  });
+
   it('reviewPending sets the review eye on that tab and is reported in the snapshot', async () => {
     const h = harness();
     await h.connect();
@@ -488,6 +516,13 @@ describe('keepChannel', () => {
   });
 });
 
+/** The Escalation suggestions a page reads from storage, once the background's writes settled and reached sync. */
+async function suggestions(h: ReturnType<typeof harness>) {
+  await judgingSettled(h.bg.services);
+  await h.writer.flush();
+  return readEscalations(h.clock.t, h.areas);
+}
+
 describe('Escalation', () => {
   /** 3 judged Tiles of one channel (decided by an Exact rule) and `n` Topic removals. */
   async function topicRemovals(h: ReturnType<typeof harness>, n: number, from = 0) {
@@ -506,18 +541,18 @@ describe('Escalation', () => {
     const h = harness();
     await h.addRules(keywordRule('drama'));
     await topicRemovals(h, 2);
-    expect(await h.call('listEscalations', undefined)).toEqual([]);
+    expect(await suggestions(h)).toEqual([]);
     await topicRemovals(h, 1, 2);
-    expect(await h.call('listEscalations', undefined)).toEqual([{ channelKey: 'drama hub', channelName: 'Drama Hub', removed: 3, judged: 3 }]);
+    expect(await suggestions(h)).toEqual([{ channelKey: 'drama hub', channelName: 'Drama Hub', removed: 3, judged: 3 }]);
     await h.call('dismissEscalation', { channelKey: 'drama hub' });
-    expect(await h.call('listEscalations', undefined)).toEqual([]);
+    expect(await suggestions(h)).toEqual([]);
     await topicRemovals(h, 2, 3);
-    expect(await h.call('listEscalations', undefined)).toEqual([]);
+    expect(await suggestions(h)).toEqual([]);
     await topicRemovals(h, 1, 5);
-    expect(await h.call('listEscalations', undefined)).toEqual([expect.objectContaining({ channelKey: 'drama hub', removed: 6 })]);
+    expect(await suggestions(h)).toEqual([expect.objectContaining({ channelKey: 'drama hub', removed: 6 })]);
     const { ruleId } = await h.call('confirmEscalation', { channelKey: 'drama hub' });
     expect((await h.writer.getRules()).find((r) => r.id === ruleId)).toMatchObject({ kind: 'channel', polarity: 'remove', origin: 'escalation', params: { channelName: 'Drama Hub' } });
-    expect(await h.call('listEscalations', undefined)).toEqual([]);
+    expect(await suggestions(h)).toEqual([]);
   });
 
   it('counts a same-named channel on each Site apart, and bans it on its own Site only', async () => {
@@ -533,9 +568,9 @@ describe('Escalation', () => {
     }
     await topicRemovals(h, 1);
     await biliRemovals(2, 0);
-    expect(await h.call('listEscalations', undefined)).toEqual([]);
+    expect(await suggestions(h)).toEqual([]);
     await biliRemovals(1, 2);
-    expect(await h.call('listEscalations', undefined)).toEqual([{ channelKey: 'bilibili:drama hub', channelName: 'Drama Hub', removed: 3, judged: 3 }]);
+    expect(await suggestions(h)).toEqual([{ channelKey: 'bilibili:drama hub', channelName: 'Drama Hub', removed: 3, judged: 3 }]);
     const { ruleId } = await h.call('confirmEscalation', { channelKey: 'bilibili:drama hub' });
     expect((await h.writer.getRules()).find((r) => r.id === ruleId)).toMatchObject({ params: { channelName: 'Drama Hub' }, site: 'bilibili' });
     // The Escalation's Activity row is about no video, so it carries the Site itself.
@@ -544,7 +579,7 @@ describe('Escalation', () => {
 
   it('bans a channel from a record stored before Sites on YouTube only', async () => {
     const h = harness();
-    await h.writer.updateEscalation((all) => ({ ...all, 'news daily': { judged: {}, topicRemoved: {}, name: 'News Daily', suggestedAt: T0 } }));
+    await h.writer.updateEscalation((all) => ({ ...all, 'news daily': { topicRemoved: {}, name: 'News Daily', suggestedAt: T0 } }));
     const { ruleId } = await h.call('confirmEscalation', { channelKey: 'news daily' });
     expect((await h.writer.getRules()).find((r) => r.id === ruleId)).toMatchObject({ params: { channelName: 'News Daily' }, site: 'youtube' });
   });
@@ -566,12 +601,84 @@ describe('Escalation', () => {
     expect(h.sentOf('settingsChanged').length).toBeGreaterThan(before);
   });
 
+  it('counts nothing while Off, and turning Off forgets the counts so turning it on starts from zero', async () => {
+    const h = harness();
+    const escalationKeys = () => localKeys(h).filter((k) => k === 'escalation' || k.startsWith('escalation:'));
+    await h.addRules(keywordRule('drama'));
+    await topicRemovals(h, 2);
+    expect(escalationKeys()).not.toEqual([]);
+    await h.call('updateSettings', { patch: { escalationMode: 'off' } });
+    expect(escalationKeys()).toEqual([]);
+    await topicRemovals(h, 3, 2);
+    expect(escalationKeys()).toEqual([]);
+    await h.call('updateSettings', { patch: { escalationMode: 'suggest' } });
+    await topicRemovals(h, 2, 5);
+    expect(await suggestions(h)).toEqual([]);
+  });
+
+  it('counts nothing from a batch that was waiting on the model when Escalation was turned Off', async () => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let asked = 0;
+    const model = fakeOpenRouter();
+    const h = harness({
+      fetch: async (input, init) => {
+        if (String(input).startsWith(DECISIONS_URL)) {
+          asked++;
+          await held;
+        }
+        return model.fetch(input, init);
+      },
+    });
+    const escalationKeys = () => localKeys(h).filter((k) => k === 'escalation' || k.startsWith('escalation:'));
+    await h.connect();
+    await h.addRules(topicRule('React videos'));
+    const judging = h.call('judgeTiles', { items: [tile('reactaaaaaa', 'React drama', { channelName: 'Drama Hub' })], settingsGeneration: 0 }, contentSender());
+    await vi.waitFor(() => expect(asked).toBe(1));
+    await h.call('updateSettings', { patch: { escalationMode: 'off' } });
+    release();
+    expect((await judging).results[0]).toMatchObject({ status: 'decided', verdict: { outcome: 'remove', source: 'model' } });
+    await h.call('reportActionResult', { ok: true, videoId: 'reactaaaaaa', surface: 'home', nativeAction: 'notInterested', batchId: 'b1', title: 'React drama', channelName: 'Drama Hub', source: 'model', p: 0.95, mode: 'auto' }, contentSender());
+    await h.writer.flush();
+    expect(escalationKeys()).toEqual([]);
+  });
+
+  it('stops counting Topic removals on a day that stopped counting judged videos, so no channel qualifies on a cut count', async () => {
+    const h = harness();
+    await h.addRules(keywordRule('drama'));
+    await h.call('updateSettings', { patch: { escalationMode: 'automatic' } });
+    const yesterday = dayKey(T0 - 24 * 60 * 60 * 1000);
+    await h.writer.recordEscalationJudged(yesterday, [{ key: 'drama hub', videoId: 'old1aaaaaaa' }, { key: 'drama hub', videoId: 'old2aaaaaaa' }]);
+    const filler = Array.from({ length: 200 }, (_, i) => ({ key: `${'x'.repeat(990)}${i}`, videoId: `f${i}` }));
+    await h.writer.recordEscalationJudged(h.writer.today(), filler);
+    const replies = await topicRemovals(h, 3);
+    expect(replies.map((r) => r.escalated)).toEqual([undefined, undefined, undefined]);
+    expect((await h.writer.getRules()).some((r) => r.origin === 'escalation')).toBe(false);
+  });
+
+  it('replies to judgeTiles before writing the batch\'s counts, and still writes them', async () => {
+    const h = harness();
+    await h.addRules(keywordRule('drama'));
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const set = h.areas.local.set.bind(h.areas.local);
+    h.areas.local.set = async (items) => {
+      if (Object.keys(items).some((k) => k.startsWith('escalation:'))) await held;
+      await set(items);
+    };
+    const reply = await h.bg.dispatch('judgeTiles', { items: [tile('dramaaaaaaa', 'drama', { channelName: 'Drama Hub' })], settingsGeneration: 0 }, contentSender());
+    expect(reply.results[0]).toMatchObject({ status: 'decided', verdict: { outcome: 'remove' } });
+    release();
+    await judgingSettled(h.bg.services);
+    expect((await h.writer.getEscalation())['drama hub']?.judged).toEqual({ [h.writer.today()]: ['dramaaaaaaa'] });
+  });
+
   it('never escalates a channel with an Exception', async () => {
     const h = harness();
     await h.addRules(keywordRule('drama'));
     await h.call('addException', { videoId: 'protectedaa', title: 't', channelName: 'Drama Hub', origin: 'activityKeep' });
     await topicRemovals(h, 3);
-    expect(await h.call('listEscalations', undefined)).toEqual([]);
+    expect(await suggestions(h)).toEqual([]);
   });
 });
 
@@ -663,6 +770,7 @@ describe('connection', () => {
   it('setKey with a rejected key stores nothing', async () => {
     const fake = fakeOpenRouter({ key: () => ({ status: 401, body: { error: { message: 'User not found.', code: 401 } } }) });
     const h = harness({ fetch: fake.fetch });
+    await h.call('giveConsent', { version: CONSENT_VERSION });
     expect(await h.call('setKey', { key: 'sk-or-v1-bad' })).toEqual({ ok: false, error: 'keyRejected' });
     expect(await getOpenRouterKey(h.areas.local)).toBeUndefined();
   });
@@ -688,6 +796,45 @@ describe('connection', () => {
     expect(await h.call('getKeyUsage', undefined)).toEqual({ label: 'sk-or-v1-abc...xyz', source: 'pasted', connectedAt: T0, usage: 0.5, usageDaily: 0.1, limit: null, limitRemaining: null });
     await h.call('disconnect', undefined);
     expect(await h.call('getKeyUsage', undefined)).toEqual({ error: 'noKey' });
+  });
+
+  it('getKeyUsage names the fallback model that answered until the chosen model answers again', async () => {
+    let chosenUp = false;
+    const answer = answerer({ choose: () => ({ keep: 0.97, R1: 0.03 }) });
+    const fake = fakeOpenRouter({ decisions: (req) => (req.body.model === FALLBACK_MODELS.text || chosenUp ? answer(req) : { status: 503, body: {} }) });
+    const h = harness({ fetch: fake.fetch });
+    await h.addRules(topicRule('Reaction videos'));
+    await h.connect();
+    const judge = (id: string) => h.call('judgeTiles', { items: [tile(id, 'A cooking video')], settingsGeneration: 1 }, contentSender());
+    await judge('aaaaaaaaaaa');
+    expect(await h.call('getKeyUsage', undefined)).toMatchObject({ fallbackModel: FALLBACK_MODELS.text });
+    chosenUp = true;
+    await judge('bbbbbbbbbbb');
+    expect(await h.call('getKeyUsage', undefined)).not.toHaveProperty('fallbackModel');
+  });
+
+  it("getKeyUsage keeps a thumbnail fallback while the text model answers, until the thumbnail model answers again", async () => {
+    const chosenImage = 'acme/vision-1';
+    let imageUp = false;
+    const answer = answerer({ choose: (title) => (/react/i.test(title) ? { keep: 0.05, R1: 0.95 } : { keep: 0.97, R1: 0.03 }) });
+    const fake = fakeOpenRouter({ decisions: (req) => (req.body.model === chosenImage && !imageUp ? { status: 503, body: {} } : answer(req)) });
+    const fetch: FetchLike = async (input, init) =>
+      String(input).startsWith('https://i.ytimg.com/') ? new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } }) : fake.fetch(input, init);
+    const h = harness({ fetch });
+    await h.addRules(topicRule('Reaction videos'), { op: 'add', rule: { polarity: 'remove', kind: 'thumbnail', text: 'Shocked faces', enabled: true, origin: 'user' } });
+    await h.connect();
+    const settings = await h.writer.getSettings();
+    await h.call('updateSettings', { patch: { models: { ...settings.models, image: chosenImage } } });
+    const judge = (id: string, title: string) => h.call('judgeTiles', { items: [tile(id, title)], settingsGeneration: 1 }, contentSender());
+    await judge('aaaaaaaaaaa', 'A cooking video');
+    expect(fake.decisionRequests().map((r) => r.body.model)).toEqual([settings.models.text, chosenImage, FALLBACK_MODELS.image]);
+    expect(await h.call('getKeyUsage', undefined)).toMatchObject({ fallbackModel: FALLBACK_MODELS.image });
+    // A text answer alone says nothing about the thumbnail model.
+    await judge('bbbbbbbbbbb', 'Jake reacts');
+    expect(await h.call('getKeyUsage', undefined)).toMatchObject({ fallbackModel: FALLBACK_MODELS.image });
+    imageUp = true;
+    await judge('ccccccccccc', 'A baking video');
+    expect(await h.call('getKeyUsage', undefined)).not.toHaveProperty('fallbackModel');
   });
 
   it('connectOpenRouter without the identity API opens the headless page', async () => {
@@ -773,6 +920,22 @@ describe('edge cases in judging, keys and reports', () => {
       .filter(([k]) => /^activity:\d/.test(k))
       .flatMap(([, v]) => v as { kind: string }[]);
     expect(events.filter((e) => e.kind === 'wouldRemove')).toHaveLength(100);
+  });
+
+  it('refuses reports whose batch, Rule or selector version id is longer than an id', async () => {
+    const h = harness();
+    const long = 'x'.repeat(65);
+    const ok = { ok: true, videoId: 'aaaaaaaaaaa', surface: 'home', nativeAction: 'notInterested', batchId: 'b1', title: 't' } as const;
+    const fail = { ok: false, videoId: 'aaaaaaaaaaa', surface: 'home', nativeAction: 'notInterested', step: 'openMenu', selectorVersion: 's1' } as const;
+    const verdict = { videoId: 'aaaaaaaaaaa', outcome: 'remove' as const, source: 'exact' as const, rulesVersion: 'x', at: T0 };
+    await expect(h.call('reportActionResult', { ...ok, batchId: long }, contentSender())).rejects.toBeInstanceOf(InvalidInput);
+    await expect(h.call('reportActionResult', { ...ok, ruleId: long }, contentSender())).rejects.toBeInstanceOf(InvalidInput);
+    await expect(h.call('reportActionResult', { ...fail, selectorVersion: long }, contentSender())).rejects.toBeInstanceOf(InvalidInput);
+    await expect(h.call('recordWouldRemove', { results: [{ videoId: 'aaaaaaaaaaa', status: 'decided', verdict }], batchId: long }, contentSender())).rejects.toBeInstanceOf(InvalidInput);
+    await expect(
+      h.call('recordWouldRemove', { results: [{ videoId: 'aaaaaaaaaaa', status: 'decided', verdict: { ...verdict, ruleId: long } }], batchId: 'b1' }, contentSender()),
+    ).rejects.toBeInstanceOf(InvalidInput);
+    expect(localKeys(h).filter((k) => k.startsWith('activity:'))).toEqual([]);
   });
 });
 
@@ -1092,6 +1255,7 @@ describe('engines, consent, tabs and Rule edits', () => {
     expect(await h.call('tryTitle', { title: 'x'.repeat(301) })).toEqual({ error: 'invalidInput' });
     expect(await h.call('tryTitle', { title: 'ok', channelName: 'c'.repeat(121) })).toEqual({ error: 'invalidInput' });
     expect(await h.call('tryTitle', { title: '   ' })).toEqual({ error: 'invalidInput' });
+    expect(await h.call('tryTitle', { title: 'ok', durationSec: -1 })).toEqual({ error: 'invalidInput' });
     expect(await h.call('tryTitle', { title: 'x'.repeat(300), channelName: 'c'.repeat(120) })).toEqual({ error: 'noConsent' });
   });
 
@@ -1141,9 +1305,9 @@ describe('engines, consent, tabs and Rule edits', () => {
       await h.call('reportActionResult', { ok: true, videoId, surface: 'home', nativeAction: 'notInterested', batchId: `b${i}`, title: `drama ${i}`, channelName: 'Drama Hub', ruleId, source: 'model', p: 0.9 }, contentSender());
     }
     expect(kw).toBeDefined();
-    expect(await h.call('listEscalations', undefined)).toEqual([{ channelKey: 'drama hub', channelName: 'Drama Hub', removed: 3, judged: 3, ruleId: r2!.id }]);
+    expect(await suggestions(h)).toEqual([{ channelKey: 'drama hub', channelName: 'Drama Hub', removed: 3, judged: 3, ruleId: r2!.id }]);
     // A deleted Rule is not named.
     await h.call('mutateRules', { ops: [{ op: 'delete', id: r2!.id }] });
-    expect((await h.call('listEscalations', undefined))[0]).not.toHaveProperty('ruleId');
+    expect((await suggestions(h))[0]).not.toHaveProperty('ruleId');
   });
 });

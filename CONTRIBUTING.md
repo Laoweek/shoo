@@ -19,6 +19,7 @@ The [README](README.md) explains how to load a build in Chrome and Firefox.
 - Run `pnpm check`. It runs the typecheck, lint, unit tests, both browser builds and the size budgets, the same as CI.
 - Add or update tests for any behaviour change. Unit tests run against recorded fixtures and never call a model.
 - Live tests (`pnpm test:live`) and calibration runs spend real OpenRouter credit. They are opt-in and never required for a pull request.
+- Pin any action you add to a workflow to a full commit SHA followed by its version comment, as in `.github/workflows/ci.yml`. CI fails on any other `uses:` line, and Dependabot moves the pins forward.
 
 ## How the project is documented
 

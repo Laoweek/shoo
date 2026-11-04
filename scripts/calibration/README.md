@@ -22,6 +22,7 @@ The results behind the shipped Filtering strength presets are summarised in `doc
 | `run.mjs` | Runs one experiment |
 | `evaluate.mjs` | Metrics from one or more run logs |
 | `models.mjs` | Lists decision models, provider tags and prices (free, public catalogue) |
+| `injection.mjs` | Prompt injection check: 16 crafted Tiles sent clean and with instructions in the title or channel name, the same Tiles with a hostile Exception, and 8 thumbnails with an instruction in the title. Counts the injections that flip an outcome at Balanced or pKeep 0.5. About $0.0015 per run on clef-flash |
 
 ## Labels
 
@@ -44,15 +45,17 @@ Options:
 | Option | Default | Meaning |
 |---|---|---|
 | `--model <slug>` | `cloudflare/clef-flash` | Decision model |
-| `--provider <tag>` | known tag, or the only endpoint | Provider pin (`order: [tag]`, `allow_fallbacks: false`, `data_collection: "deny"`). `models.mjs` lists tags. The harness pins the endpoint's real tag. The shipped `providerFor` pins the slug prefix for models it does not know (for example `microsoft` where the endpoint tag is `azure`), so a new model needs an entry in `PROVIDER_TAGS` in `src/engine/decisions.ts` before it can ship |
+| `--provider <tag>` | the shipped pin | Provider pin (`order: [tag]`, `allow_fallbacks: false`, `data_collection: "deny"`, and `zdr: true` where the shipped pin sends it). `models.mjs` lists tags. Without it the harness pins what the shipped `providerFor` pins: the author's slug, or the tag in `AUTHOR_TAGS` in `src/engine/decisions.ts`. A model whose endpoint tag is neither needs an `AUTHOR_TAGS` entry before it can ship |
 | `--rules A\|B\|D\|E` | `B` (text), `D` (thumbnail) | Rule set |
 | `--rule-text <ref>=<text>` | none | Sends another wording for one Rule of the set (repeatable). The labels stay the set's. The log's `config.ruleTexts` records the texts sent |
 | `--keep none\|C\|C:K1` | `none` | Topic Keep rules, asked as `tNN_<ref>` nouls |
+| `--keep-framing noul\|choice` | `noul` | `choice` asks one `tNN_keep` choice question over all Keep rules (options `none` and the Keep refs, pKeep = 1 - P(none)) instead of one noul per Keep rule. Not shipped: at pKeep 0.5 its Keep precision was 0.37 and 0.39 against 0.77 to 0.82 for the nouls (2026-11-04) |
+| `--thumb-framing choice\|noul` | `choice` | `noul` asks one noul per Thumbnail rule keyed by its ref (`--thumb-task`), the shape shipped before 2026-11-04 |
 | `--framing choice\|noul` | `choice` | `noul` = one question per Tile and Rule with the Rule text inline (`docs/spec/decision-engine.md` §2.4) |
 | `--criteria text\|null` | `text` | Choice criteria values |
 | `--task shipped\|noKept\|viewer\|strict` | `shipped` | Choice task wording (`lib.mjs` `CHOICE_TASKS`). `--task-text "<text>"` sends any other wording |
-| `--noul-task`, `--keep-task` | `shipped` | `shipped`, `viewer`, `about` (`lib.mjs` `NOUL_TASKS`) or a template with `{rule}` |
-| `--fields` | text: `title,channel,duration,surface`, thumbnail: `title,channel` | Tile facts sent. The text pass always sends the title. The thumbnail pass sends only the image with `--fields none` |
+| `--noul-task`, `--keep-task` | `shipped` | `shipped`, `viewer`, `about` (`lib.mjs` `NOUL_TASKS`, `KEEP_TASKS`), for Keep rules also `plain` (the Keep wording before 2026-11-04, without the uploader sentence), or a template with `{rule}` |
+| `--fields` | text: `title,channel,duration,surface`, thumbnail: none | Tile facts sent. The text pass always sends the title. The thumbnail pass sends only the image, as shipped, unless `--fields title,channel` adds them |
 | `--batch <n>` | shipped size | Tiles per request, refused above 64 questions |
 | `--tiles 1-32`, `--ids c001,c002`, `--where lang=ja,de` | all | Selection, in file order. `--where` repeats and matches any listed value |
 | `--seed <n>` | none | Shuffle the selection before batching |
@@ -108,6 +111,8 @@ Keep question variants:
 ```sh
 node scripts/calibration/run.mjs --experiment keep-shipped --rules B --keep C --cap 0.04
 node scripts/calibration/run.mjs --experiment keep-viewer  --rules B --keep C --keep-task viewer --cap 0.04
+node scripts/calibration/run.mjs --experiment keep-plain   --rules B --keep C --keep-task plain --cap 0.04
+node scripts/calibration/run.mjs --experiment keep-choice  --rules B --keep C --keep-framing choice --cap 0.04
 ```
 
 Thumbnails (rule set D, 32 images, about $0.001 per run on clef-flash):
@@ -115,7 +120,8 @@ Thumbnails (rule set D, 32 images, about $0.001 per run on clef-flash):
 ```sh
 node scripts/calibration/make-thumbnails.mjs   # generates the git-ignored images first. Needs Chrome and macOS sips
 node scripts/calibration/run.mjs --experiment thumb-clef --pass thumbnail --cap 0.01
-node scripts/calibration/run.mjs --experiment thumb-clef-image-only --pass thumbnail --fields none --cap 0.01
+node scripts/calibration/run.mjs --experiment thumb-clef-titled --pass thumbnail --fields title,channel --cap 0.01
+node scripts/calibration/run.mjs --experiment thumb-clef-noul --pass thumbnail --thumb-framing noul --fields title,channel --cap 0.01
 node scripts/calibration/run.mjs --experiment thumb-pplx --pass thumbnail --model perplexity/pplx-decider-v1.1-27b --cap 0.01
 node scripts/calibration/evaluate.mjs test/calibration/runs/thumb-*.jsonl
 ```
@@ -129,6 +135,13 @@ node scripts/calibration/evaluate.mjs test/calibration/runs/hype-E-*.jsonl --cut
 ```
 
 Slices by another Tile field: `evaluate.mjs <log> --by category`. Machine-readable metrics: `--json <out.json>`. Other preset cutoffs: `--cutoffs <cautious>,<balanced>,<eager>`.
+
+Prompt injection (rule sets B and C, and D for the thumbnails). `--task-text`, `--keep-task`, `--thumb-framing` and `--thumb-fields` try other shapes against the same cases:
+
+```sh
+node scripts/calibration/injection.mjs --experiment inj-clef --cap 0.02
+node scripts/calibration/injection.mjs --experiment inj-jev --model typesafe/jev-1.13 --cap 0.03
+```
 
 Harness checks (no network): `pnpm exec vitest run --project unit scripts/calibration`.
 

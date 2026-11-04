@@ -15,7 +15,7 @@ import { readActivity, readCounters, watchActivity, watchCounters } from '~/stor
 import { Button, Notice, RuleRef, Segmented, SkeletonRows, ruleLabel } from '~/ui/components';
 import { Escalations } from '~/ui/pages/Escalations';
 import { clock, dayLabel, thumbUrl, whereLabel } from '~/ui/pages/format';
-import { useAsync, useNow } from '~/ui/pages/hooks';
+import { useAsync, useDebounced, useNow } from '~/ui/pages/hooks';
 import { useKeepChannel } from '~/ui/pages/keep-channel';
 import { SectionHead, Select, Status } from '~/ui/pages/parts';
 import { byId } from '~/ui/pages/rules';
@@ -23,6 +23,8 @@ import { ThumbWall } from '~/ui/pages/ThumbWall';
 import type { SectionProps } from '../context';
 
 const PAGE = 300;
+/** Each search reads every stored Activity page, so it waits for a pause in typing. */
+export const SEARCH_PAUSE_MS = 150;
 /** session:removalTabs keeps a Removal's tab for 1 hour (architecture.md Section 6). */
 export const UNDO_WINDOW_MS = 60 * 60 * 1000;
 /** How long a row must be in view before it counts as seen. */
@@ -49,11 +51,15 @@ export function Activity({ data, params }: SectionProps) {
     setBatchId(params.get('batch') ?? '');
   }, [params.toString()]);
 
+  const typed = text.trim();
+  // Clearing the box shows everything at once, and the next search starts from no filter.
+  const paused = useDebounced(typed, typed ? SEARCH_PAUSE_MS : 0);
+  const query = typed ? paused : '';
   const kinds = view === 'wall' ? (['removed'] as ActivityKind[]) : kind ? [kind] : undefined;
   const events = useAsync(
     () =>
       readActivity({
-        ...(text.trim() ? { text: text.trim() } : {}),
+        ...(query ? { text: query } : {}),
         ...(ruleId ? { ruleId } : {}),
         ...(batchId ? { batchId } : {}),
         ...(kinds ? { kinds } : {}),
@@ -61,11 +67,11 @@ export function Activity({ data, params }: SectionProps) {
         limit,
       }),
     [watchActivity],
-    [text, ruleId, kind, site, batchId, view, limit],
+    [query, ruleId, kind, site, batchId, view, limit],
   );
   const rules = byId(data.rules);
   const list = events.data ?? [];
-  const filtered = !!(text.trim() || ruleId || kind || site || batchId);
+  const filtered = !!(query || ruleId || kind || site || batchId);
 
   return (
     <section aria-labelledby="section-activity">

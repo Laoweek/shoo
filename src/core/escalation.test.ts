@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import {
-  dayKey,
-  dismissEscalation,
-  emptyEscalation,
-  escalationStatus,
-  pruneEscalation,
-  recordJudged,
-  recordTopicRemoval,
-  totalTopicRemovals,
-  type EscalationRecord,
-} from './escalation';
+import { dayKey, dismissEscalation, escalationStatus, pruneEscalation, recordTopicRemoval, totalTopicRemovals, type EscalationRecord } from './escalation';
+
+const emptyEscalation = (): EscalationRecord => ({ judged: {}, topicRemoved: {} });
+
+/** Counts a judged video once per day, as store/local.ts recordEscalationJudged does in its day keys. */
+function recordJudged(rec: EscalationRecord, videoId: string, day: string): EscalationRecord {
+  const ids = rec.judged[day] ?? [];
+  if (ids.includes(videoId)) return rec;
+  return { ...rec, judged: { ...rec.judged, [day]: [...ids, videoId] } };
+}
 
 let videoSeq = 0;
 // Local noon avoids DST edges.
@@ -33,15 +32,10 @@ describe('dayKey', () => {
 });
 
 describe('recording', () => {
-  it('counts a video once per day and keeps records immutable', () => {
-    const a = recordJudged(emptyEscalation(), 'v1', TODAY);
-    const b = recordJudged(a, 'v1', TODAY);
-    expect(b).toBe(a);
-    const c = recordJudged(a, 'v1', '2026-10-09');
-    expect(c.judged).toEqual({ [TODAY]: ['v1'], '2026-10-09': ['v1'] });
-    expect(a.judged).toEqual({ [TODAY]: ['v1'] });
+  it('counts Topic removals per day and keeps records immutable', () => {
+    const a = { topicRemoved: {}, name: 'Jake Reacts' };
     const r = recordTopicRemoval(recordTopicRemoval(a, TODAY), TODAY);
-    expect(r.topicRemoved).toEqual({ [TODAY]: 2 });
+    expect(r).toEqual({ topicRemoved: { [TODAY]: 2 }, name: 'Jake Reacts' });
     expect(a.topicRemoved).toEqual({});
   });
 });

@@ -1,15 +1,29 @@
 // Advanced (docs/spec/ui-design.md Section 6, REQ-SET-1): notification style, Escalation, Daily cap, exact
-// Filtering strength, regex Rules, import/export and Reset. Sites and their Surfaces have their own section.
+// Filtering strength, regex Rules, import/export, Clear history and Reset. Sites and their Surfaces have their own section.
 import { useRef, useState } from 'preact/hooks';
+import { SITE_IDS, type SiteId } from '~/core/sites';
 import type { Settings } from '~/core/types';
 import { CUSTOM_CUTOFF_MAX, CUSTOM_CUTOFF_MIN, removeCutoff } from '~/core/verdict';
 import { t } from '~/i18n';
 import { sendMessage, type ImportPreview } from '~/messaging/protocol';
+import { parseImportFile, type ParsedImport } from '~/store/import';
 import { Button, Notice, Segmented, SkeletonRows, Switch } from '~/ui/components';
+import { requestThumbnailAccess } from '~/ui/pages/consent';
 import { count } from '~/ui/pages/format';
 import { SectionHead, SettingRow, Status, SubHead, TextInput } from '~/ui/pages/parts';
 import type { SectionProps } from '../context';
 import { patchSettings } from './Connection';
+
+/** The Sites of an import file's enabled Thumbnail rules, every Site for one that works anywhere, or undefined without any. */
+function thumbnailSites(file: ParsedImport): SiteId[] | undefined {
+  const sites = new Set<SiteId>();
+  for (const r of file.rules) {
+    if (r.kind !== 'thumbnail' || !r.enabled) continue;
+    if (r.site) sites.add(r.site);
+    else SITE_IDS.forEach((site) => sites.add(site));
+  }
+  return sites.size > 0 ? [...sites] : undefined;
+}
 
 export function Advanced({ data }: SectionProps) {
   const s = data.settings;
@@ -63,7 +77,8 @@ export function Advanced({ data }: SectionProps) {
             </div>
           </div>
           <ImportExport />
-          <Reset />
+          <ConfirmedDelete action="clearHistory" />
+          <ConfirmedDelete action="reset" />
         </div>
       )}
     </section>
@@ -124,7 +139,7 @@ function StrengthSlider({ settings, onSave }: { settings: Settings; onSave: (v: 
 type ImportState =
   | { kind: 'idle' }
   | { kind: 'checking' }
-  | { kind: 'preview'; file: unknown; name: string; mode: ImportMode; preview: ImportPreview }
+  | { kind: 'preview'; file: ParsedImport; name: string; mode: ImportMode; preview: ImportPreview }
   | { kind: 'error'; detail?: string }
   | { kind: 'done' };
 
@@ -159,17 +174,19 @@ export function ImportExport() {
     if (input.current) input.current.value = '';
     if (!f) return;
     setState({ kind: 'checking' });
-    let file: unknown;
+    let raw: unknown;
     try {
-      file = JSON.parse(await f.text());
+      raw = JSON.parse(await f.text());
     } catch {
       return setState({ kind: 'error' });
     }
-    await preview(file, f.name, 'merge');
+    const parsed = parseImportFile(raw);
+    if (!parsed.ok) return setState({ kind: 'error', detail: parsed.detail });
+    await preview(parsed.value, f.name, 'merge');
   };
 
   // Every apply follows a dry run in the same mode, so the preview always shows what that button does.
-  const preview = async (file: unknown, name: string, mode: ImportMode) => {
+  const preview = async (file: ParsedImport, name: string, mode: ImportMode) => {
     setState({ kind: 'checking' });
     try {
       const res = await sendMessage('importData', { file, mode, dryRun: true });
@@ -183,6 +200,8 @@ export function ImportExport() {
   const apply = async () => {
     if (state.kind !== 'preview' || state.preview.syncQuota) return;
     const { file, mode } = state;
+    const thumbnails = thumbnailSites(file);
+    if (thumbnails) void requestThumbnailAccess(thumbnails.length === 1 ? thumbnails[0] : undefined);
     setState({ kind: 'checking' });
     try {
       const res = await sendMessage('importData', { file, mode, dryRun: false });
@@ -257,12 +276,13 @@ export function ImportExport() {
   );
 }
 
-export function Reset() {
+/** Clear history (Activity, cached Verdicts, counts) and Reset (everything): each asks once before it deletes. */
+function ConfirmedDelete({ action }: { action: 'clearHistory' | 'reset' }) {
   const [step, setStep] = useState<'idle' | 'confirm' | 'busy' | 'done' | 'error'>('idle');
   const run = async () => {
     setStep('busy');
     try {
-      await sendMessage('resetAll');
+      await sendMessage(action === 'reset' ? 'resetAll' : 'clearHistory');
       setStep('done');
     } catch {
       setStep('error');
@@ -270,25 +290,27 @@ export function Reset() {
   };
   return (
     <div>
-      <SubHead title={t('advanced.reset.label')} />
+      <SubHead title={t(`advanced.${action}.label`)} />
       <div class="card grid gap-3 p-5">
-        <p class="m-0 max-w-[64ch] text-[13px] text-muted">{t('advanced.reset.hint')}</p>
+        <p class="m-0 max-w-[64ch] text-[13px] text-muted">{t(`advanced.${action}.hint`)}</p>
         {step === 'confirm' || step === 'busy' ? (
           <div role="alert" class="grid gap-2 rounded-[14px] bg-lit px-4 py-3">
-            <p class="m-0 font-semibold text-danger">{t('advanced.reset.confirm')}</p>
+            <p class="m-0 font-semibold text-danger">{t(`advanced.${action}.confirm`)}</p>
             <div class="flex flex-wrap gap-2">
               <Button variant="primary" disabled={step === 'busy'} onClick={() => void run()}>
-                {t('advanced.reset.confirmButton')}
+                {t(`advanced.${action}.confirmButton`)}
               </Button>
               <Button onClick={() => setStep('idle')}>{t('common.cancel')}</Button>
             </div>
           </div>
         ) : (
           <div>
-            <Button onClick={() => setStep('confirm')}>{t('advanced.reset.button')}</Button>
+            <Button onClick={() => setStep('confirm')}>{t(`advanced.${action}.button`)}</Button>
           </div>
         )}
-        <Status tone={step === 'error' ? 'danger' : 'plain'} class="empty:absolute">{step === 'done' ? t('advanced.reset.done') : step === 'error' ? t('advanced.reset.error') : ''}</Status>
+        <Status tone={step === 'error' ? 'danger' : 'plain'} class="empty:absolute">
+          {step === 'done' ? t(`advanced.${action}.done`) : step === 'error' ? t(`advanced.${action}.error`) : ''}
+        </Status>
       </div>
     </div>
   );

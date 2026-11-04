@@ -10,6 +10,7 @@ import { CONSENT_VERSION } from '~/store/schema';
 import { setOpenRouterKey } from '~/store/secret';
 import { createMemoryArea } from '~/store/testing/quota-storage';
 import { createBackground } from './app';
+import { judgingSettled } from './handlers/judging';
 import type { Platform, TabInfo } from './platform';
 import type { Inbound, RawSender, Req } from './router';
 
@@ -121,7 +122,12 @@ export function harness(opts: { fetch?: FetchLike; tabs?: TabInfo[]; hosts?: Rec
     darkToolbar: () => false,
   };
   const bg = createBackground(platform);
-  const call = <K extends Inbound>(type: K, data: Req<K>, sender: RawSender = pageSender()) => bg.dispatch(type, data, sender);
+  // Waits for the bookkeeping judgeTiles runs after its reply too, so tests read what it wrote.
+  const call = async <K extends Inbound>(type: K, data: Req<K>, sender: RawSender = pageSender()) => {
+    const reply = await bg.dispatch(type, data, sender);
+    await judgingSettled(bg.services);
+    return reply;
+  };
   return {
     bg,
     areas,

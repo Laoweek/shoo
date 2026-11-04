@@ -48,9 +48,9 @@ flowchart LR
 | Content ↔ storage | One read of `local:settings` at load to learn `enabled` | Any write. Subscribing to `storage.onChanged`. Reading `sync:*` or `local:secret:*` |
 | Pages ↔ storage | Reads for display | Any write (every mutation goes through the background, Section 8) |
 | Background ↔ OpenRouter | The data in REQ-PRIV-1 | Video IDs, URLs, channel IDs |
-| Background ↔ i.ytimg.com | `GET https://i.ytimg.com/vi/<id>/mqdefault.jpg` with `credentials: 'omit'` | Cookies, credentials |
+| Background ↔ i.ytimg.com | `GET https://i.ytimg.com/vi/<id>/mqdefault.jpg` with `credentials: 'omit'`, no referrer and `cache: 'no-store'`, only with a Thumbnail rule on. An optional host permission, asked for with a Thumbnail rule | Cookies, credentials, the HTTP cache |
 | Background ↔ youtube.com | `GET https://www.youtube.com/feed/channels` with the user's YouTube cookies, only while a Rule skips Subscribed channels (REQ-RULE-14, `youtube-integration.md` Section 9) | Any other request, following a redirect, storing the page |
-| Background ↔ i0.hdslb.com | `GET https://i0.hdslb.com/bfs/archive/<hash>.jpg@320w_180h_1c.jpg` with `credentials: 'omit'` and no referrer, only with Bilibili turned on | Cookies, credentials |
+| Background ↔ i0.hdslb.com | `GET https://i0.hdslb.com/bfs/archive/<hash>.jpg@320w_180h_1c.jpg` with `credentials: 'omit'`, no referrer and `cache: 'no-store'`, only with Bilibili turned on and a Thumbnail rule on. An optional host permission, asked for with a Thumbnail rule | Cookies, credentials, the HTTP cache |
 
 ## 2. Source layout
 
@@ -86,6 +86,7 @@ src/
     start.ts boot.ts         # read enabled, getRuntimeState, start the pipeline for a Site
     pipeline.ts batcher.ts   # Surface detect, batching, Mode gate, Undo ownership, Shelf dismissal and user bans through optional Site hooks
     watcher.ts actions.ts mount.ts  # observers, NativeActionQueue (Tile and Shelf targets) and focus safety, chip and annotation hosts
+    messaging.ts             # content's typed end of messaging/wire.ts (Section 6)
     ui.ts notices.ts         # in-page Preact UI adapter, mountUi() runs only on first need
   sites/                     # what each Site knows (content only)
     site.ts                  # the contract: SurfaceDef, SiteMenu, SitePlaceholder, Site, and the optional shelves and watchUserBans only YouTube has
@@ -105,7 +106,8 @@ src/
     secret.ts                # API key accessors, imported only by engine/ and the background router
     read.ts                  # read-only helpers for pages, readEnabled() for content
     writer.ts                # the serialized mutation queue (background only)
-  messaging/protocol.ts      # Section 6, implemented with @webext-core/messaging
+  messaging/protocol.ts      # Section 6, the ProtocolMap and the pages' typed sendMessage
+  messaging/wire.ts          # the transport every context shares: runtime and tabs sendMessage, one onMessage listener
   ui/                        # Preact components and tokens (ui-design.md)
   i18n/                      # @wxt-dev/i18n catalogue, keys area.component.message
 test/fixtures/youtube/       # real captured fixtures
@@ -215,7 +217,7 @@ interface ActivityEvent {
 | `sites/` | content only | per Site: Surface registry, extraction, menu, placeholder and Undo, theme, and YouTube's Shelf dismissal and user-ban watcher (the contract in `sites/site.ts`) | `core/` |
 | `content/` | content only | the engine for any Site: pipeline, observers, NativeActionQueue and focus safety, hosts, in-page UI adapter | `core/`, `sites/`, `messaging/`, `store/read.ts`, `ui/` |
 | `engine/` | background only | Decisions client for OpenRouter and direct Decision providers, custom endpoint client, thumbnails, `judge.ts`, fallback chain, OAuth, model list | `core/`, `store/` |
-| `store/` | background (all), pages (`read.ts` only), content (`readEnabled()` only) | schema, migrations, sync packing and merge, local keys, the mutation queue | `core/` |
+| `store/` | background (all), pages (`read.ts`, and `import.ts` in the options page), content (`readEnabled()` only) | schema, migrations, sync packing and merge, local keys, the mutation queue | `core/` |
 | `store/secret.ts` | background only | API key read and write | `core/` types |
 | `messaging/` | all | typed protocol | `core/` types |
 | `ui/` | popup, options, onboarding, `content/ui.ts` | components, tokens, `Eyes` | `core/`, `i18n/` |
@@ -240,11 +242,11 @@ The background is authoritative for every judging stage. Content finds, extracts
 | 2 | Exception | background | checks synced Exceptions, the local archive, and the tab's session Exceptions in private windows |
 | 3 | Banned channel | background | remove with `dontRecommendChannel` |
 | 4 | Other Exact rules | background, matchers compiled per `exactVersion` | remove with `notInterested` |
-| 5 | Verdict cache | background | keyed `videoId` + `cacheVersion`, built on the `rulesVersion` of the Rules that work on the Tile's Site (Section 9), record shape in `decision-engine.md` |
+| 5 | Verdict cache | background | keyed `videoId`, each cached answer checked against its own answer version over the Rules that work on the Tile's Site (Section 9), record shape in `decision-engine.md` |
 | 6 | Topic rules and Topic Keep rules (text pass) | background `engine/` | Topic Keep beats every remove |
 | 7 | Thumbnail rules | background `engine/` | only when stage 6 matched no Rule at all (no remove ref, no keep ref) |
 
-- **Rules per Site.** A batch comes from one Site (the router rejects a `judgeTiles` with another Site's Tiles), and every stage sees only the Rules that work there (`rulesOn` in `core/rules.ts`, ADR 0012). Exact matchers are compiled per Site. The text pass leaves out kept examples whose Rule works only on another Site (`exampleOn`).
+- **Rules per Site.** A batch comes from one Site (the router rejects a `judgeTiles` with another Site's Tiles), and every stage sees only the Rules that work there (`rulesOn` in `core/rules.ts`, ADR 0012). Exact matchers are compiled per Site. The text pass sends as kept examples only Exceptions kept from an enabled remove Topic rule that works on the batch's Site (`exampleOn`): up to 10 of the most recent. Exceptions from Banned channels, Exact or Thumbnail rules, disabled or deleted Rules, and Exceptions with no Rule are never sent.
 - **Exact remove vs Topic Keep.** When stage 3 or 4 would remove a Tile and any Topic Keep rule is enabled, the background asks the keep-only question (`buildKeepOnlyRequest` in `decision-engine.md`) before finalizing. When the model cannot be asked (any reason in Section 7 that disables the model), the Tile is returned `undecided` with reason `keepCheckUnavailable`: no action, no chip.
 - **Skip Subscribed channels (REQ-RULE-14).** While an enabled remove Rule has `skipSubscribed`, the background reads the user's Subscribed channels (`youtube-integration.md` Section 9) before stage 1. For a Tile from a Subscribed channel those Rules do not exist: stages 3 and 4 pass over them, stages 6 and 7 never ask them (such Tiles go in text requests of their own), and a Tile no remaining Rule could remove gets no request. Without a usable list every Rule applies, and a remove by a skipping Rule of a Tile that shows a channel comes back `undecided` with `subscriptionsUnavailable`, unless an Exact rule that does not skip also removes it in stages 3 and 4. A read that changes the list broadcasts `settingsChanged`, so open tabs judge again. A private-window batch never starts a read. Only YouTube Tiles are checked against the list: a Bilibili batch never starts a read, and a skipping Rule that works on Bilibili removes Bilibili Tiles as if it did not skip.
 - **No consent or no key.** Stages 1-4 run. Tiles needing stages 5-7 come back `undecided` with the reason from Section 7.
@@ -269,7 +271,7 @@ sequenceDiagram
   X->>B: TileFacts (ads, Mixes, playlists, current video skipped)
   B->>BG: judgeTiles({ items, settingsGeneration }) at 16 Tiles or 400 ms
   BG->>BG: stages 1-4 (Keep, Exception, Banned channel, Exact)
-  BG->>C: stage 5 lookup videoId @ rulesVersion
+  BG->>C: stage 5 lookup videoId, check each answer's version
   alt cache hit
     C-->>BG: model result
   else miss and model allowed
@@ -310,7 +312,7 @@ sequenceDiagram
 ### Mid-flight changes and Mode transitions
 
 - Every `judgeTiles` reply carries `rulesVersion` and `settingsGeneration`. Content drops a reply when either is older than the latest it has seen from `settingsChanged`.
-- On `settingsChanged`, content re-sends `judgeTiles` for every decorated or pending Tile still on the page. The background answers from the Verdict cache when it can, so this is cheap. Chips and labels that no longer hold are withdrawn.
+- On `settingsChanged`, content re-sends `judgeTiles` for every decorated or pending Tile still on the page. The background answers from the Verdict cache when it can, so this is cheap. Chips and labels that no longer hold are withdrawn. A hidden tab (`document.hidden`) defers this to one re-send when it is shown again, however many `settingsChanged` arrived meanwhile, because the NativeActionQueue acts on nothing while hidden.
 - The NativeActionQueue precheck, run right before each action, asks the background `getRuntimeState()` once per queue run and re-validates Mode, `enabled`, Keep rules and Exceptions through the latest `judged` entry.
 
 | From → to | Tiles with chips | Tiles with labels | Queued actions | New Tiles |
@@ -329,11 +331,11 @@ Shelf dismissal (REQ-ACT-6) runs only on a Site that offers Shelves (the optiona
 - Removals are counted from `reportActionResult({ ok: true })`, never from Verdicts, so Dry-run and Review never count as Removals. A Shelf dismissal is not a Removal: it adds a `shelfDismissed` Activity event and no counter.
 - `ruleStats` keys on `ruleId`. Remove Rule hits are counted from judge results with `outcome: 'remove'`. Keep rule hits are counted only for Rescues: keep results with `source: 'keepRule'` and a `rescuedFrom` (REQ-RULE-6). A Keep rule keep that is no Rescue is not counted and does not enter the once-per-day memo, so it counts when it later becomes one. Keep rule hits stored before Rescues existed counted every keep and are not migrated: they leave the week's count as their days pass, and stay in `total` and `lastHitAt`. A Rescue follows the Filtering strength at judge time, and a counted hit or `keptByRule` event is never taken back, so lowering and raising the strength again can leave a hit counted.
 - Tiles kept by a Keep rule (REQ-ACTV-1): after `judgeTiles`, the background writes a `keptByRule` Activity event for every decided result whose Verdict has `outcome: 'keep'`, `source: 'keepRule'`, a `ruleId` and a `rescuedFrom`, so only Rescues are recorded. That covers exact Keep rules, Topic Keep rules and the keep-only question. Each Keep rule, video and local day is written once: an in-memory set, seeded from today's `keptByRule` events the first time a day needs it, skips repeats from rescans and from a restarted background. A failed read of the day's events is not cached, and keeps from a failed write are dropped from the set, so a later batch writes them. At most `KEPT_BY_RULE_DAY_MAX` (100) are written a day. The next day writes the keep again. The event carries `videoId`, `ruleId`, `source`, the title (truncated to 120), Surface, `channelName` and `channelKey` when known, and `seenAt = at`, so the row is never lit. Private-window senders write none, and `tryTitle` writes none.
-- Escalation: the background counts each `(channelKey, videoId)` once per day as judged when the pipeline returns a decided result, and counts Topic removals from `removed` events with `source: 'model'`. After "Not now", the channel is suggested again only after 3 more Topic removals.
+- Escalation: the background counts each `(channelKey, videoId)` once per day as judged when the pipeline returns a decided result, and counts Topic removals from `removed` events with `source: 'model'`. After "Not now", the channel is suggested again only after 3 more Topic removals. Nothing is counted while Escalation is Off, and switching to Off deletes the counts and records, so turning it on again starts from zero. The writer checks the setting inside its queue, so a batch or Removal report that was in flight when the user switched to Off writes nothing, and an update that finds counts stored while Off deletes them. Once a day stops counting judged videos at its size limit, its Topic removals go uncounted too, so a channel's share of removed Tiles never rests on a cut judged count. A batch's judged counts, Rule hits and Rescues are queued before the `judgeTiles` reply and written after it.
 
 ## 6. Messages contract
 
-`messaging/protocol.ts` defines `ProtocolMap` for `@webext-core/messaging`. Background → content messages go through `browser.tabs.sendMessage` to the target tab. Every handler validates its payload shape.
+`messaging/protocol.ts` defines `ProtocolMap`. Every context speaks it through `messaging/wire.ts`, a few hundred bytes with no library: a message is `{ type, data, timestamp }` and a reply is `{ res }` or `{ err }` with `err` a plain `{ name, message }`. A listener answers through `sendResponse` and returns `true`, because Chrome ignores a Promise returned from an `onMessage` listener. `@webext-core/messaging` did the same for about 700 B more gzipped in the background bundle, which its budget could not hold. `src/content/messaging.test.ts` runs both directions. Background → content messages go through `browser.tabs.sendMessage` to the target tab. Every handler validates its payload shape.
 
 ```ts
 type ReasonCode =
@@ -416,32 +418,37 @@ interface ProtocolMap {
   exchangeHeadlessCode(req: { code: string }): { ok: true; label: string } | { ok: false; error: 'exchangeFailed' | 'expired' };
   setKey(req: { key: string }): { ok: true; label?: string } | { ok: false; error: 'keyRejected' | 'offline' };
   disconnect(): void;
-  getKeyUsage(): { label?: string; connectedAt: number; usage: number; limit: number | null; limitRemaining: number | null } | { error: ReasonCode };
+  getKeyUsage(): { label?: string; source?: 'oauth' | 'pasted'; connectedAt: number; usage?: number; usageDaily?: number; limit?: number | null; limitRemaining?: number | null } | { error: ReasonCode };
+  getStoredKeys(): { direct: boolean; custom: boolean };
+  forgetKey(req: { endpoint: 'direct' | 'custom' }): void;
   testCustomEndpoint(req: { baseUrl: string; model: string; key: string }): { ok: true; latencyMs: number } | { ok: false; error: string };
   setDirectEndpoint(req: { provider: DirectProviderId; baseUrl: string; model: string; key?: string }): { ok: true } | { ok: false; error: string };
   testDirectEndpoint(req: { provider: DirectProviderId; baseUrl: string; model: string; key?: string }): { ok: true; latencyMs: number } | { ok: false; error: string };
   listModels(req: { refresh?: boolean }): { models: { id: string; images: boolean; pricePerMInput: number }[]; fetchedAt: number } | { error: ReasonCode };
   exportData(): ShooExport;
-  importData(req: { file: unknown; mode: 'merge' | 'replace'; dryRun: boolean }):
+  importData(req: { file: { rules: Rule[]; exceptions: Exception[]; invalid: string[] }; mode: 'merge' | 'replace'; dryRun: boolean }):  // file: as store/import.ts accepted it in the options page
     { preview: { add: number; update: number; renumber: number; invalid: string[]; remove?: { rules: number; exceptions: number }; syncQuota?: true } } | { error: 'invalidInput'; detail: string };
+  clearHistory(): void;
   resetAll(): void;
 }
 ```
 
+- `clearHistory` (pages only) deletes from storage.local `activity:*`, `vc:*`, `ruleStats`, `counters:*` except today's, `escalation` and `escalation:*`, and `subscriptions`, and from storage.session `removalTabs`, and forgets recent Removals in memory. It keeps Rules, Exceptions and the archive, settings, keys, consent, `runtime`, `models`, `syncOutbox` and `syncFloor`, writes nothing to sync and sends no `settingsChanged`, so chips already on open pages stay.
+
 - Sender checks: content messages require `sender.id === browser.runtime.id` and `sender.tab?.url` on a Site's origin (`SITE_ORIGINS` in `core/sites.ts`: `https://www.youtube.com` or `https://www.bilibili.com`). The router records that Site on the sender. Page messages require `sender.url` to start with `browser.runtime.getURL('/')`. Anything else is dropped.
 - `banChannel` (REQ-ACT-5) adds the channel of the Tile the user removed with YouTube's own Don't recommend channel as a Banned channel with `origin: 'user'`, records a `banned` Activity event (video, title, Surface, channel, `ruleId`) and sends `settingsChanged`. Like any channel Rule made from a Tile, the Banned channel works on the Tile's Site only (ADR 0012). Only a Site that has the optional `watchUserBans` member of `Site` sends it, which today is YouTube. It runs exclusively and returns an existing ban for the channel with `added: false`. It adds nothing from a private window, without channel facts, when the snapshot's `stages.exact` is false (Shoo off, migrating, host access revoked, markup breaker) or when a Keep rule covers the channel. Consent is not needed: a Banned channel is an Exact rule and sends nothing to a model. `liftChannelBan` tombstones the Rule only when the newest `banned` event for that `videoId` names that `ruleId` and is under an hour old, then records an `undone` event (`detail: 'youtube'`, the Site id) copied from it. Content sends it only for a ban `banChannel` answered `added: true`.
 - `undoFromActivity` routes through `session:removalTabs` (`Record<videoId, { tabId, at }>`, kept 1 hour) to `undoRemoval` in that tab. A closed tab, a tab that left its Site or a navigated page returns `expired`.
-- `reportUndo` stores the Undo's origin in the `undone` event's `detail`: the sender's Site id (`'youtube'` before Sites existed, which old events keep) or `'shoo'`. `reportActionResult` and `recordWouldRemove` carry a Bilibili Tile's `cover`, validated against `BILIBILI_COVER_PATH`, into Activity. `keepChannel` from content carries its Site, and the Keep rule it adds records it (Section 10).
+- `reportUndo` stores the Undo's origin in the `undone` event's `detail`: the sender's Site id (`'youtube'` before Sites existed, which old events keep) or `'shoo'`. `reportActionResult` and `recordWouldRemove` carry a Bilibili Tile's `cover`, validated against `BILIBILI_COVER_PATH`, into Activity. `keepChannel` from content carries its Site, and the Keep rule it adds records it (Section 10). `reportActionResult` and `recordWouldRemove` refuse a `batchId`, `ruleId` or `selectorVersion` longer than 64 characters as `invalidInput`.
 - Command `toggle-shoo` (REQ-KEY-1): `browser.commands.onCommand` in the background flips `settings.enabled` through the same path as `updateSettings` and broadcasts `runtimeStateChanged`.
 - Question ids sent to OpenRouter are `t01`..`t16` plus one `tNN_<keepRef>` per Topic Keep rule (for example `t01_K2`), produced by `core/ids.ts` (changed from a single `tNN_keep` after calibration, `decision-engine.md` Section 2.2). Video IDs never reach OpenRouter.
-- `getRuntimeState` is also accepted from extension pages (the popup reads the snapshot through it). Pages use `listEscalations` (popup and Activity), `markActivitySeen` (lit-until-seen rows), `withdrawConsent` (Connection), and `setCustomEndpoint` (saves base URL, model and key after the host prompt). `setDirectEndpoint` and `testDirectEndpoint` (ADR 0007) do the same for a Decision provider reached directly (`decision-engine.md` Section 12). `keepChannel` takes `liftBan` once the user confirmed lifting a ban, and reports `bannedRuleId` when a ban exists so the UI can ask first. `reportActionResult` carries the Verdict's `source`, `p`, `mode` and channel fields so the background can record Activity and Escalation counts. `recordWouldRemove` carries the Tiles' facts for the Activity rows. The `judgeTiles` reply carries `rules` (ref, text, Rule name when set, and colour for every `ruleId` in its results, since content holds no Rules) and `private` (the sender tab is incognito). `openSettings({ hash })` lets content (the summary's Review button, notices) open Settings at a section, because content scripts cannot open extension pages without `web_accessible_resources`. `keepChannel` with a ban and no `liftBan` creates nothing and returns `{ ruleId: '', bannedRuleId }`, so the caller asks and sends again with `liftBan: true` (returns `liftedBanRuleId`) or `false` (the ban stays, the Keep rule wins). Content has no in-page prompt and sends `liftBan: false`. From a private-window tab `keepChannel` returns `{ error: 'privateWindow' }` instead of writing synced Rules (REQ-ACTV-3), and content does not offer it there. The `reportActionResult` reply adds `escalated: { ruleId, channelName }` when that Removal made an automatic Escalation, so the batch summary says "Banned <channel> too" (REQ-ESC-2). `getKeyUsage` adds `usageDaily` (OpenRouter's `usage_daily`, spend in the current UTC day) when the key check reports it, and Connection shows it as "used today". The TypeScript in `src/messaging/protocol.ts` is the exact contract.
+- `getRuntimeState` is also accepted from extension pages (the popup reads the snapshot through it). Pages read Escalation suggestions from storage themselves (`readEscalations` in `store/read.ts`, popup, Rules and Activity), and use `markActivitySeen` (lit-until-seen rows), `withdrawConsent` (Connection), and `setCustomEndpoint` (saves base URL, model and key after the host prompt). `setDirectEndpoint` and `testDirectEndpoint` (ADR 0007) do the same for a Decision provider reached directly (`decision-engine.md` Section 12). `keepChannel` takes `liftBan` once the user confirmed lifting a ban, and reports `bannedRuleId` when a ban exists so the UI can ask first. `reportActionResult` carries the Verdict's `source`, `p`, `mode` and channel fields so the background can record Activity and Escalation counts. `recordWouldRemove` carries the Tiles' facts for the Activity rows. The `judgeTiles` reply carries `rules` (ref, text, Rule name when set, and colour for every `ruleId` in its results, since content holds no Rules) and `private` (the sender tab is incognito). `openSettings({ hash })` lets content (the summary's Review button, notices) open Settings at a section, because content scripts cannot open extension pages without `web_accessible_resources`. `keepChannel` with a ban and no `liftBan` creates nothing and returns `{ ruleId: '', bannedRuleId }`, so the caller asks and sends again with `liftBan: true` (returns `liftedBanRuleId`) or `false` (the ban stays, the Keep rule wins). Content has no in-page prompt and sends `liftBan: false`. From a private-window tab `keepChannel` returns `{ error: 'privateWindow' }` instead of writing synced Rules (REQ-ACTV-3), and content does not offer it there. The `reportActionResult` reply adds `escalated: { ruleId, channelName }` when that Removal made an automatic Escalation, so the batch summary says "Banned <channel> too" (REQ-ESC-2). `getKeyUsage` adds `usageDaily` (OpenRouter's `usage_daily`, spend in the current UTC day) when the key check reports it, and Connection shows it as "used today". `getKeyUsage` and `listModels` contact OpenRouter only when it is the engine, consent names it and, on Firefox, data collection is granted. Before that `getKeyUsage` returns the stored label, source and `connectedAt`, and `listModels` the stored list. `getStoredKeys` and `forgetKey` (Settings, Connection) report and forget the stored key of a direct Decision provider and of the custom endpoint, whose endpoint stays saved without a key. `resumeFromBreaker` from content resumes only the `model` category, and anything else is `invalidInput`. `updateSettings` ignores `customEndpoint`, which only `setCustomEndpoint` saves. The TypeScript in `src/messaging/protocol.ts` is the exact contract.
 - Further contract details:
   - `settingsChanged` carries `actOnShowingChips: true` only to the active Site tab when `setMode` asks for it. That is the tab whose `reviewPending` the popup's "Remove the N flagged videos now?" counted. Other tabs get a plain `settingsChanged` (REQ-MODE-5).
   - `addException` from content (Review Keep) and `reportUndo` broadcast `settingsChanged` to every Site tab, like page-made Exceptions. Another tab may hold a queued Auto job or a chip for that video.
   - The router rejects a `mutateRules` update whose `patch` has a key other than `text`, `name`, `params`, `enabled`, `kind`, `skipSubscribed` or `site` (`invalidInput`), an add or update whose `name` is not a string, one whose `skipSubscribed` is not a boolean, and a `site` that is not a Site id (or `null` in an update). The writer stores `skipSubscribed` only when true and refuses it on a Keep rule (`skipSubscribedKeep`). The writer trims the name, stores none for a blank one (so `name: ''` clears it) and refuses one over 40 characters (`nameTooLong`, REQ-RULE-11). A Starter rule is added with its label as `name`.
   - `tryTitle` answers `invalidInput` for an empty title, a title over 300 characters or a channel name over 120.
   - `openSettings` focuses an open Settings tab and moves it to `hash` (found with `runtime.getContexts`) before it opens a new one.
-  - `listEscalations` sets `ruleId` to the Rule behind most of the channel's Topic removals in the 30-day window (from Activity), when that Rule still exists.
+  - `readEscalations` lists the channels with `suggestedAt` that still qualify and have no Banned channel, none while Escalation is Off, and sets `ruleId` to the Rule behind most of the channel's Topic removals in the 30-day window (from Activity), when that Rule still exists. It reads Rules and Exceptions from storage.sync, so a Rule change shows there once the writer's sync write lands (about 1 s).
 
 ## 7. RuntimeState and failure counters
 
@@ -461,8 +468,9 @@ interface ProtocolMap {
 | 10 | `offline` | yes | no | yes | yes | paused | `popup.state.offline` (popup only) | automatic on `online` |
 | 11 | `ok` | yes | yes | yes | yes | watching, judging while a batch is in flight, review while chips wait | none | |
 
-- **Consent names its recipient.** `noConsent` holds unless `settings.consent` covers the active recipient. With engine `openrouter` the consent must have no `customHost`. With engine `direct` or `custom` its `customHost` must equal that endpoint's host (with port). `consent.version` below `CONSENT_VERSION` (`store/schema.ts`) also counts as `noConsent`, so a change of recipients asks again. On Firefox, a revoked optional `data_collection` permission `websiteContent` (`permissions.contains`, about:addons) also counts as `noConsent`.
+- **Consent names its recipient.** `noConsent` holds unless `settings.consent` covers the active recipient. With engine `openrouter` the consent must have no `customHost`. With engine `direct` or `custom` its `customHost` must equal that endpoint's host (with port). `consent.version` below `CONSENT_VERSION` (`store/schema.ts`) also counts as `noConsent`, so a change of recipients asks again. On Firefox, either optional `data_collection` category (`websiteContent` or `authenticationInfo`) revoked (`permissions.contains`, about:addons) also counts as `noConsent`.
 - **Re-checked before each request.** `engine/judge.ts` asks `modelAllowed` once before a call and again inside each request slot, right before sending. It also checks that the engine and its direct or custom endpoint (address and model) are still the ones the batch started with. A refused request sends nothing, and its Tiles come back `undecided` with that reason.
+- **Shared requests.** When two `judgeTiles` calls ask the same Tile's text questions at the same time (two tabs on the same page), the later call waits for the earlier call's answer instead of sending them again, and gets its reason when that call fails. It pays and counts nothing for that Tile. A private tab shares only with itself (REQ-ACTV-3). Thumbnail images are fetched before a Tile takes one of the 4 thumbnail request slots.
 - **Host permissions.** The model host pattern is `https://openrouter.ai/*`, or the direct or custom endpoint's `endpointPattern` (`core/runtime.ts`, base URL from `endpointBase`): `<origin>/*` with the port on Chrome, the portless host on Firefox, where a pattern with a port matches no URL. That is the same pattern onboarding and Settings request on `Use <provider>`.
 - **Rescan.** When the snapshot leaves any reason, or on `online`, reconnect, consent and a new day, the background broadcasts `runtimeStateChanged` and content re-sends `judgeTiles` for visible Tiles that are `undecided`. `permissions.onAdded` and `onRemoved` (hosts on both browsers, data collection on Firefox) recompute the snapshot at once, so a re-grant rescans without waiting for the next batch.
 - **Failure counters.** `local:runtime.failures = { model, nativeAction, markup }` counts consecutive failures per category, owned by the background. A success resets only its own category. 5 in a row trips that category (`tripped[category] = at`). The counters are shared by every Site, so a Bilibili markup change also stops YouTube's Native actions until Resume (ADR 0011). The trip records the sender's Site (`trippedSite[category]`), the snapshot reports it as `site`, and the popup and in-page notices name that Site. Content reports Native action failures through `reportActionResult({ ok: false })` and markup self-test failures through `reportMarkupCheck`. OpenRouter failures are counted in `engine/` per batch, after the fallback chain in `decision-engine.md` is exhausted.
@@ -506,23 +514,28 @@ Budget ≤ 90 KB of the 102,400 B quota, measured with `getBytesInUse`.
 | `local:secret:openrouterKey` | `{ key, source: 'oauth' \| 'pasted', label?, connectedAt }` | `store/secret.ts` only |
 | `local:secret:customKey` | `{ key }` | `store/secret.ts` only |
 | `local:secret:directKey` | `{ key }`, empty for a Decision model on this computer | `store/secret.ts` only |
-| `local:verdicts:<bucket>` | Verdict cache, record shape in `decision-engine.md`, 64 buckets by first char of a YouTube `videoId`, by `fnv1a32(videoId) % 64` for a Bilibili one (all start with `BV`), ≤ 320 entries each, oldest `at` evicted | background |
+| `local:vc:<n>` | Verdict cache, record shape in `decision-engine.md`. 1,024 buckets by `fnv1a32(videoId) % 1024`, at most 20 records each, oldest `at` evicted. Stored compactly as `{ v: string[], m: string[], r: Record<videoId, { v, a, t?, h? }> }`: `v` and `m` list the bucket's versions and model slugs once, `a` is `at`, and `t` and `h` are the text and thumbnail results under short names (`p`, `r`, `k`, `kr`, `o`, with `m` and an answer's own `v` as indexes into those lists). Records older than 30 days miss and retention deletes them | background |
 | `local:activity:index` | `{ days: Record<YYYY-MM-DD, number>, bytes: Record<YYYY-MM-DD, number> }` page counts and per-day bytes for the 3 MB cap | background, options |
 | `local:activity:<YYYY-MM-DD>:<n>` | `ActivityEvent[]`, ≤ 200 per page | background, options |
 | `local:counters:<YYYY-MM-DD>` | `{ judged, removed, requests, costUsd }` | background, popup |
 | `local:ruleStats` | `Record<ruleId, { days: Record<YYYY-MM-DD, number>, total, lastHitAt }>` | background, options |
-| `local:escalation` | `Record<channelKey, { judged: Record<day, string[]>, topicRemoved: Record<day, number>, suggestedAt?, dismissedAt?, removalsAtDismiss?, name?, handle?, id?, site? }>` (`site`: the Site of the first Topic removal, given to the ban) | background |
-| `local:runtime` | `{ failures: { model, nativeAction, markup }, tripped: { model?, nativeAction?, markup? }, trippedSite?: { nativeAction?, markup? } }` | background |
-| `local:exceptions:archive:<bucket>` | Exceptions beyond the synced ones, the Verdict cache's 64 buckets, ≤ 5,000 total | background |
+| `local:escalation` | `Record<channelKey, { topicRemoved: Record<day, number>, suggestedAt?, dismissedAt?, removalsAtDismiss?, name?, handle?, id?, site? }>` (`site`: the Site of the first Topic removal, given to the ban), at most 512 KB: past that the records whose last Topic removal is oldest are dropped, never one with `suggestedAt` or `dismissedAt` | background, pages (suggestions) |
+| `local:escalation:<YYYY-MM-DD>` | `Record<channelKey, videoId[]>`, the videos judged that day, at most 100 KB a day (videos past that are not counted that day) | background, pages (suggestions) |
+| `local:escalation:<YYYY-MM-DD>:full` | `true` once a video went uncounted that day at the 100 KB limit. Topic removals that day are then not counted | background |
+| `local:runtime` | `{ failures: { model, nativeAction, markup }, tripped: { model?, nativeAction?, markup? }, trippedSite?: { nativeAction?, markup? }, keyRejected?, creditsExhausted?, fallbackModel? }` | background |
+| `local:exceptions:archive:<bucket>` | Exceptions beyond the synced ones, 64 buckets by first char of a YouTube `videoId`, by `fnv1a32(videoId) % 64` for a Bilibili one (all start with `BV`), ≤ 5,000 total | background |
 | `local:exceptions:epoch` | the `excEpoch` the archive belongs to. An older archive is emptied | background |
+| `local:exceptions:summary` | `{ count, newestAt }`: how many Exceptions the archive holds and the newest one's `at`, so the Settings index counts Exceptions and the judge picks recent kept examples without reading the archive. Absent means empty, and the writer adds it at start for an older archive | background, options |
 | `local:syncOutbox` | sync writes not yet confirmed (Rules, Exception adds and the 40 newest removals, ref counters, `excEpoch`, `rulesClearedAt`) | background |
 | `local:syncFloor` | `{ excEpoch, rulesClearedAt }`, the highest this device has seen | background |
 | `local:models` | model catalogue cache, 24 h | background, options |
-| `local:subscriptions` | `{ list?: { ids, handles, keys, readAt }, triedAt, failures }`: the Subscribed channels as channel keys (about 60 KB for 1,000 channels), read again after 24 h, unused after 7 days, a failed read retried after 1 h doubling to 24 h. Read only while a Rule skips Subscribed channels (REQ-RULE-14) | background, options |
+| `local:subscriptions` | `{ list?: { ids, handles, keys, readAt }, triedAt, failures }`: the Subscribed channels as channel keys (about 60 KB for 1,000 channels), read again after 24 h, unused after 7 days, a failed read retried after 1 h doubling to 24 h. Read only while a Rule skips Subscribed channels (REQ-RULE-14). Deleted as soon as no enabled remove Rule that works on YouTube has `skipSubscribed` (after a Rule change, an import, a sync merge or the daily retention run). A read that finishes after that is not stored | background, options |
 
-- Activity budget: ≤ 3 MB across all `activity:*` keys. When over, delete the oldest day first. Retention 30 days on top of that. `keptByRule` events share the budget. At about 335 bytes each, the daily limit of 100 holds them to about 1 MB over 30 days, so they cannot crowd Removals out alone.
+- Shoo 0.2.0 kept the Verdict cache in 64 `local:verdicts:<char>` buckets. The writer deletes them when it starts. Their records were asked under one version for all answers, so they could not match the answer versions records are looked up by now.
+- Escalation layout: Shoo 0.2.0 kept each channel's `judged` days inside `local:escalation`. The writer moves them into the day keys when it starts (day keys first, then the records), without a schema bump, because `SCHEMA` is shared with `sync:meta`. Until that succeeds, readers also count the old fields.
+- Activity budget: ≤ 3 MB across all `activity:*` keys. When over, delete the oldest day first. Retention 30 days on top of that. `keptByRule` events share the budget. At about 335 bytes each, the daily limit of 100 holds them to about 1 MB over 30 days, so they cannot crowd Removals out alone. Titles and channel names are cut to 120 characters, and the channel key is taken from the cut name. The newest day is never dropped, so a day's events past 3 MB are not recorded.
 - On any quota error: evict the oldest half of Activity and retry the write. If that still fails on quota, evict the oldest half of the Verdict cache and retry once more.
-- Retention alarm `shoo:retention` runs daily, prunes `activity:*`, `counters:*`, `ruleStats` days and `escalation` days older than 30 days. Create it in `onInstalled` and `onStartup` only when `alarms.get` returns nothing.
+- Retention alarm `shoo:retention` runs daily, prunes `activity:*`, `counters:*`, `ruleStats` days, Verdict cache records, `escalation:<day>` and `escalation:<day>:full` keys and Escalation record days older than 30 days, and Escalation records with no Topic removal left, Not now included, and deletes `local:subscriptions` when no Rule needs it. Create it in `onInstalled` and `onStartup` only when `alarms.get` returns nothing.
 - The daily cap needs no alarm: `judgeTiles` reads today's counter key, so a new local day starts at zero.
 
 `Settings` and defaults (`store/schema.ts#DEFAULT_SETTINGS`):
@@ -557,7 +570,7 @@ interface Settings {
 
 ### Private windows (REQ-ACTV-3)
 
-The background checks `sender.tab?.incognito` on every message. For incognito senders it judges normally but writes nothing to `local` or `sync`: no Verdict cache, no Activity, no stats, no Escalation counts, no persistent Exceptions. Only the session keys above are written. The one exception is the failure counters in `local:runtime` (model, Native action and markup failures, trips, and the rejected-key and credits flags). They hold no browsing data, only counts per failure category, and a failure seen in a private window must still trip the breaker. The chip's Keep note in a private window uses `chip.kept.session` ("Kept for this session").
+The background checks `sender.tab?.incognito` on every message. For incognito senders it judges normally but writes nothing to `local` or `sync`: no Verdict cache, no Activity, no stats, no Escalation counts, no persistent Exceptions. Only the session keys above are written. Their model answers are kept in the background's memory instead, per tab, at most 4,000 records over all private tabs (`PRIVATE_CACHE_MAX` in `engine/judge.ts`), and dropped when the tab closes or the background stops. They still read the stored Verdict cache, which reading leaves unchanged. Thumbnails are fetched with `credentials: 'omit'`, no referrer and `cache: 'no-store'`, so the URL, which holds the video ID, never enters the HTTP cache. The one exception is the failure counters in `local:runtime` (model, Native action and markup failures, trips, the rejected-key and credits flags, and the fallback model that last answered). They hold no browsing data, only counts per failure category, and a failure seen in a private window must still trip the breaker. The chip's Keep note in a private window uses `chip.kept.session` ("Kept for this session").
 
 ### Schema and migrations
 
@@ -573,31 +586,39 @@ The background checks `sender.tab?.incognito` on every message. For incognito se
   "exceptions": [ /* Exception[] including the archive */ ] }
 ```
 
-The key, settings, Activity and caches are never exported. Rules are exported as stored, Rule name included. Import validates every field (hand-written validators in the options bundle), runs regex Rules through `core/regex.ts`, trims each Rule name and skips (and lists) a Rule whose `name` is not a string or is over 40 characters like any invalid field, returns a preview (`dryRun: true`), then merges (new ids added, same id with newer `updatedAt` wins, ref collisions renumbered and recorded) or replaces (every Rule and Exception not in the file is removed through `rulesClearedAt` and `excEpoch`, and imported Exceptions keep their dates). The dry run runs the same sync budget check as the import and sets `syncQuota: true` in the preview when the Rules would not fit. A replace preview counts per mode and adds `remove: { rules, exceptions }`, what Replace deletes. A merged Exception that was removed after the backup was made is stamped just after its removal record, so the import is not undone by its own echo.
+The key, settings, Activity and caches are never exported. Rules are exported as stored, Rule name included. Import validates every field where the file is opened, in the options page (hand-written validators in `store/import.ts`, kept out of the background bundle), runs regex Rules through `core/regex.ts`, trims each Rule name and skips (and lists) a Rule whose `name` is not a string or is over 40 characters like any invalid field, and sends the result to the background, which checks only that it carries its three lists (`invalidInput`, detail `request`, otherwise). The background returns a preview (`dryRun: true`), then merges (new ids added, same id with newer `updatedAt` wins, ref collisions renumbered and recorded) or replaces (every Rule and Exception not in the file is removed through `rulesClearedAt` and `excEpoch`, and imported Exceptions keep their dates). The dry run runs the same sync budget check as the import and sets `syncQuota: true` in the preview when the Rules would not fit. A replace preview counts per mode and adds `remove: { rules, exceptions }`, what Replace deletes. A merged Exception that was removed after the backup was made is stamped just after its removal record, so the import is not undone by its own echo.
 
 ## 9. rulesVersion and exactVersion
 
 ```
 rulesVersion = fnv1a64( JSON of sorted [ref, polarity, kind, text, site?] for every enabled topic and thumbnail Rule (remove and Topic Keep)
                         + settings.models.text + settings.models.image
-                        + TEXT_FRAMING + REQUEST_SHAPE_VERSION            (both consts in engine/decisions.ts)
-                        + customEndpoint.baseUrl + customEndpoint.model    (only when settings.engine is 'custom')
+                        + TEXT_FRAMING + REQUEST_SHAPE_VERSION + THUMBNAIL_SHAPE_VERSION   (consts in engine/decisions.ts)
+                        + customEndpoint.baseUrl + customEndpoint.model + CHAT_PROMPT_VERSION (engine/chat.ts)
+                                                                            (only when settings.engine is 'custom')
                         + direct.provider + direct.baseUrl + direct.model (appended only when settings.engine is 'direct') )
+
+answerVersions.text  = fnv1a64( JSON of ["text", sorted Topic and Topic Keep tuples, models.text, TEXT_FRAMING,
+                                REQUEST_SHAPE_VERSION, custom tuple, direct tuple] )
+answerVersions.thumb = fnv1a64( JSON of ["thumb", sorted Thumbnail tuples, models.image, THUMBNAIL_SHAPE_VERSION,
+                                direct tuple] )
+                       both computed over the Rules that work on the batch's Site (rulesOn)
 
 exactVersion = fnv1a64( JSON of sorted enabled Exact rules (channel, keyword, pattern, regex, duration, views, short, live, membersOnly, artistChannel, keep and remove, with skipSubscribed when set and site appended when set) + regexEnabled )
 
-cacheVersion = siteRulesVersion                               (a Tile no Rule skips)
-             | fnv1a64( JSON of [siteRulesVersion, sorted refs of the Topic and Thumbnail rules left out] )   (a YouTube Tile from a Subscribed channel, REQ-RULE-14)
-               where siteRulesVersion is rulesVersion over the Rules that work on the batch's Site (rulesOn)
+cacheVersion = answer version                               (a Tile no Rule skips)
+             | fnv1a64( JSON of [answer version, sorted refs of that part's Rules left out] )
+                                                            (a YouTube Tile from a Subscribed channel, REQ-RULE-14)
+               applied to the text and the thumb answer version each
 ```
 
-- `rulesVersion` covers everything that changes what the model is asked. Bump `REQUEST_SHAPE_VERSION` whenever framing or instructions change.
-- Two versions are computed per batch. Over every Rule: the one content compares and Verdicts carry, so any Rule change re-judges every tab. Over the Rules that work on the batch's Site: the base of `cacheVersion`, the Verdict cache key, so a Rule for another Site never voids this Site's answers. A Rule for every Site has no `site` in its tuple, so it hashes as it did before Sites.
+- `rulesVersion` covers everything that changes what the model is asked. Bump `REQUEST_SHAPE_VERSION` whenever the text framing or instructions change, and `THUMBNAIL_SHAPE_VERSION` whenever the thumbnail question, its wording or its state change.
+- Two versions are computed per batch. Over every Rule: the one content compares and Verdicts carry, so any Rule change re-judges every tab. Over the Rules that work on the batch's Site: the two answer versions, which the Verdict cache checks, so a Rule for another Site never voids this Site's answers. A Rule for every Site has no `site` in its tuple, so it hashes as it did before Sites.
 - Excluded from `rulesVersion` and `exactVersion`: the Rule name, which is display only and never sent to a model, so a rename never re-judges (REQ-RULE-11).
 - Excluded from `rulesVersion`: Exact rules (stages 1-4 run on every request), Exceptions (one is added on every correction, and an Exception already protects its own video), Filtering strength (the cache stores probabilities and `removeCutoff(strength)` is applied on read).
-- Results from a fallback model are cached and tagged with that model (`decision-engine.md`). They stay valid under the same `rulesVersion`.
+- Results from a fallback model are cached and tagged with that model (`decision-engine.md`). They stay valid under the same answer version.
 - The background rebuilds compiled Exact matchers whenever `exactVersion` changes.
-- The Verdict cache is keyed by `cacheVersion`, which `core/ids.ts` computes. `skipSubscribed` is not in `rulesVersion`: switching it, or a channel joining or leaving the Subscribed channels, changes only the `cacheVersion` of the Tiles from Subscribed channels, so only they are asked again.
+- Each cached answer is checked against its own answer version (`answerVersions` and `cacheVersion` in `core/ids.ts`), so a Topic rule edit keeps thumbnail answers and a Thumbnail rule edit keeps text answers. `skipSubscribed` is not in `rulesVersion`: switching it, or a channel joining or leaving the Subscribed channels, changes only the `cacheVersion` of the Tiles from Subscribed channels, so only they are asked again.
 
 ## 10. ChannelKey
 
@@ -605,7 +626,7 @@ cacheVersion = siteRulesVersion                               (a Tile no Rule sk
 - A channel is identified by `{ key, handle?, id?, site? }`. Two channels never match when both know their Site and the Sites differ. Otherwise they match when both have an `id` and the ids are equal, else when both have a `handle` and the handles are equal (case-insensitive, without `@`), else when the keys are equal. A Tile's Site comes from its Surface. A channel Rule's comes from `Rule.site`, else from its handle or id (`channelIdSite` in `core/channel.ts`: only YouTube has handles and `UC…` ids, Bilibili's ids are numbers), which also covers channel Rules saved before Sites. A channel Rule made from a Tile (`keepChannel` from content or Activity, Escalation) is a Site-only rule for that Tile's Site, so a Bilibili uploader's Rule never matches a same-named YouTube channel. Its Site is locked once it knows a handle or id, since those exist on one Site only. A channel known by name alone, typed or from a Tile without a channel link, works on the Site the user picks, or by name on every Site.
 - Tiles without any channel (Shorts shelf) cannot match channel Rules, cannot be banned, and do not offer "Always keep this channel".
 - Adding a Keep rule for a channel that is a Banned channel asks the user whether to lift the ban (`keepChannel` returns `liftedBanRuleId` after confirmation in the UI).
-- Escalation counts key on `channelKey` and merge aliases when a handle or id is later seen for the same key.
+- Escalation counts key on `channelKey`. A channel record takes a handle or id it lacks from a later Topic removal that reports one.
 
 ## 11. Background lifecycle
 
@@ -631,18 +652,21 @@ cacheVersion = siteRulesVersion                               (a Tile no Rule sk
 | Background | ≤ 43.5 KB gzipped (raised from 40 KB for view counts, Subscribed channels, user bans and Shelf dismissal, and from 42 KB for Sites. It loads once per browser, not per page) | `pnpm size` |
 | Popup, options, onboarding JS | ≤ 60 KB gzipped each (fonts are separate assets) | `pnpm size` |
 | Extraction | relative regression ≤ 20% against a stored Vitest bench baseline under jsdom, compared as a ratio to a calibration workload in the same run so it holds across machines. Absolute ≤ 0.3 ms per Tile median, not yet measured on real hardware | `vitest bench` |
-| Observers | one `MutationObserver` per active container, records coalesced per animation frame | unit test counts observers per Surface |
+| Observers | one `MutationObserver` per active container, records coalesced per animation frame, and one `ResizeObserver` per window for every chip host (thumbnail, host, and body while overlay hosts exist) | unit test counts observers per Surface |
 | Batching | flush at 16 Tiles or 400 ms after the first queued Tile | unit test with fake timers |
 | Native actions | one at a time per tab, ≥ 350 ms apart, paused while `document.hidden` | unit test with fake timers and the menu harness |
+
+In-page components (`src/ui/in-page/` and `src/ui/eyes/EyesSvg.tsx`) are Preact class components, not hooks, because `preact/hooks` costs about 750 B gzipped of the content budget. The in-page stylesheet imports `src/ui/tokens-shared.css` and `src/ui/eyes-shared.css` only, and `src/ui/in-page/styles.test.ts` checks it carries every token and eye rule the in-page UI uses.
 
 ## 13. Security
 
 - MV3 default CSP. No remote code, no `eval`, no `new Function`, no remotely loaded fonts or scripts.
 - Regex Rules (Advanced only) are validated by `core/regex.ts` on save, on import, on sync receipt and on every compile. Accepted subset: length ≤ 200, flags fixed to `iu`, no backreferences, no lookaround, no nested quantifiers, no adjacent unbounded quantifiers over overlapping classes, no alternation inside a quantified group. Also rejected (added after measuring 8 s for `.+ .+ .+ .+` on a 300-character title): along any chain of overlapping variable-length terms where an earlier term can also match everything between them, the product of the lengths each term can take may not exceed 301², the cost of `.*foo.*`. So `.*foo.*`, `.+ .+` and `\w+ \w+ \w+` pass, `.+ .+ .+` and `.*foo.*bar.*` fail (`src/core/regex.ts`). Rejected patterns disable the Rule with a visible reason. Regex runs only in the background against titles capped at 300 characters.
 - YouTube text is data. Render it as text (Preact escapes). Never use `innerHTML` with page strings.
-- Messages: sender checks in Section 6. Validate payload shapes in the router.
+- Messages: sender checks in Section 6. Validate payload shapes in the router. A Tile's title is at most 1,000 UTF-16 units, the length every message that carries a title allows, and each channel field at most 120 code points (`TILE_TITLE_MAX`, `TILE_CHANNEL_MAX` in `core/types.ts`). Content cuts a longer title or channel name without splitting an emoji and drops a longer handle or channel ID before it sends a batch or a ban (`withinLimits` in `content/watcher.ts`), because the router rejects a whole batch for one oversize Tile.
 - Never log the API key, `Authorization` headers, OAuth codes or verifiers, or YouTube `feedbackToken` and `undoToken` values. The debug logger redacts these fields by name.
-- `fetch` to i.ytimg.com uses `credentials: 'omit'` and accepts only `image/jpeg` or `image/webp` under 100 KB.
+- `fetch` to i.ytimg.com and i0.hdslb.com uses `credentials: 'omit'`, no referrer and `cache: 'no-store'`, and accepts only `image/jpeg` or `image/webp` under 100 KB. Every JSON reply is read up to 1 MiB (`decision-engine.md` Section 5.1).
+- In-page UI renders in closed shadow roots (`src/ui/in-page/roots.ts`), so page scripts cannot read Rule text or press Shoo's buttons.
 
 ## 14. Testing strategy
 
@@ -658,7 +682,7 @@ cacheVersion = siteRulesVersion                               (a Tile no Rule sk
 
 Manual QA checklist (Chrome 120+ and Firefox 140+, before each release, on an account with a populated Home feed):
 
-1. Fresh install opens onboarding. Declining consent leaves Exact rules working and sends nothing to OpenRouter (network panel). "Give consent" later in Connection works.
+1. Fresh install opens onboarding. Declining consent leaves Exact rules working and sends nothing to OpenRouter (network panel). This includes `getKeyUsage` and the model list. Withdraw consent on Firefox also removes the data collection permission. "Give consent" later in Connection works.
 2. Connect OpenRouter via OAuth, paste a key, Disconnect.
 3. Home, Watch sidebar and Home Shorts shelf: Review chips appear, Remove triggers YouTube's placeholder, Keep stores an Exception.
 4. Auto: summary and moment appear, YouTube's own Undo is detected and recorded, Undo from Activity works while the tab is open.

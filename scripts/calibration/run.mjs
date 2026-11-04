@@ -10,6 +10,7 @@ import {
   CHOICE_TASKS,
   DATA_DIR,
   MAX_CONCURRENCY,
+  KEEP_TASKS,
   NOUL_TASKS,
   batchSizeFor,
   buildTextRequest,
@@ -45,6 +46,8 @@ const { values: o } = parseArgs({
     'rule-text': { type: 'string', multiple: true },
     keep: { type: 'string', default: 'none' },
     framing: { type: 'string', default: 'choice' },
+    'keep-framing': { type: 'string', default: 'noul' },
+    'thumb-framing': { type: 'string', default: 'choice' },
     criteria: { type: 'string', default: 'text' },
     task: { type: 'string', default: 'shipped' },
     'task-text': { type: 'string' },
@@ -72,6 +75,7 @@ if (!o['dry-run'] && !(cap > 0)) fail('--cap <usd> is required, for example --ca
 const concurrency = Math.min(MAX_CONCURRENCY, Math.max(1, Number(o.concurrency) || 1));
 const pass = o.pass;
 if (!['text', 'thumbnail'].includes(pass)) fail('--pass text|thumbnail');
+if (!['noul', 'choice'].includes(o['keep-framing']) || !['noul', 'choice'].includes(o['thumb-framing'])) fail('--keep-framing and --thumb-framing take noul or choice');
 
 const rules = loadRules();
 const ruleSetName = o.rules ?? (pass === 'thumbnail' ? 'D' : 'B');
@@ -118,7 +122,7 @@ if (pass === 'text' && o.keep !== 'none') {
   if (!all) fail(`unknown keep set ${set}`);
   keepRules = refs ? Object.fromEntries(refs.split(',').map((r) => [r, all[r] ?? fail(`unknown keep ref ${r} in ${set}`)])) : all;
 }
-const fields = o.fields ? o.fields.split(',') : pass === 'thumbnail' ? ['title', 'channel'] : ALL_FIELDS;
+const fields = o.fields ? o.fields.split(',') : pass === 'thumbnail' ? [] : ALL_FIELDS;
 const template = (name, table) => table[name] ?? name; // a known variant name or a literal template
 const textOpts = {
   model: o.model,
@@ -127,21 +131,22 @@ const textOpts = {
   criteria: o.criteria,
   choiceTask: o['task-text'] ?? CHOICE_TASKS[o.task] ?? fail(`unknown --task ${o.task}`),
   noulTask: template(o['noul-task'], NOUL_TASKS),
-  keepTask: template(o['keep-task'], NOUL_TASKS),
+  keepTask: template(o['keep-task'], KEEP_TASKS),
   fields,
   keepRules,
+  keepFraming: o['keep-framing'],
 };
 
 let batches;
 let batchSize = 1;
 if (pass === 'text') {
-  batchSize = batchSizeFor({ framing: o.framing, removeRules: Object.keys(removeRules).length, keepRules: Object.keys(keepRules).length, requested: o.batch ? Number(o.batch) : undefined });
+  batchSize = batchSizeFor({ framing: o.framing, removeRules: Object.keys(removeRules).length, keepRules: Object.keys(keepRules).length, keepFraming: o['keep-framing'], requested: o.batch ? Number(o.batch) : undefined });
   batches = chunk(items, batchSize).map((tiles) => ({ ids: tiles.map((t) => t.id), ...buildTextRequest(removeRules, tiles, textOpts) }));
 } else {
   batches = items.map((t) => {
     const img = readFileSync(resolve(DATA_DIR, 'thumbnails', t.file));
     const dataUrl = `data:image/jpeg;base64,${img.toString('base64')}`;
-    return { ids: [t.id], ...buildThumbnailRequest(removeRules, t, dataUrl, { model: o.model, provider: tag, fields, task: o['thumb-task'] }) };
+    return { ids: [t.id], ...buildThumbnailRequest(removeRules, t, dataUrl, { model: o.model, provider: tag, fields, task: o['thumb-task'], framing: o['thumb-framing'] }) };
   });
 }
 for (const b of batches) b.chars = JSON.stringify(b.body).length;
@@ -154,7 +159,8 @@ const config = {
   ruleSet: ruleSetName,
   ruleTexts: removeRules,
   keep: o.keep,
-  framing: pass === 'text' ? o.framing : 'noul',
+  framing: pass === 'text' ? o.framing : o['thumb-framing'],
+  keepFraming: o['keep-framing'],
   criteria: o.criteria,
   task: o['task-text'] ? 'custom' : o.task,
   choiceTask: textOpts.choiceTask,

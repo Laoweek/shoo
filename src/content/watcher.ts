@@ -39,7 +39,8 @@
 // once. A 100 ms timer reads it again (no observer) and sends it once the icon renders, or after 1.5 s of visible
 // time without the Artist channel flag. Navigation, leaving the eligible area or the page, another video, and stop()
 // end its wait. Only first sends wait: a re-send reads the Tile as it is.
-import type { SurfaceId, TileFacts } from '~/core/types';
+import { clip } from '~/core/budget';
+import { TILE_CHANNEL_MAX, TILE_TITLE_MAX, type SurfaceId, type TileFacts } from '~/core/types';
 import { activeSurfaces, surfaceOf as siteSurface, type MarkupWarning, type Site, type SurfaceDef } from '~/sites/site';
 
 export type DecorState = 'pending' | 'chip' | 'label' | 'acting' | 'removed' | 'annotated' | 'none';
@@ -107,6 +108,26 @@ export const BADGE_WAIT_MS = 1_500; // of visible time, then the Tile is sent wi
 const NOT_RESENT: ReadonlySet<DecorState> = new Set(['acting', 'removed', 'annotated']);
 const SHOWING: ReadonlySet<DecorState> = new Set(['chip', 'label']);
 
+/** The first TILE_TITLE_MAX UTF-16 units of `title`, the unit every report guard counts, without splitting a pair. */
+function cutTitle(title: string): string {
+  if (title.length <= TILE_TITLE_MAX) return title;
+  const cut = title.slice(0, TILE_TITLE_MAX);
+  return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+}
+
+/**
+ * Markup a page script wrote can hold text of any length. The title and channel name are cut, and a handle or
+ * channel ID longer than any real one is dropped, so the background never rejects the whole batch for one Tile, nor
+ * a later report or ban that carries these facts.
+ */
+export function withinLimits(facts: TileFacts): TileFacts {
+  const out = { ...facts, title: cutTitle(facts.title) };
+  if (facts.channelName) out.channelName = clip(facts.channelName, TILE_CHANNEL_MAX);
+  if ((facts.channelHandle?.length ?? 0) > TILE_CHANNEL_MAX) delete out.channelHandle;
+  if ((facts.channelId?.length ?? 0) > TILE_CHANNEL_MAX) delete out.channelId;
+  return out;
+}
+
 export function createWatcher(opts: WatcherOptions): Watcher {
   const { doc, site } = opts;
   const schedule = opts.schedule ?? ((cb: () => void) => void requestAnimationFrame(() => cb()));
@@ -131,6 +152,7 @@ export function createWatcher(opts: WatcherOptions): Watcher {
   let io: IntersectionLike | null = null;
   let attrMo: MutationObserver | null = null;
   let attrTile = new WeakMap<Element, Element>(); // observed attribute target -> its Tile
+  let attrTargets = new WeakMap<Element, Array<Element | null>>(); // Tile -> the reuse targets found last
   let surfaceOf = new WeakMap<Element, SurfaceDef>();
   let indexed = new WeakMap<Element, string>();
   let byVideo = new Map<string, Set<Element>>();
@@ -200,6 +222,7 @@ export function createWatcher(opts: WatcherOptions): Watcher {
     attrMo?.disconnect();
     attrMo = null;
     attrTile = new WeakMap();
+    attrTargets = new WeakMap();
     stopWaiting();
     clearTimeout(selfTestTimer);
     doc.removeEventListener('visibilitychange', onVisible);
@@ -357,7 +380,8 @@ export function createWatcher(opts: WatcherOptions): Watcher {
     const d = decor.get(el);
     if (d && !resend) return;
     if (!d && skipped.has(el) && skipped.get(el) === videoId) return;
-    const facts = def.extract(el, doc, opts.onMarkupWarning);
+    const extracted = def.extract(el, doc, opts.onMarkupWarning);
+    const facts = extracted && withinLimits(extracted);
     if (!facts) {
       skipped.set(el, videoId);
       badgeWait.delete(el);
@@ -405,9 +429,15 @@ export function createWatcher(opts: WatcherOptions): Watcher {
   }
 
   // Section 3: re-check the video ID when the site rewrites what identifies the Tile's video (its reuse targets).
+  // Every scan meets every decorated Tile: while the targets found last are all still inside it, they are observed
+  // already. The site replaces a target element when it re-renders, which disconnects the old one.
   function watchAttributes(el: Element, def: SurfaceDef): void {
     if (!attrMo) return;
-    for (const { el: t, attributes } of def.reuseTargets(el)) {
+    const last = attrTargets.get(el);
+    if (last?.every((t) => t !== null && t.isConnected && el.contains(t))) return;
+    const targets = def.reuseTargets(el);
+    attrTargets.set(el, targets.map((t) => t.el));
+    for (const { el: t, attributes } of targets) {
       if (!t || attrTile.get(t) === el) continue;
       attrTile.set(t, el);
       attrMo.observe(t, { attributes: true, attributeFilter: attributes });

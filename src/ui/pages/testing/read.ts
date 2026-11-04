@@ -2,6 +2,7 @@
 // register callbacks that `fire()` calls, like a storage change would.
 import type { ActivityEvent, Exception, Rule, Settings } from '~/core/types';
 import type { ActivityQuery, DayCounters, RuleStats, StoredSubscriptions } from '~/store/local';
+import type { EscalationSuggestion } from '~/store/read';
 import { DEFAULT_SETTINGS } from '~/store/schema';
 
 export const fake: {
@@ -12,6 +13,7 @@ export const fake: {
   counters: DayCounters;
   ruleStats: RuleStats;
   subscriptions: StoredSubscriptions | undefined;
+  escalations: EscalationSuggestion[];
   fail: boolean;
   queries: ActivityQuery[];
 } = initial();
@@ -25,6 +27,7 @@ function initial() {
     counters: { judged: 0, removed: 0, requests: 0, costUsd: 0 },
     ruleStats: {} as RuleStats,
     subscriptions: undefined as StoredSubscriptions | undefined,
+    escalations: [] as EscalationSuggestion[],
     fail: false,
     queries: [] as ActivityQuery[],
   };
@@ -49,6 +52,7 @@ const watch = (cb: () => void) => {
 export const readSettings = () => answer(() => fake.settings);
 export const readRules = () => answer(() => fake.rules);
 export const readExceptions = () => answer(() => fake.exceptions);
+export const readExceptionCount = () => answer(() => fake.exceptions.length);
 export const readActivity = (q: ActivityQuery = {}) =>
   answer(() => {
     fake.queries.push(q);
@@ -59,6 +63,7 @@ export const readActivity = (q: ActivityQuery = {}) =>
 export const readCounters = (_day: string) => answer(() => fake.counters);
 export const readRuleStats = () => answer(() => fake.ruleStats);
 export const readSubscriptions = () => answer(() => fake.subscriptions);
+export const readEscalations = () => answer(() => fake.escalations);
 export const readEnabled = () => answer(() => fake.settings.enabled);
 export const watchSettings = watch;
 export const watchRules = watch;

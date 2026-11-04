@@ -9,6 +9,7 @@ import { Chip, type ChipProps } from './Chip';
 import { DryRunLabel, type DryRunLabelProps } from './Label';
 import { flyingCount, playMoment, type MomentSource } from './moment';
 import { InPageNotice, isTripped, noticeText, type InPageNoticeKind } from './Notice';
+import { attachShooRoot } from './roots';
 import { BatchSummary, summaryAnnouncement, type SummaryData } from './Summary';
 
 export type { AnnotationProps, ChipProps, DryRunLabelProps, InPageNoticeKind, MomentSource, SummaryData };
@@ -112,7 +113,7 @@ function ensureOverlay(): Overlay {
   const host = document.createElement(SUMMARY_HOST_TAG);
   host.toggleAttribute('data-dark', overlayDark);
   if (overlayLift) host.style.setProperty('--shoo-lift', `${overlayLift}px`);
-  const root = host.attachShadow({ mode: 'open' });
+  const root = attachShooRoot(host);
   document.body.append(host);
   const mount = mountPoint(root);
   mount.className = 'dock';

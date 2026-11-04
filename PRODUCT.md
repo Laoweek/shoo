@@ -36,7 +36,7 @@ Existing extensions in this space ("Not Interested!", "Nah", "Nope", "UnFeed") a
   - Per Tile: title, channel name, duration, Surface (which names its Site, such as YouTube's Home or Bilibili's Home), and the thumbnail image only when a Thumbnail rule is on.
   - Per request: the text of the enabled Topic rules, Thumbnail rules and Topic Keep rules, and up to 10 Exception titles with their channel names.
   - Recipients: OpenRouter, and through it the model provider: Cloudflare (default, `cloudflare/clef-flash`), TypeSafe (text fallback, `typesafe/jev-1.13`), OpenAI (image fallback, `openai/gpt-6-luna-decisions`), or the provider of another model the user picks in Settings. Instead of OpenRouter, only when the user chooses one and after consent names its host: Cloudflare, TypeSafe or Perplexity reached directly, a Decision model on the user's computer (nothing leaves the device), or the user's own endpoint.
-  - Never: URLs, video IDs (YouTube's and Bilibili's BV ids), cookies, watch history, comments, page HTML, or the user's YouTube or Bilibili account details.
+  - Never, to any of these recipients: URLs, video IDs (YouTube's and Bilibili's BV ids), channel IDs and handles, the user's YouTube subscriptions, cookies, watch history, comments, page HTML, or the user's YouTube or Bilibili account details.
 
 ## Capabilities and Constraints
 

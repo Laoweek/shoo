@@ -1,13 +1,14 @@
 // The background's shared services: the writer, the judge, the model catalogue, key usage, OAuth deps and
 // the RuntimeState tracker, built once per background start. Handlers receive this object.
 import type { NativeAction, SurfaceId } from '~/core/types';
+import { FALLBACK_MODELS } from '~/engine/decisions';
 import { createJudge, type Judge, type JudgeContext } from '~/engine/judge';
 import { createKeyUsage } from '~/engine/key';
 import { createModelCatalog, type ModelCatalog, type ModelsCache } from '~/engine/models';
 import type { OAuthDeps } from '~/engine/oauth';
 import { createSubscriptions } from '~/engine/subscriptions';
 import { getOne } from '~/store/areas';
-import { getSubscriptions, getVerdicts, MODELS_KEY, setModelsCache, setSubscriptions } from '~/store/local';
+import { getSubscriptions, getVerdicts, MODELS_KEY, setModelsCache } from '~/store/local';
 import { needsMigration } from '~/store/schema';
 import { getCustomKey, getDirectKey, getOpenRouterKey } from '~/store/secret';
 import { clearOAuthSession, getOAuthSession, setOAuthSession } from '~/store/session';
@@ -105,7 +106,7 @@ export function createServices(platform: Platform): Services {
     fetch: platform.fetch,
     now,
     get: () => getSubscriptions(areas.local),
-    set: (v) => setSubscriptions(areas.local, v),
+    set: (v) => writer.setSubscriptions(v),
     // Content re-sends its Tiles. A Tile whose channel joined or left the list misses the Verdict cache.
     onChanged: () => void state.broadcastSettings({ force: true }).catch(() => undefined),
   });
@@ -123,15 +124,11 @@ export function createServices(platform: Platform): Services {
     getDirectKey: async () => (await getDirectKey(areas.local))?.key,
     settings: () => writer.getSettings(),
     rules: () => writer.getRules(),
-    exceptionIds: async (ids, ctx) => {
-      const want = new Set(ids);
-      const all = await writer.getExceptions(fromJudge(ctx));
-      return new Set(all.map((x) => x.videoId).filter((id) => want.has(id)));
-    },
-    recentExceptions: async (n, keep) => (await writer.getExceptions()).filter(keep).slice(0, n),
+    exceptionIds: (ids, ctx) => writer.exceptedIds(ids, fromJudge(ctx)),
+    recentExceptions: (n, keep) => writer.recentExceptions(n, keep),
     // A failed storage read or write counts as no list, so the fail safe holds the Tiles (REQ-RULE-14).
     subscriptions: (ctx) => subscriptions.current({ mayRead: !ctx.private }).catch(() => undefined),
-    cacheGet: (ids, rv) => getVerdicts(areas.local, ids, rv),
+    cacheGet: (ids, rv) => getVerdicts(areas.local, ids, rv, now()),
     cachePut: (puts) => writer.putVerdicts(puts),
     addCost: async (c, ctx) => {
       await writer.bumpCounters(writer.today(), { costUsd: c.usd, judged: c.judged, requests: c.requests }, fromJudge(ctx));
@@ -139,9 +136,10 @@ export function createServices(platform: Platform): Services {
     // ModelOutcome carries no JudgeContext, so failures from private windows count too. The counters hold
     // no browsing data (architecture.md Section 8 lists what private windows must not write).
     recordModelOutcome: async (o) => {
-      if (o.ok) await state.success('model');
-      else if (o.reason === 'keyRejected') await state.setFlag('keyRejected');
-      else if (o.reason === 'creditsExhausted') await state.setFlag('creditsExhausted');
+      if (o.ok) {
+        await state.success('model');
+        await state.noteFallback(o.thumbnail ? FALLBACK_MODELS.image : FALLBACK_MODELS.text, o.fallback);
+      } else if (o.reason === 'keyRejected' || o.reason === 'creditsExhausted') await state.setFlag(o.reason);
       else if (o.countsAsFailure) await state.failure('model');
     },
     modelAllowed: ({ ignoreDailyCap }) => state.modelAllowed({ ignoreDailyCap }),

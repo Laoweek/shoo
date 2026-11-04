@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { SubscribedChannels } from '~/core/subscriptions';
 import type { Exception, ReasonCode, Rule, Settings, TileFacts } from '~/core/types';
-import { DECISIONS_URL, FALLBACK_MODELS, type EngineLog } from './decisions';
-import { createJudge, TRY_TITLE_ID, type JudgeContext, type JudgeDeps, type ModelOutcome, type VerdictCacheRecord, type VerdictPut } from './judge';
+import type { ThumbModelResult } from '~/core/verdict';
+import { DECISIONS_URL, FALLBACK_MODELS, type CachedText, type EngineLog } from './decisions';
+import {
+  computeAnswerVersions,
+  createJudge,
+  TRY_TITLE_ID,
+  VERDICT_RECORD_VERSION,
+  type JudgeContext,
+  type JudgeDeps,
+  type ModelOutcome,
+  type VerdictCacheRecord,
+  type VerdictPut,
+} from './judge';
 import { answerer, fixture, fromFixture, privateDataIn, rule, scriptedFetch, SETTINGS, tile, type RecordedRequest, type Scripted } from './testing';
 
 const CTX: JudgeContext = { private: false, tabId: 1 };
@@ -98,6 +109,17 @@ function harness(opts: {
 }
 
 const decisions = (h: Harness) => h.requests.filter((r) => r.url === DECISIONS_URL);
+
+/** A Verdict cache record as the judge writes it for the harness's current Rules and settings. */
+const record = (h: Harness, parts: { text?: CachedText; thumb?: ThumbModelResult }): VerdictCacheRecord => {
+  const v = computeAnswerVersions(h.rules, h.settings);
+  return {
+    ...(parts.text && { text: { ...parts.text, v: v.text } }),
+    ...(parts.thumb && { thumb: { ...parts.thumb, v: v.thumb } }),
+    rulesVersion: VERDICT_RECORD_VERSION,
+    at: 1,
+  };
+};
 const allBodies: unknown[] = [];
 const allForbidden = new Set<string>();
 const collect = (h: Harness, tiles: TileFacts[]) => {
@@ -173,7 +195,7 @@ describe('judgeTiles: text pass', () => {
     expect(h.cache.get(id(1))!.text).toMatchObject({ ref: 'R1', model: 'cloudflare/clef-flash' });
     expect(h.costs).toEqual([{ usd: 0.0002, judged: 20, requests: 2 }]);
     // One outcome per judgeTiles call, not per request (architecture.md §7).
-    expect(h.outcomes).toEqual([{ ok: true, model: 'cloudflare/clef-flash', fallback: false }]);
+    expect(h.outcomes).toEqual([{ ok: true, fallback: false }]);
   });
 
   it('serves a cache hit without a request, re-judges on a rulesVersion change, and re-gates on strength without a request', async () => {
@@ -228,6 +250,18 @@ describe('judgeTiles: text pass', () => {
     expect(body).not.toContain('Kept on Bilibili');
   });
 
+  it('leaves out kept examples from a Banned channel, an Exact rule or no Rule, which no text question is about', async () => {
+    const exceptions: Exception[] = [
+      { videoId: id(7), title: 'Kept from a ban', channelName: 'Jake Reacts', ruleId: BAN.id, at: 4 },
+      { videoId: id(8), title: 'Kept from a keyword', ruleId: KW.id, at: 3 },
+      { videoId: id(9), title: 'Kept from nothing', at: 2 },
+      { videoId: id(10), title: 'Kept from a Topic rule', ruleId: R1.id, at: 1 },
+    ];
+    const h = harness({ rules: [R1, BAN, KW], exceptions, script: { [DECISIONS_URL]: [answerer({ choose })] } });
+    await createJudge(h.deps).judgeTiles([tile(id(1), 'Gardening')], CTX);
+    expect(decisions(h)[0]!.body.state.viewer_kept_anyway).toEqual(['Kept from a Topic rule']);
+  });
+
   it('never writes the Verdict cache for private-window Tiles', async () => {
     const h = harness({ rules: [R1], script: { [DECISIONS_URL]: [answerer({ choose })] } });
     const out = await createJudge(h.deps).judgeTiles([tile(id(1), 'Reacting to X')], { private: true, tabId: 2 });
@@ -236,12 +270,43 @@ describe('judgeTiles: text pass', () => {
     expect(h.costs).toEqual([{ usd: 0.0001, judged: 1, requests: 1 }]);
   });
 
+  it("keeps a private tab's answers in memory only, so a rescan asks nothing and other tabs never see them", async () => {
+    const h = harness({ rules: [R1], script: { [DECISIONS_URL]: Array.from({ length: 4 }, () => answerer({ choose })) } });
+    const judge = createJudge(h.deps);
+    const tiles = [tile(id(1), 'Reacting to X')];
+    const privateTab: JudgeContext = { private: true, tabId: 7 };
+    await judge.judgeTiles(tiles, privateTab);
+    const again = await judge.judgeTiles(tiles, privateTab);
+    expect(again.results[0]!.verdict).toMatchObject({ outcome: 'remove', ruleRef: 'R1' });
+    expect(decisions(h)).toHaveLength(1);
+    await judge.judgeTiles(tiles, { private: true, tabId: 8 });
+    expect(decisions(h)).toHaveLength(2);
+    judge.forgetTab(7);
+    await judge.judgeTiles(tiles, privateTab);
+    expect(decisions(h)).toHaveLength(3);
+    expect(h.puts).toEqual([]);
+    await judge.judgeTiles(tiles, CTX);
+    expect(decisions(h)).toHaveLength(4);
+    expect(h.puts.flat().map((p) => p.videoId)).toEqual([id(1)]);
+  });
+
+  it('lets a private tab use the answers a normal window cached, without writing any', async () => {
+    const h = harness({ rules: [R1], script: { [DECISIONS_URL]: [answerer({ choose })] } });
+    const judge = createJudge(h.deps);
+    const tiles = [tile(id(1), 'Reacting to X')];
+    await judge.judgeTiles(tiles, CTX);
+    const inPrivate = await judge.judgeTiles(tiles, { private: true, tabId: 7 });
+    expect(inPrivate.results[0]!.verdict).toMatchObject({ outcome: 'remove', ruleRef: 'R1' });
+    expect(decisions(h)).toHaveLength(1);
+    expect(h.puts).toHaveLength(1);
+  });
+
   it('caches fallback results tagged with the fallback model and records a success', async () => {
     const h = harness({ rules: [R1], script: { [DECISIONS_URL]: [{ status: 503 }, answerer({ choose })] } });
     await createJudge(h.deps).judgeTiles([tile(id(1), 'Reacting to X')], CTX);
-    expect(decisions(h)[1]!.body.provider).toEqual({ order: ['typesafe'], allow_fallbacks: false, data_collection: 'deny' });
+    expect(decisions(h)[1]!.body.provider).toEqual({ order: ['typesafe'], allow_fallbacks: false, data_collection: 'deny', zdr: true });
     expect(h.cache.get(id(1))!.text!.model).toBe(FALLBACK_MODELS.text);
-    expect(h.outcomes).toEqual([{ ok: true, model: FALLBACK_MODELS.text, fallback: true }]);
+    expect(h.outcomes).toEqual([{ ok: true, fallback: true }]);
   });
 
   it('counts one model failure per exhausted chain and leaves the Tiles undecided', async () => {
@@ -369,13 +434,14 @@ describe('judgeTiles: Topic Keep rules and keep-only questions', () => {
     ]);
   });
 
-  it('merges keep-only questions into the text request when the batch also needs the text pass', async () => {
+  it('asks a Tile with an exact remove pending the same questions as any other Tile, so the request does not show it', async () => {
     const h = harness({ rules: [KW, R1, K2], script: { [DECISIONS_URL]: [answerer({ choose, noul: keepNoul })] } });
     const tiles = [tile(id(1), 'Reacting to X'), tile(id(2), 'Car GIVEAWAY')];
     const out = await createJudge(h.deps).judgeTiles(tiles, CTX);
     collect(h, tiles);
     expect(decisions(h)).toHaveLength(1);
-    expect(Object.keys(decisions(h)[0]!.body.questions)).toEqual(['t01', 't01_K2', 't02_K2']);
+    expect(Object.keys(decisions(h)[0]!.body.questions)).toEqual(['t01', 't01_K2', 't02', 't02_K2']);
+    expect(h.cache.get(id(2))!.text!.keepOnly).toBeUndefined();
     expect(out.results.map((r) => r.verdict?.source)).toEqual(['model', 'exact']);
     expect(h.costs).toEqual([{ usd: 0.0001, judged: 1, requests: 1 }]);
   });
@@ -383,8 +449,7 @@ describe('judgeTiles: Topic Keep rules and keep-only questions', () => {
   it('re-asks the full text pass when the cache only holds a keep-only answer', async () => {
     const h = harness({ rules: [R1, K2], script: { [DECISIONS_URL]: [answerer({ choose, noul: keepNoul })] } });
     const judge = createJudge(h.deps);
-    const rv = judge.rulesVersionFor(h.rules, h.settings);
-    h.cache.set(id(1), { text: { pRemove: 0, pKeep: 0.01, model: 'm', keepOnly: true }, rulesVersion: rv, at: 1 });
+    h.cache.set(id(1), record(h, { text: { pRemove: 0, pKeep: 0.01, model: 'm', keepOnly: true } }));
     const out = await judge.judgeTiles([tile(id(1), 'Reacting to X')], CTX);
     expect(decisions(h)).toHaveLength(1);
     expect(out.results[0]!.verdict).toMatchObject({ outcome: 'remove', ruleRef: 'R1' });
@@ -395,7 +460,7 @@ describe('judgeTiles: Topic Keep rules and keep-only questions', () => {
     'holds Tiles undecided when the model is not allowed (%s), with keepCheckUnavailable for a pending exact remove',
     async (reason) => {
       const h = harness({ rules: [KW, R1, K2, KEEP_CH], allowed: { ok: false, reason } });
-      h.cache.set(id(2), { text: { pRemove: 0.99, ref: 'R1', model: 'm' }, rulesVersion: createJudge(h.deps).rulesVersionFor(h.rules, h.settings), at: 1 });
+      h.cache.set(id(2), record(h, { text: { pRemove: 0.99, ref: 'R1', model: 'm' } }));
       const out = await createJudge(h.deps).judgeTiles(
         [tile(id(1), 'Car GIVEAWAY'), tile(id(2), 'Reacting'), tile(id(3), 'x', { channelName: 'Code Bites' })],
         CTX,
@@ -418,16 +483,16 @@ describe('judgeTiles: Topic Keep rules and keep-only questions', () => {
 });
 
 describe('judgeTiles: chunking, failures and cost accounting', () => {
-  it('sends a keep-only state for a chunk that holds only exact-remove Tiles, even when other chunks need the text pass', async () => {
+  it('sends a chunk that holds only exact-remove Tiles with the same state and questions as the other chunks', async () => {
     const keeps = ['K2', 'K3', 'K4', 'K5', 'K6'].map((ref) => rule(ref, `keep ${ref}`));
-    const h = harness({ rules: [KW, R1, ...keeps], exceptions: [{ videoId: id(99), title: 'Kept', at: 1 }], script: { [DECISIONS_URL]: [answerer({ choose }), answerer({})] } });
+    const h = harness({ rules: [KW, R1, ...keeps], exceptions: [{ videoId: id(99), title: 'Kept', at: 1, ruleId: R1.id }], script: { [DECISIONS_URL]: [answerer({ choose }), answerer({})] } });
     // 5 Topic Keep rules: 10 Tiles per request. 10 full-pass Tiles, then 3 exact removes in their own chunk.
     const tiles = [...Array.from({ length: 10 }, (_, i) => tile(id(i), `Video ${i}`)), ...[10, 11, 12].map((n) => tile(id(n), `Car GIVEAWAY ${n}`))];
     const out = await createJudge(h.deps).judgeTiles(tiles, CTX);
     const [first, second] = decisions(h).map((r) => r.body);
     expect(Object.keys(first.state)).toEqual(['viewer_does_not_want', 'viewer_always_wants', 'viewer_kept_anyway']);
-    expect(second.state).toEqual({ viewer_always_wants: Object.fromEntries(keeps.map((k) => [k.ref, k.text])) });
-    expect(Object.keys(second.questions)).toHaveLength(15);
+    expect(second.state).toEqual(first.state);
+    expect(Object.keys(second.questions)).toHaveLength(18);
     expect(out.results.slice(10).map((r) => r.verdict?.source)).toEqual(['exact', 'exact', 'exact']);
     collect(h, tiles);
   });
@@ -438,7 +503,7 @@ describe('judgeTiles: chunking, failures and cost accounting', () => {
     const h = harness({ rules: [R1, KW, ...keeps], script: { [DECISIONS_URL]: [answerer({ choose, noul }), answerer({ noul }), answerer({ noul }), answerer({ noul })] } });
     const out = await createJudge(h.deps).judgeTiles([tile(id(1), 'Reacting to X'), tile(id(2), 'Car GIVEAWAY')], CTX);
     const bodies = decisions(h).map((r) => r.body);
-    expect(bodies.map((b) => Object.keys(b.questions).length).sort((a, b) => a - b)).toEqual([7, 7, 63, 64]);
+    expect(bodies.map((b) => Object.keys(b.questions).length).sort((a, b) => a - b)).toEqual([7, 7, 64, 64]);
     for (const b of bodies) expect(Object.keys(b.questions).length).toBeLessThanOrEqual(64);
     expect(out.results.map((r) => [r.verdict?.outcome, r.verdict?.source, r.verdict?.ruleRef])).toEqual([
       ['keep', 'keepRule', 'K68'],
@@ -446,7 +511,7 @@ describe('judgeTiles: chunking, failures and cost accounting', () => {
     ]);
     expect(h.cache.get(id(1))!.text).toMatchObject({ ref: 'R1', pKeep: 0.9, keepRef: 'K68' });
     expect(h.cache.get(id(1))!.text!.keepOnly).toBeUndefined();
-    expect(h.cache.get(id(2))!.text!.keepOnly).toBe(true);
+    expect(h.cache.get(id(2))!.text!.keepOnly).toBeUndefined();
     expect(h.costs).toEqual([{ usd: 0.0004, judged: 1, requests: 4 }]);
   });
 
@@ -514,7 +579,7 @@ describe('judgeTiles: thumbnail pass', () => {
     expect(thumbs.map((r) => r.url)).toEqual([`${YTIMG}${id(3)}/mqdefault.jpg`]);
     expect(thumbs[0]!.init!.credentials).toBe('omit');
     const thumbBody = decisions(h)[1]!.body;
-    expect(thumbBody.state).toEqual(['Title: Gardening', 'Channel: Green', { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/4AECAw==' } }]);
+    expect(thumbBody.state).toEqual([{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,/9j/4AECAw==' } }]);
     expect(out.results.map((r) => [r.verdict?.outcome, r.verdict?.source, r.verdict?.ruleRef])).toEqual([
       ['remove', 'model', 'R1'],
       ['keep', 'keepRule', 'K2'],
@@ -526,16 +591,32 @@ describe('judgeTiles: thumbnail pass', () => {
   });
 
   it('refreshes only the thumbnail when the cached text has no thumb and merges it into the record', async () => {
-    const h = harness({ rules: [R1, TH], script: { [DECISIONS_URL]: [answerer({ noul: () => 0.1 })], [YTIMG]: [IMG] } });
+    const h = harness({ rules: [R1, TH], script: { [DECISIONS_URL]: [answerer({ noul: () => 0.25 })], [YTIMG]: [IMG] } });
     const judge = createJudge(h.deps);
-    const rv = judge.rulesVersionFor(h.rules, h.settings);
-    h.cache.set(id(1), { text: { pRemove: 0.05, ref: 'R1', model: 'cloudflare/clef-flash' }, rulesVersion: rv, at: 1 });
+    h.cache.set(id(1), record(h, { text: { pRemove: 0.05, ref: 'R1', model: 'cloudflare/clef-flash' } }));
     const out = await judge.judgeTiles([tile(id(1), 'Gardening')], CTX);
-    expect(decisions(h).map((r) => Object.keys(r.body.questions))).toEqual([['R5']]);
-    expect(h.puts).toEqual([[{ videoId: id(1), rulesVersion: rv, thumb: { p: 0.1, ref: 'R5', model: 'cloudflare/clef-flash' }, at: 1000 }]]);
-    expect(h.cache.get(id(1))).toMatchObject({ text: { pRemove: 0.05 }, thumb: { p: 0.1 } });
+    expect(decisions(h).map((r) => Object.keys(r.body.questions))).toEqual([['t01']]);
+    const thumbV = computeAnswerVersions(h.rules, h.settings).thumb;
+    expect(h.puts).toEqual([[{ videoId: id(1), rulesVersion: VERDICT_RECORD_VERSION, thumb: { p: 0.25, ref: 'R5', model: 'cloudflare/clef-flash', v: thumbV }, at: 1000 }]]);
+    expect(h.cache.get(id(1))).toMatchObject({ text: { pRemove: 0.05 }, thumb: { p: 0.25 } });
     expect(out.results[0]!.verdict).toMatchObject({ outcome: 'keep', source: 'model' });
     expect(h.costs).toEqual([{ usd: 0.0001, judged: 0, requests: 1 }]);
+  });
+
+  it('keeps cached thumbnail answers through a Topic rule edit, and cached text answers through a Thumbnail rule edit', async () => {
+    const h = harness({ rules: [R1, TH], script: { [DECISIONS_URL]: Array.from({ length: 4 }, () => answerer({ noul: () => 0.25 })), [YTIMG]: [IMG, IMG] } });
+    const judge = createJudge(h.deps);
+    const asked = () => decisions(h).map((r) => (Array.isArray(r.body.state) ? 'thumbnail' : 'text'));
+    const tiles = [tile(id(1), 'Gardening')];
+    await judge.judgeTiles(tiles, CTX);
+    expect(asked()).toEqual(['text', 'thumbnail']);
+    h.rules = [rule('R1', 'Reaction videos and livestreams'), TH];
+    await judge.judgeTiles(tiles, CTX);
+    expect(asked()).toEqual(['text', 'thumbnail', 'text']);
+    h.rules = [h.rules[0]!, rule('R5', 'Red arrows', { kind: 'thumbnail' })];
+    const out = await judge.judgeTiles(tiles, CTX);
+    expect(asked()).toEqual(['text', 'thumbnail', 'text', 'thumbnail']);
+    expect(out.results[0]!.verdict).toMatchObject({ outcome: 'keep', source: 'model' });
   });
 
   it('keeps the Tile without caching when the thumbnail cannot be fetched or is rejected as too large', async () => {
@@ -636,7 +717,7 @@ describe('judgeTiles: a Decision provider reached directly (§12)', () => {
     expect(h.cache.get(id(1))!.text!.model).toBe('jev-1.13.0');
     // 100 input tokens at TypeSafe's published $0.042 per million.
     expect(h.costs[0]!.usd).toBeCloseTo(100 * 0.042e-6, 12);
-    expect(h.outcomes).toEqual([{ ok: true, model: 'jev-1.13.0', fallback: false }]);
+    expect(h.outcomes).toEqual([{ ok: true, fallback: false }]);
   });
 
   it('a 503 from the provider fails once with no OpenRouter fallback and counts one model failure', async () => {
@@ -694,6 +775,15 @@ describe('judgeTiles: a Decision provider reached directly (§12)', () => {
     expect(out.results[1]).toMatchObject({ status: 'decided' });
     // Nothing was refused, so nothing counts toward the breaker.
     expect(over.outcomes.every((o) => o.ok)).toBe(true);
+  });
+
+  it('holds thumbnails as tooManyRules when the Thumbnail rules pass the choice option limit, as for Topic rules', async () => {
+    const thumbs = Array.from({ length: 26 }, (_, i) => rule(`R${i + 1}`, `Look ${i}`, { kind: 'thumbnail' }));
+    const settings = { engine: 'direct' as const, direct: { provider: 'ollama' as const, baseUrl: 'http://localhost:11434/v1', model: 'clef-flash' } };
+    const h = harness({ rules: thumbs, settings });
+    const out = await createJudge(h.deps).judgeTiles([tile(id(1), 'Bread at home')], CTX);
+    expect(h.requests).toEqual([]);
+    expect(out.results[0]).toMatchObject({ status: 'undecided', reason: 'tooManyRules' });
   });
 
   it("engine 'direct' with no saved endpoint is noKey and never falls back to OpenRouter", async () => {
@@ -807,6 +897,23 @@ describe('judgeTiles: Rules that skip Subscribed channels (REQ-RULE-14)', () => 
     collect(h, tiles);
   });
 
+  it("asks a Subscribed channel's thumbnail only the Thumbnail rules that apply, so a skipping Rule takes no share of the answer", async () => {
+    const SKIP_TH = rule('R6', 'A man singing', { kind: 'thumbnail', skipSubscribed: true });
+    // The image matches both Rules, the skipping one best. Asked together, R5 gets about 0.40 of the answer.
+    const noul = (_t: string | undefined, q: string) => (q === 'R6' ? 0.95 : 0.7);
+    const h = harness({ rules: [TH, SKIP_TH], subscriptions: () => SUBS, script: { [DECISIONS_URL]: [answerer({ noul }), answerer({ noul })], [YTIMG]: [IMG, IMG] } });
+    const tiles = [tile(id(1), 'Live concert', { channelHandle: '@sub' }), tile(id(2), 'Live concert', { channelName: 'Other' })];
+    const { results } = await createJudge(h.deps).judgeTiles(tiles, CTX);
+    expect(decisions(h).map((r) => Object.keys(Object.values<any>(r.body.questions)[0].criteria)).sort()).toEqual([
+      ['keep', 'R5'],
+      ['keep', 'R5', 'R6'],
+    ]);
+    expect(results.map((r) => [r.verdict?.outcome, r.verdict?.ruleRef])).toEqual([
+      ['remove', 'R5'],
+      ['remove', 'R6'],
+    ]);
+  });
+
   it('sends nothing for a Subscribed channel when every Rule that could remove the Tile skips them', async () => {
     const h = harness({ rules: [SKIP_R1, SKIP_KW], subscriptions: () => SUBS });
     const { results } = await createJudge(h.deps).judgeTiles([tile(id(1), 'Reacting to a giveaway', { channelHandle: '@sub' })], CTX);
@@ -858,11 +965,41 @@ describe('judgeTiles: Rules that skip Subscribed channels (REQ-RULE-14)', () => 
   });
 });
 
+describe('judgeTiles: two calls at the same time', () => {
+  it('asks a Tile once while two tabs judge it at the same time, and the second tab uses that answer', async () => {
+    const h = harness({ rules: [R1], script: { [DECISIONS_URL]: [answerer({ choose })] } });
+    const judge = createJudge(h.deps);
+    const tiles = [tile(id(1), 'Reacting to X'), tile(id(2), 'Gardening')];
+    const [first, second] = await Promise.all([judge.judgeTiles(tiles, CTX), judge.judgeTiles(tiles, { private: false, tabId: 2 })]);
+    expect(decisions(h)).toHaveLength(1);
+    expect(second.results).toEqual(first.results);
+    expect(second.results[0]!.verdict).toMatchObject({ outcome: 'remove', ruleRef: 'R1' });
+    expect(h.costs).toEqual([{ usd: 0.0001, judged: 2, requests: 1 }]);
+  });
+
+  it('never shares an answer between a private tab and any other tab', async () => {
+    const h = harness({ rules: [R1], script: { [DECISIONS_URL]: [answerer({ choose }), answerer({ choose }), answerer({ choose })] } });
+    const judge = createJudge(h.deps);
+    const tiles = [tile(id(1), 'Reacting to X')];
+    await Promise.all([judge.judgeTiles(tiles, CTX), judge.judgeTiles(tiles, { private: true, tabId: 7 }), judge.judgeTiles(tiles, { private: true, tabId: 8 })]);
+    expect(decisions(h)).toHaveLength(3);
+  });
+
+  it('gives the waiting tab the reason when the asking tab gets no answer', async () => {
+    const h = harness({ rules: [R1], script: { [DECISIONS_URL]: [{ status: 401, body: { error: { code: 401, message: 'No auth' } } }] } });
+    const judge = createJudge(h.deps);
+    const tiles = [tile(id(1), 'Reacting to X')];
+    const [, second] = await Promise.all([judge.judgeTiles(tiles, CTX), judge.judgeTiles(tiles, { private: false, tabId: 2 })]);
+    expect(decisions(h)).toHaveLength(1);
+    expect(second.results[0]).toMatchObject({ status: 'undecided', reason: 'keyRejected' });
+  });
+});
+
 describe('tryTitle', () => {
   it('runs the pipeline without the Verdict cache or the daily cap and returns the cost', async () => {
     const h = harness({ rules: [R1, TH], script: { [DECISIONS_URL]: [answerer({ choose: () => ({ keep: 0.9, R1: 0.1 }) }), answerer({ noul: () => 0.95 })], [YTIMG]: [IMG] } });
     const judge = createJudge(h.deps);
-    h.cache.set('dQw4w9WgXcQ', { text: { pRemove: 0.99, ref: 'R1', model: 'm' }, rulesVersion: judge.rulesVersionFor(h.rules, h.settings), at: 1 });
+    h.cache.set('dQw4w9WgXcQ', record(h, { text: { pRemove: 0.99, ref: 'R1', model: 'm' } }));
     const out = await judge.tryTitle({ title: '  Gardening  ', channelName: 'Green', thumbnailUrl: 'https://youtu.be/dQw4w9WgXcQ' }, CTX);
     expect(out).toMatchObject({ costUsd: 0.0002, result: { videoId: 'dQw4w9WgXcQ', status: 'decided', verdict: { outcome: 'remove', source: 'modelThumbnail' } } });
     // The gate, then a re-check right before each of the two requests.
@@ -875,9 +1012,7 @@ describe('tryTitle', () => {
 
   it('rejects invalid input and reports why the model cannot run', async () => {
     const judge = createJudge(harness({ rules: [R1] }).deps);
-    expect(await judge.tryTitle({ title: '   ' }, CTX)).toEqual({ error: 'invalidInput' });
     expect(await judge.tryTitle({ title: 'a', thumbnailUrl: 'https://example.com/x.jpg' }, CTX)).toEqual({ error: 'invalidInput' });
-    expect(await judge.tryTitle({ title: 'a', durationSec: -1 }, CTX)).toEqual({ error: 'invalidInput' });
     const denied = createJudge(harness({ rules: [R1], allowed: { ok: false, reason: 'noConsent' } }).deps);
     expect(await denied.tryTitle({ title: 'a' }, CTX)).toEqual({ error: 'noConsent' });
   });
