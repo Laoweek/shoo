@@ -8,7 +8,7 @@ Status of each field: **Ready** (paste as is), **Publisher** (needs a decision o
 
 | Item | Value | Status |
 |---|---|---|
-| Upload | `.output/shoo-0.2.0-chrome.zip` from `pnpm zip` | Ready (rebuild before upload) |
+| Upload | `shoo-0.2.0-chrome.zip` from the GitHub Release `v0.2.0` (`gh release download v0.2.0 --repo Laoweek/shoo --pattern 'shoo-0.2.0-chrome.zip'`), built by CI from the tag after `pnpm check`. Never upload a local build | Ready once the tag's CI run has published the Release |
 | Manifest name | `__MSG_extName__` → "Shoo · Clear unwanted video recommendations" | Ready |
 | Manifest description (store summary) | `__MSG_extDescription__` | Ready |
 | Version | 0.2.0 | Ready |
@@ -50,7 +50,7 @@ Write short rules like "reaction videos" or "crypto get-rich-quick". Shoo checks
 - YouTube's "Not interested" needs you to be signed in to YouTube.
 - On Bilibili, Shoo uses Bilibili's own 内容不感兴趣 and 不想看此UP主. You can turn either site off in Settings.
 
-What Shoo sends, only after you agree: each video's title, channel name, length and where on YouTube or Bilibili it appeared, the thumbnail only if you create a Thumbnail rule, plus the text of your Topic and Thumbnail rules and of Keep rules written as a sentence, and the titles and channel names of up to 10 videos you kept. It goes to OpenRouter and the model provider it uses (Cloudflare by default, TypeSafe or OpenAI as fallbacks, or the provider of a model you pick), or, if you choose, straight to Cloudflare, TypeSafe or Perplexity, a model on your own computer, or your own endpoint. It never sends them web addresses, video IDs, cookies, watch history, comments, page HTML or your YouTube or Bilibili account details. Nothing is sent to the developer.
+What Shoo sends, only after you agree: each video's title, channel name, length and where on YouTube or Bilibili it appeared, the thumbnail only if you create a Thumbnail rule, plus the text of your Topic and Thumbnail rules and of Keep rules written as a sentence, and the titles and channel names of up to 10 videos you kept. It goes to OpenRouter and the model provider it uses (Cloudflare by default, TypeSafe or OpenAI as fallbacks, or the provider of a model you pick), or, if you choose, straight to Cloudflare, TypeSafe or Perplexity, a model on your own computer, or your own endpoint. It never sends them web addresses, video IDs, channel IDs or handles, your YouTube subscriptions, cookies, watch history, comments, page HTML or your YouTube or Bilibili account details. A rule set to skip channels you're subscribed to sends those channels' videos in requests of their own, so the model provider could tell which of the channels it sees you subscribe to. Nothing is sent to the developer.
 
 Shoo is not affiliated with or endorsed by YouTube, Google or Bilibili.
 ```
@@ -110,17 +110,16 @@ One field per permission in the built manifest. Paste as is.
 
 | Permission | Justification |
 |---|---|
-| `storage` | Saves your Rules, settings, Activity and a cache of past Verdicts on your device, and syncs Rules across your browsers. |
+| `storage` | Saves your Rules, settings, Activity and a 30-day cache of past Verdicts on your device, and syncs Rules across your browsers. |
 | `alarms` | Deletes Activity older than 30 days. |
 | `identity` | Lets you connect your OpenRouter account without pasting a key (OpenRouter sign-in with PKCE through identity.launchWebAuthFlow). |
 | Host `https://www.youtube.com/*` | Reads video titles, channel names and lengths on YouTube and tells YouTube Not interested or Don't recommend channel through YouTube's own menu. When one of your rules is set to skip channels you're subscribed to, it also reads your YouTube subscriptions page about once a day (sooner after a failed read) to know which channels those are. That list stays on your device. |
 | Host `https://openrouter.ai/*` | Sends the data listed in the privacy policy to the decision model you connected, and completes OpenRouter sign-in. |
-| Host `https://i.ytimg.com/*` | Downloads a video's thumbnail only when you have a Thumbnail rule. |
 | Host `https://www.bilibili.com/*` | Reads video titles, channel names and lengths on Bilibili and tells Bilibili Not interested or Don't recommend channel through Bilibili's own menu. You can turn Bilibili off in Settings. |
-| Host `https://i0.hdslb.com/*` | Downloads a Bilibili video's thumbnail only when you have a Thumbnail rule. |
+| Optional hosts `https://i.ytimg.com/*`, `https://i0.hdslb.com/*` | Not granted at install. Requested when you turn on a Thumbnail rule, to download that video's thumbnail from YouTube's or Bilibili's image server. |
 | Optional hosts `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` | Not granted at install. Requested only when you choose a model provider other than OpenRouter (Cloudflare, TypeSafe or Perplexity directly, a model on your computer, or any OpenAI-compatible address) during setup or in Settings, and only for that one address (Firefox grants it without the port). http is allowed only for a model you run on your own computer. |
 
-The dashboard may not ask about optional hosts. If it shows a single host-permission field, paste the five host rows and the optional row together.
+The dashboard may not ask about optional hosts. If it shows a single host-permission field, paste the three host rows and both optional rows together.
 
 ### Remote code
 
@@ -168,7 +167,7 @@ Data sent to a custom endpoint the user enters is outside Limited Use (User Data
 
 ### Privacy policy URL
 
-https://laoweek.github.io/shoo/release/privacy-policy.html, served by GitHub Pages from `docs/release/privacy-policy.html` on `main`. Settings, Connection links to the same URL. Status: Ready once Pages is on.
+https://laoweek.github.io/shoo/release/privacy-policy.html, served by GitHub Pages from `docs/release/privacy-policy.html` on `main`. Onboarding step 1 and Settings, Connection link to the same URL. Status: Ready once Pages is on.
 
 ### In-product disclosure and consent
 
@@ -190,7 +189,7 @@ Topic rules (plain-language rules judged by a model) need consent and an OpenRou
 
 1. **Fallback models.** The listing, the form and the policy still name TypeSafe and OpenAI, because they must match REQ-PRIV-1 and the build. Changing the fallback models changes REQ-MODEL-2, REQ-PRIV-1, the consent text and every store text together.
 2. **Consent timing.** CWS asks for consent "before collecting or handling user data" and counts on-device handling. Before consent Shoo reads titles on the page only to match Exact rules on the device, and the onboarding page opens on install. Reviewers may still ask. The disclosure screen states the Exact-only path plainly.
-3. **Web history.** On the device Shoo keeps records about recommended videos, not pages visited: Activity (30 days), the Verdict cache, Exceptions, and a 30-day per-channel tally of video IDs checked (for Escalation). None is a list of pages visited, so "Web history" stays unticked. If a reviewer disagrees, tick it and update the privacy policy and the Firefox declaration in the same change (REQ-PRIV-3).
+3. **Web history.** On the device Shoo keeps records about recommended videos, not pages visited: Activity (30 days), the Verdict cache (30 days), Exceptions, and a 30-day per-channel tally of video IDs checked (for Escalation). None is a list of pages visited, so "Web history" stays unticked. If a reviewer disagrees, tick it and update the privacy policy and the Firefox declaration in the same change (REQ-PRIV-3).
 4. **Not confirmed without the dashboard**: the category dropdown, the exact certification wording, whether optional hosts need their own justification.
 
 ## Sources checked (2026-10-10)

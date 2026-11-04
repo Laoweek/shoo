@@ -3,6 +3,7 @@
 import '~/ui/test/catalogue';
 import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isTileFacts } from '~/entrypoints/background/guards';
 import { removeOverlay } from '~/ui/in-page';
 import { findMenuItem } from '~/sites/youtube/menu';
 import { SURFACES } from '~/sites/youtube/surfaces';
@@ -48,6 +49,17 @@ describe("the user's own Don't recommend channel", () => {
     expect(e.sim.log.at(-1)).toBe('restored@FIXTURE0006');
     expect(e.bg.of('liftChannelBan')).toEqual([{ ruleId: 'u1', videoId: 'FIXTURE0006' }]);
     expect(e.bg.of('reportUndo')).toEqual([]);
+  });
+
+  it('cuts a channel name longer than the background accepts, so the ban still reaches banChannel', async () => {
+    const e = (env = setupHome());
+    await e.showAll();
+    const row = tilesOf('FIXTURE0006')[0]!.querySelector('.ytContentMetadataViewModelMetadataRow a.ytAttributedStringLink')!;
+    row.textContent = '𝕏'.repeat(200);
+    await dontRecommendAsUser(e, 'FIXTURE0006');
+    const [ban] = e.bg.of('banChannel');
+    expect(ban!.tile.channelName).toBe('𝕏'.repeat(120));
+    expect(isTileFacts(ban!.tile)).toBe(true);
   });
 
   it("YouTube's Undo leaves a ban that existed before alone", async () => {

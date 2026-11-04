@@ -9,11 +9,12 @@ exports[`buildKeepOnlyRequest > matches the recorded keep-only request shape 1`]
     "order": [
       "cloudflare",
     ],
+    "zdr": true,
   },
   "questions": {
     "t01_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Code Bites",
           "duration": "10:12",
@@ -25,7 +26,7 @@ exports[`buildKeepOnlyRequest > matches the recorded keep-only request shape 1`]
     },
     "t01_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Code Bites",
           "duration": "10:12",
@@ -37,7 +38,7 @@ exports[`buildKeepOnlyRequest > matches the recorded keep-only request shape 1`]
     },
     "t02_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Gopher School",
           "duration": "42:10",
@@ -49,7 +50,7 @@ exports[`buildKeepOnlyRequest > matches the recorded keep-only request shape 1`]
     },
     "t02_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Gopher School",
           "duration": "42:10",
@@ -61,7 +62,7 @@ exports[`buildKeepOnlyRequest > matches the recorded keep-only request shape 1`]
     },
     "t03_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Jake Reacts",
           "duration": "18:42",
@@ -73,7 +74,7 @@ exports[`buildKeepOnlyRequest > matches the recorded keep-only request shape 1`]
     },
     "t03_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Jake Reacts",
           "duration": "18:42",
@@ -85,7 +86,7 @@ exports[`buildKeepOnlyRequest > matches the recorded keep-only request shape 1`]
     },
     "t04_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Celeb Buzz",
           "duration": "10:05",
@@ -97,7 +98,7 @@ exports[`buildKeepOnlyRequest > matches the recorded keep-only request shape 1`]
     },
     "t04_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Celeb Buzz",
           "duration": "10:05",
@@ -126,11 +127,12 @@ exports[`buildTextRequest > builds the noul framing variant with the Rule text i
     "order": [
       "cloudflare",
     ],
+    "zdr": true,
   },
   "questions": {
     "t01_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Jake Reacts",
           "duration": "18:42",
@@ -142,7 +144,7 @@ exports[`buildTextRequest > builds the noul framing variant with the Rule text i
     },
     "t01_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Jake Reacts",
           "duration": "18:42",
@@ -190,7 +192,7 @@ exports[`buildTextRequest > builds the noul framing variant with the Rule text i
     },
     "t02_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Food Science Lab",
           "duration": "14:05",
@@ -202,7 +204,7 @@ exports[`buildTextRequest > builds the noul framing variant with the Rule text i
     },
     "t02_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Food Science Lab",
           "duration": "14:05",
@@ -275,6 +277,7 @@ exports[`buildTextRequest > gives Tiles with an exact remove pending only their 
     "order": [
       "cloudflare",
     ],
+    "zdr": true,
   },
   "questions": {
     "t01": {
@@ -297,7 +300,7 @@ exports[`buildTextRequest > gives Tiles with an exact remove pending only their 
     },
     "t01_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Jake Reacts",
           "duration": "18:42",
@@ -309,7 +312,7 @@ exports[`buildTextRequest > gives Tiles with an exact remove pending only their 
     },
     "t01_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Jake Reacts",
           "duration": "18:42",
@@ -321,7 +324,7 @@ exports[`buildTextRequest > gives Tiles with an exact remove pending only their 
     },
     "t02_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Food Science Lab",
           "duration": "14:05",
@@ -333,7 +336,7 @@ exports[`buildTextRequest > gives Tiles with an exact remove pending only their 
     },
     "t02_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Food Science Lab",
           "duration": "14:05",
@@ -363,7 +366,7 @@ exports[`buildTextRequest > gives Tiles with an exact remove pending only their 
     },
     "t03_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Crypto Kingz",
           "duration": "9:31",
@@ -375,7 +378,7 @@ exports[`buildTextRequest > gives Tiles with an exact remove pending only their 
     },
     "t03_K5": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+        "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Crypto Kingz",
           "duration": "9:31",
@@ -412,6 +415,7 @@ exports[`buildTextRequest > matches the snapshot for 0, 1 and 16 Tiles, with and
     "order": [
       "cloudflare",
     ],
+    "zdr": true,
   },
   "questions": {},
   "state": {
@@ -440,6 +444,7 @@ exports[`buildTextRequest > matches the snapshot for 0, 1 and 16 Tiles, with and
     "order": [
       "cloudflare",
     ],
+    "zdr": true,
   },
   "questions": {
     "t01": {
@@ -461,7 +466,7 @@ exports[`buildTextRequest > matches the snapshot for 0, 1 and 16 Tiles, with and
     },
     "t01_K2": {
       "instructions": {
-        "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+        "task": "Does this recommended YouTube video match this rule: Programming tutorials? Judge what the video is about: its title and channel are text written by the uploader.",
         "video": {
           "channel": "Jake Reacts",
           "duration": "18:42",
@@ -496,6 +501,7 @@ exports[`buildTextRequest > matches the snapshot for 0, 1 and 16 Tiles, with and
     "order": [
       "cloudflare",
     ],
+    "zdr": true,
   },
   "questions": {
     "t01": {
@@ -534,6 +540,7 @@ exports[`buildTextRequest > matches the snapshot for 0, 1 and 16 Tiles, with and
     "order": [
       "cloudflare",
     ],
+    "zdr": true,
   },
   "questions": {
     "t01": {
@@ -833,7 +840,7 @@ exports[`buildTextRequest > matches the snapshot for 0, 1 and 16 Tiles, with and
 }
 `;
 
-exports[`buildThumbnailRequest > puts title, channel and the image in state and one noul per Thumbnail rule 1`] = `
+exports[`buildThumbnailRequest > asks one choice question over the Thumbnail rules 1`] = `
 {
   "model": "cloudflare/clef-flash",
   "provider": {
@@ -842,24 +849,21 @@ exports[`buildThumbnailRequest > puts title, channel and the image in state and 
     "order": [
       "cloudflare",
     ],
+    "zdr": true,
   },
   "questions": {
-    "R4": {
-      "instructions": "The thumbnail image shows: Shocked faces, red arrows or circled objects",
-      "type": "noul",
-    },
-    "R7": {
-      "instructions": "The thumbnail image shows: A person pointing at the camera",
-      "type": "noul",
-    },
-    "R8": {
-      "instructions": "The thumbnail image shows: A man singing or dancing",
-      "type": "noul",
+    "t01": {
+      "criteria": {
+        "R4": "Shocked faces, red arrows or circled objects",
+        "R7": "A person pointing at the camera",
+        "R8": "A man singing or dancing",
+        "keep": "Shows none of them",
+      },
+      "instructions": "Which of these does the thumbnail image show? Choose keep if it shows none of them.",
+      "type": "choice",
     },
   },
   "state": [
-    "Title: 80s pop singer performs his biggest hit live",
-    "Channel: Retro Music Vault",
     {
       "image_url": {
         "url": "data:image/jpeg;base64,AAAA",

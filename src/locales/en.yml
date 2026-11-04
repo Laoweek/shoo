@@ -99,6 +99,7 @@ popup:
     breakerSite: "Shoo paused: {site}'s menu changed."
     breakerModel: "Shoo paused: OpenRouter didn't answer."
     # A direct Decision provider or a chat model is active: the copy names its host, not OpenRouter.
+    endpointNoKey: 'Shoo has no key for {host}. Add one in Settings, Connection.'
     endpointRejected: '{host} refused Shoo. Check it in Settings, Connection.'
     breakerEndpoint: "Shoo paused: {host} didn't answer."
     noCreditsEndpoint: '{host} says the key is out of credits.'
@@ -419,6 +420,7 @@ exceptions:
   noMatch: No Exceptions match.
   empty: No Exceptions yet. Videos you keep show up here.
   search: Search Exceptions
+  more: Show more
   wantedBy: '{rule} wanted it gone'
   error:
     load: Couldn't load Exceptions. Reload the page to try again.
@@ -496,6 +498,7 @@ connection:
   usage: '{usage} used of {limit}'
   noLimit: '{usage} used, no limit set'
   usageToday: '{usage} used today'
+  fellBack: 'Your chosen model could not answer, so OpenRouter asked {model} instead. This shows until your model answers again.'
   disconnect: Disconnect
   disconnectNote: 'Forgets the key on this device. Revoke it on OpenRouter:'
   reconnectWarning: Connecting again creates a new key. Revoke the old one at openrouter.ai/keys.
@@ -507,6 +510,13 @@ connection:
     label: OpenRouter key
     save: Save key
     invalid: OpenRouter rejected this key.
+  # Forget for the keys of a Decision provider reached directly and of the chat model.
+  keys:
+    title: Other keys on this device
+    direct: '{provider} key for {host}'
+    custom: 'Chat model key for {host}'
+    forget: Forget key
+    note: Forgets the key on this device. Shoo can't use that endpoint again until you add a key. To stop the key working, revoke it with its provider.
   consent:
     title: What Shoo sends
     give: Give consent
@@ -598,6 +608,7 @@ connection:
       modelPlaceholder: The model's API identifier
     sendsTo: Shoo sends to {host}.
     sendsToLocal: Shoo sends to {host}, on this computer.
+    ownTerms: "{provider}'s own terms decide what it keeps. OpenRouter's setting that leaves out providers who train on your data does not apply here."
     images: Reads thumbnails, so Thumbnail rules work too.
     textOnly: Titles only. Thumbnail rules need a model that reads images.
     tooManyRules: '{provider} takes at most {max} Topic rules, and {count} are on. Topic rules stop working until you switch some off.'
@@ -648,7 +659,7 @@ advanced:
     suggest: Suggest
     automatic: Automatic
     hint:
-      'off': Shoo never suggests banning a channel.
+      'off': Shoo never suggests banning a channel, keeps no count per channel, and forgets past counts and every “Not now”.
       suggest: Shoo suggests banning a channel that keeps getting removed.
       automatic: Shoo bans a channel that keeps getting removed and tells you.
   dailyCap:
@@ -683,6 +694,14 @@ advanced:
     removes: 'Replace deletes your current Rules ({rules}) and Exceptions ({exceptions}) first.'
     syncQuota: This won't fit in browser sync storage, so the import would fail. Delete some Rules or Exceptions first.
     done: Imported.
+  clearHistory:
+    label: Clear history
+    hint: Deletes Activity, cached Verdicts, the counts behind Removed and Kept this week, channel ban suggestions and the list of channels you're subscribed to. Your Rules, Keep rules, Banned channels, Exceptions, settings and key stay.
+    confirm: Delete Shoo's history on this computer? Videos Shoo already checked are checked again when they show up, which costs model calls. This can't be undone.
+    button: Clear history
+    confirmButton: Delete history
+    done: Shoo's history is deleted.
+    error: Couldn't clear the history. Try again.
   reset:
     label: Reset
     hint: Deletes every Rule, Keep rule, Banned channel, Exception, setting, the key, Activity and cached Verdicts.
@@ -741,9 +760,11 @@ onboarding:
         custom: Your own endpoint
         customWhen: if you set one up
       never:
-        title: Never sent
+        title: Never sent to any of them
         urls: Web addresses
         ids: Video IDs, including Bilibili's BV ids
+        channels: Channel IDs and handles
+        subscriptions: Your YouTube subscriptions
         history: Your watch history
         cookies: Cookies
         comments: Comments

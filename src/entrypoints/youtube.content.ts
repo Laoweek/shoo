@@ -7,5 +7,8 @@ export default defineContentScript({
   matches: ['https://www.youtube.com/*'],
   runAt: 'document_idle',
   cssInjectionMode: 'manual',
+  // WXT's start-up window.postMessage names the extension ID to every page script. Invalidation works without it:
+  // WXT also signals a newer copy of this script with a document event only content scripts listen for.
+  noScriptStartedPostMessage: true,
   main: (ctx) => startContent(ctx, youtube),
 });

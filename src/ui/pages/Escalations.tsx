@@ -2,14 +2,14 @@
 import { useState } from 'preact/hooks';
 import type { Rule } from '~/core/types';
 import { t } from '~/i18n';
-import { sendMessage, type EscalationSuggestion } from '~/messaging/protocol';
-import { watchEscalation, watchRules } from '~/store/read';
+import { sendMessage } from '~/messaging/protocol';
+import { readEscalations, watchEscalation, watchRules, type EscalationSuggestion } from '~/store/read';
 import { Button, RuleRef } from '../components';
 import { useAsync } from './hooks';
 import { byId } from './rules';
 
 export function useEscalations() {
-  return useAsync(() => sendMessage('listEscalations'), [watchEscalation, watchRules]);
+  return useAsync(() => readEscalations(), [watchEscalation, watchRules]);
 }
 
 export interface EscalationsProps {

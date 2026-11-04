@@ -1,7 +1,8 @@
 // Decision providers reached directly, without OpenRouter (CONTEXT.md "Decision provider"). They all speak
 // the System One API, the request and response shape Shoo already sends to OpenRouter's Decisions API,
 // and differ only in what this table records. Source of truth: docs/spec/requirements.md REQ-MODEL-7 and
-// docs/spec/decision-engine.md Section 12, facts and sources in its Section 12.4 (checked 2026-10-10).
+// docs/spec/decision-engine.md Section 12, facts and sources in its Section 12.4 (checked 2026-10-10). Names and key
+// help pages, which only pages show, are in ui/pages/providers.ts.
 
 export type DirectProviderId = 'cloudflare' | 'typesafe' | 'perplexity' | 'ollama' | 'llamacpp' | 'lmstudio';
 
@@ -13,8 +14,6 @@ export type ImageFormat = 'state' | 'dataUrl' | 'base64';
 
 export interface DirectProvider {
   id: DirectProviderId;
-  /** A brand name, not translated. */
-  name: string;
   /** Prefilled base URL. Cloudflare's carries `{account}`, the user's account ID. */
   baseUrl: string;
   /** Appended to the base URL. `{model}` is the model ID (Cloudflare names the model in the path). */
@@ -35,14 +34,11 @@ export interface DirectProvider {
   maxChoiceOptions: number;
   /** Published USD per input token, to estimate spend: these endpoints report no `usage.cost`. */
   price: number;
-  /** Where the provider explains how to get a key. */
-  keyUrl?: string;
 }
 
 export const DIRECT_PROVIDERS: readonly DirectProvider[] = [
   {
     id: 'cloudflare',
-    name: 'Cloudflare',
     baseUrl: 'https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/@cf/cloudflare',
     path: '/{model}',
     model: 'clef-flash',
@@ -52,11 +48,9 @@ export const DIRECT_PROVIDERS: readonly DirectProvider[] = [
     maxQuestions: 64,
     maxChoiceOptions: 255,
     price: 0.038e-6,
-    keyUrl: 'https://developers.cloudflare.com/workers-ai/get-started/rest-api/',
   },
   {
     id: 'typesafe',
-    name: 'TypeSafe',
     baseUrl: 'https://api.typesafe.ai/v1',
     path: '/systemone',
     model: 'jev-1.13.0',
@@ -64,11 +58,9 @@ export const DIRECT_PROVIDERS: readonly DirectProvider[] = [
     maxQuestions: 64,
     maxChoiceOptions: 255,
     price: 0.042e-6,
-    keyUrl: 'https://docs.typesafe.ai/api',
   },
   {
     id: 'perplexity',
-    name: 'Perplexity',
     baseUrl: 'https://api.perplexity.ai/v1',
     path: '/decisions',
     model: 'pplx-decider-v1.1-27b',
@@ -77,11 +69,9 @@ export const DIRECT_PROVIDERS: readonly DirectProvider[] = [
     maxQuestions: 128,
     maxChoiceOptions: 255,
     price: 0.02e-6,
-    keyUrl: 'https://docs.perplexity.ai/docs/decisions/quickstart',
   },
   {
     id: 'ollama',
-    name: 'Ollama',
     baseUrl: 'http://localhost:11434/v1',
     path: '/systemone',
     model: 'clef-flash',
@@ -93,7 +83,6 @@ export const DIRECT_PROVIDERS: readonly DirectProvider[] = [
   },
   {
     id: 'llamacpp',
-    name: 'llama.cpp',
     baseUrl: 'http://localhost:9931/v1',
     path: '/systemone',
     model: 'clef-flash',
@@ -105,7 +94,6 @@ export const DIRECT_PROVIDERS: readonly DirectProvider[] = [
   },
   {
     id: 'lmstudio',
-    name: 'LM Studio',
     baseUrl: 'http://localhost:1234/v1',
     path: '/systemone',
     model: '',

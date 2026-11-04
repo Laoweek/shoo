@@ -8,6 +8,7 @@
 // A second reportUndo for the same video within UNDO_DEDUPE_MS is ignored, so two detectors firing for one
 // undo still give one event.
 import { channelIdentity, channelKey } from '~/core/channel';
+import { bannedRuleFor, keepRuleFor } from '~/core/escalation';
 import { newId } from '~/core/ids';
 import { SURFACE_SITE, siteOfUrl } from '~/core/sites';
 import type { ActivityEvent } from '~/core/types';
@@ -35,23 +36,23 @@ import {
 } from '../guards';
 import type { Routes } from '../router';
 import type { Services } from '../services';
-import { addedChannelRule, bannedRuleFor, channelRuleOp, keepRuleFor, type createEscalation } from './escalation';
-import { truncateTitle } from './judging';
+import { addedChannelRule, channelRuleOp, type createEscalation } from './escalation';
+import { isShortId, truncateTitle } from './judging';
 
 export const UNDO_DEDUPE_MS = 10_000;
 
 const isOkReport = (v: Record<string, unknown>) =>
   v.ok === true &&
-  isStr(v.batchId) &&
+  isShortId(v.batchId) &&
   isShortStr(v.title) &&
-  optionalStr(v.ruleId) &&
+  optional(v.ruleId, isShortId) &&
   isChannelParts(v) &&
   optional(v.source, isSource) &&
   optional(v.p, isNum) &&
   optional(v.mode, isMode) &&
   isCover(v.cover);
 const isFailReport = (v: Record<string, unknown>) =>
-  v.ok === false && isStep(v.step) && isStr(v.selectorVersion) && optionalStr(v.title) && optionalStr(v.ruleId);
+  v.ok === false && isStep(v.step) && isShortId(v.selectorVersion) && optionalStr(v.title) && optional(v.ruleId, isShortId);
 
 const withChannel = (e: ActivityEvent, name: string | undefined): ActivityEvent => {
   if (name?.trim()) {

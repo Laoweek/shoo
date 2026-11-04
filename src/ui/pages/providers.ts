@@ -8,6 +8,24 @@ export type ProviderId = 'openrouter' | DirectProviderId;
 export const ONLINE: readonly ProviderId[] = ['openrouter', 'cloudflare', 'typesafe', 'perplexity'];
 export const LOCAL: readonly ProviderId[] = ['ollama', 'llamacpp', 'lmstudio'];
 
+/** Each provider's display name, a brand name, not translated. */
+export const PROVIDER_NAMES: Record<ProviderId, string> = {
+  openrouter: 'OpenRouter',
+  cloudflare: 'Cloudflare',
+  typesafe: 'TypeSafe',
+  perplexity: 'Perplexity',
+  ollama: 'Ollama',
+  llamacpp: 'llama.cpp',
+  lmstudio: 'LM Studio',
+};
+
+/** Where an online Decision provider explains how to get a key. */
+export const KEY_URLS: Partial<Record<DirectProviderId, string>> = {
+  cloudflare: 'https://developers.cloudflare.com/workers-ai/get-started/rest-api/',
+  typesafe: 'https://docs.typesafe.ai/api',
+  perplexity: 'https://docs.perplexity.ai/docs/decisions/quickstart',
+};
+
 /** Addresses the chat model form can fill in for a chat model on this computer (decision-engine.md Section 6.1). */
 export const CHAT_LOCAL = [
   { name: 'Ollama', baseUrl: 'http://localhost:11434/v1' },

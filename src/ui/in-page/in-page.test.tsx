@@ -16,6 +16,7 @@ import {
   type ChipProps,
   type SummaryData,
 } from './index';
+import { shadowRootOf } from './roots';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -355,7 +356,7 @@ function summary(over: Partial<SummaryData> = {}): SummaryData {
   };
 }
 
-const overlayRoot = () => document.querySelector('shoo-summary-host')!.shadowRoot!;
+const overlayRoot = () => shadowRootOf(document.querySelector('shoo-summary-host')!)!;
 /** The summary's Rule rows as [label, count]. */
 const rows = (root: ShadowRoot) => [...root.querySelectorAll('.rules li:not(.more)')].map((li) => [li.querySelector('.lb')?.textContent, li.querySelector('.n')?.textContent]);
 
@@ -379,6 +380,13 @@ describe('Batch summary', () => {
     );
     act(() => buttons(root.querySelector('.panel')!)[0]!.click());
     expect(data.onReview).toHaveBeenCalledWith('b1');
+  });
+
+  it('keeps its shadow root closed, so a page script cannot read the Rule rows', () => {
+    act(() => void showSummary(summary()));
+    const host = document.querySelector('shoo-summary-host')!;
+    expect(host.shadowRoot).toBeNull();
+    expect(overlayRoot().mode).toBe('closed');
   });
 
   it('names each Rule by its label with the full text as its tooltip, most Removals first, then first seen', () => {

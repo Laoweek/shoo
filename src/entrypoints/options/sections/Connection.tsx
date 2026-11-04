@@ -7,20 +7,23 @@ import { ExternalLink } from 'lucide-preact';
 import { useState } from 'preact/hooks';
 import { directProvider } from '~/core/providers';
 import { endpointBase, endpointHost, endpointPattern } from '~/core/runtime';
-import type { Settings, StrengthPreset } from '~/core/types';
+import { DATA_COLLECTION, type Settings, type StrengthPreset } from '~/core/types';
 import { STRENGTH_PRESETS } from '~/core/verdict';
 import { t } from '~/i18n';
 import { sendMessage, type KeyUsage } from '~/messaging/protocol';
+import { watchSettings } from '~/store/read';
 import { Button, Notice, SkeletonRows } from '~/ui/components';
 import { IS_FIREFOX, REQUIRED_ORIGINS, consentClick, requestOrigins } from '~/ui/pages/consent';
 import { ChatEndpoint, DirectSetup, ProviderPicker } from '~/ui/pages/EndpointSetup';
 import { Disclosure } from '~/ui/pages/Disclosure';
 import { date, money } from '~/ui/pages/format';
-import { useAsync, useOnline } from '~/ui/pages/hooks';
+import { useAsync, useOnline, type Async } from '~/ui/pages/hooks';
 import { OPENROUTER_KEYS_URL, PRIVACY_POLICY_URL } from '~/ui/pages/nav';
-import type { ProviderId } from '~/ui/pages/providers';
+import { PROVIDER_NAMES, type ProviderId } from '~/ui/pages/providers';
 import { FieldLabel, SectionHead, Select, Status, SubHead, TextInput } from '~/ui/pages/parts';
 import type { PageData, SectionProps } from '../context';
+
+const removeDataCollection = (p: { data_collection: readonly string[] }) => (browser.permissions.remove as (p: { data_collection: readonly string[] }) => Promise<boolean>)(p);
 
 export async function patchSettings(patch: Partial<Settings>): Promise<boolean> {
   try {
@@ -33,6 +36,8 @@ export async function patchSettings(patch: Partial<Settings>): Promise<boolean> 
 
 export function Connection({ data }: SectionProps) {
   const s = data.settings;
+  // Saving an endpoint changes settings, so the key list reloads with them. Forget key reloads it too.
+  const keys = useAsync(() => sendMessage('getStoredKeys'), [watchSettings]);
   // Host access is checked directly too: a higher RuntimeState reason (off, noConsent) can hide hostRevoked.
   const base = s && endpointBase(s);
   const custom = base ? endpointPattern(base, IS_FIREFOX) : undefined;
@@ -67,11 +72,11 @@ export function Connection({ data }: SectionProps) {
               }}
             />
           )}
-          <Providers data={data} />
+          <Providers data={data} keys={keys} />
           <Consent data={data} />
-          {s.engine === 'openrouter' && <Models settings={s} />}
+          {s.engine === 'openrouter' && <Models settings={s} consent={data.consent} />}
           <Strength settings={s} />
-          <ChatEndpoint settings={s} />
+          <ChatEndpoint settings={s} keyStored={keys.data?.custom === true} />
         </div>
       )}
     </section>
@@ -119,10 +124,12 @@ function activeProvider(s: Settings): ProviderId | undefined {
  * setup under it. With a direct provider or a chat model in use, it says so first, with a way back to
  * OpenRouter (whose consent is asked again, since consent names its recipient).
  */
-function Providers({ data }: { data: PageData }) {
+function Providers({ data, keys }: { data: PageData; keys: Async<{ direct: boolean; custom: boolean }> }) {
   const s = data.settings!;
   const inUse = activeProvider(s);
   const [picked, setPicked] = useState<ProviderId | undefined>(inUse);
+  // A provider online whose key was forgotten starts a fresh form, which asks for a key again.
+  const keyGone = (id: ProviderId) => !directProvider(id)?.local && keys.data?.direct === false;
   return (
     <div>
       <SubHead title={t('connection.provider.title')} />
@@ -140,7 +147,7 @@ function Providers({ data }: { data: PageData }) {
             <DirectSetup
               key={picked}
               provider={picked}
-              initial={s.direct?.provider === picked ? s.direct : undefined}
+              initial={s.direct?.provider === picked && !keyGone(picked) ? s.direct : undefined}
               active={inUse === picked}
               topicRules={(data.rules ?? []).filter((r) => r.kind === 'topic' && r.polarity === 'remove' && r.enabled && r.deletedAt === undefined).length}
               disclosure
@@ -149,7 +156,43 @@ function Providers({ data }: { data: PageData }) {
             />
           )
         )}
+        {keys.data && <StoredKeys settings={s} stored={keys.data} onForgot={keys.reload} />}
       </div>
+    </div>
+  );
+}
+
+/** Forget for the keys of a Decision provider reached directly and of the chat model, like Disconnect for OpenRouter's. */
+function StoredKeys({ settings, stored, onForgot }: { settings: Settings; stored: { direct: boolean; custom: boolean }; onForgot: () => void }) {
+  const [failed, setFailed] = useState(false);
+  const direct = stored.direct && settings.direct;
+  const directName = direct ? PROVIDER_NAMES[direct.provider] : undefined;
+  const custom = stored.custom && settings.customEndpoint;
+  if (!(direct && directName) && !custom) return null;
+  const forget = async (endpoint: 'direct' | 'custom') => {
+    setFailed(false);
+    try {
+      await sendMessage('forgetKey', { endpoint });
+      onForgot();
+    } catch {
+      setFailed(true);
+    }
+  };
+  const row = (label: string, endpoint: 'direct' | 'custom') => (
+    <li class="flex flex-wrap items-center justify-between gap-2">
+      <span>{label}</span>
+      <Button onClick={() => void forget(endpoint)}>{t('connection.keys.forget')}</Button>
+    </li>
+  );
+  return (
+    <div class="grid gap-2 border-t border-line pt-4">
+      <SubHead title={t('connection.keys.title')} />
+      <ul class="m-0 grid list-none gap-2 p-0">
+        {direct && directName && row(t('connection.keys.direct', { provider: directName, host: endpointHost(direct.baseUrl) ?? '' }), 'direct')}
+        {custom && row(t('connection.keys.custom', { host: endpointHost(custom.baseUrl) ?? '' }), 'custom')}
+      </ul>
+      <p class="m-0 text-[13px] text-muted">{t('connection.keys.note')}</p>
+      <Status tone="danger" class="empty:absolute">{failed ? t('connection.error.save') : ''}</Status>
     </div>
   );
 }
@@ -166,7 +209,7 @@ function InUse({ settings }: { settings: Settings }) {
         ? t('connection.custom.activeChat', { host, model: settings.customEndpoint?.model ?? '' })
         : p.local
           ? t('connection.custom.activeLocal', { host, model: direct.model })
-          : t('connection.custom.activeDirect', { host, model: direct.model, provider: p.name })}
+          : t('connection.custom.activeDirect', { host, model: direct.model, provider: PROVIDER_NAMES[direct.provider] })}
     </p>
   );
 }
@@ -290,15 +333,8 @@ function OpenRouter({ data }: { data: PageData }) {
         ) : status === 'connected' ? (
           <div class="grid gap-1">
             <p class="m-0 font-semibold">{usage ? t('connection.connected', { date: date(usage.connectedAt), label: usage.label ?? 'Shoo' }) : t('popup.footer.connected')}</p>
-            {usage && (
-              <p class="num m-0 text-muted">
-                {usage.usageDaily !== undefined
-                  ? t('connection.usageToday', { usage: money(usage.usageDaily) })
-                  : usage.limit === null
-                  ? t('connection.noLimit', { usage: money(usage.usage) })
-                  : t('connection.usage', { usage: money(usage.usage), limit: money(usage.limit) })}
-              </p>
-            )}
+            {usage && <UsageLine usage={usage} />}
+            {usage?.fallbackModel && <p class="m-0 text-muted">{t('connection.fellBack', { model: usage.fallbackModel })}</p>}
           </div>
         ) : (
           status === 'rejected' && <p class="m-0 text-danger">{t('notice.keyRejected')}</p>
@@ -380,6 +416,20 @@ function OpenRouter({ data }: { data: PageData }) {
   );
 }
 
+/** Spend from OpenRouter's key check, which runs only once consent allows asking OpenRouter. */
+function UsageLine({ usage: { usage, usageDaily, limit } }: { usage: KeyUsage }) {
+  if (usage === undefined) return null;
+  return (
+    <p class="num m-0 text-muted">
+      {usageDaily !== undefined
+        ? t('connection.usageToday', { usage: money(usageDaily) })
+        : limit === null || limit === undefined
+          ? t('connection.noLimit', { usage: money(usage) })
+          : t('connection.usage', { usage: money(usage), limit: money(limit) })}
+    </p>
+  );
+}
+
 // ---------------------------------------------------------------------------------------------------
 
 function Consent({ data }: { data: PageData }) {
@@ -391,13 +441,17 @@ function Consent({ data }: { data: PageData }) {
     customHost,
     onDone: (granted) => {
       setNote(granted ? undefined : { text: t('connection.consent.declined'), tone: 'plain' });
-      data.refreshRuntime();
+      // The key is checked with OpenRouter only after consent, so its status and usage load now.
+      if (granted) data.refreshKey();
+      else data.refreshRuntime();
     },
     onError: () => setNote({ text: t('connection.error.save'), tone: 'danger' }),
   });
   const withdraw = async () => {
     try {
       await sendMessage('withdrawConsent');
+      // Firefox lists the data collection permission in about:addons, so withdrawing gives it back too.
+      if (import.meta.env.BROWSER === 'firefox') await removeDataCollection({ data_collection: DATA_COLLECTION });
       data.refreshRuntime();
     } catch {
       setNote({ text: t('connection.error.save'), tone: 'danger' });
@@ -442,12 +496,14 @@ function Consent({ data }: { data: PageData }) {
 
 // ---------------------------------------------------------------------------------------------------
 
-function Models({ settings }: { settings: Settings }) {
-  const list = useAsync(() => sendMessage('listModels', {}), []);
+function Models({ settings, consent }: { settings: Settings; consent: boolean }) {
+  // The list comes from OpenRouter, so it loads again once consent is given.
+  const list = useAsync(() => sendMessage('listModels', {}), [], [consent]);
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
   const models = list.data && !('error' in list.data) ? list.data.models : undefined;
-  const loadFailed = !!list.error || (!!list.data && 'error' in list.data);
+  const noConsent = !!list.data && 'error' in list.data && list.data.error === 'noConsent';
+  const loadFailed = !!list.error || (!!list.data && 'error' in list.data && !noConsent);
 
   const retry = async () => {
     setRefreshing(true);

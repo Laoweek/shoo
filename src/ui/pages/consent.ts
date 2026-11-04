@@ -3,16 +3,15 @@
 // (docs/spec/cross-browser-and-stores.md Section 2). So every helper here calls
 // `browser.permissions.request` synchronously and returns its promise for the caller to await.
 import { hasConsent as coreHasConsent } from '~/core/runtime';
-import { SITE_HOSTS, type SiteId } from '~/core/sites';
-import type { ReasonCode, Settings } from '~/core/types';
+import { SITE_HOSTS, SITE_IDS, type SiteId } from '~/core/sites';
+import { DATA_COLLECTION, type ReasonCode, type Settings } from '~/core/types';
 import { sendMessage, type KeyUsage } from '~/messaging/protocol';
 import { CONSENT_VERSION } from '~/store/schema';
 
-/** Firefox data collection categories Shoo asks for when the user agrees (cross-browser-and-stores.md Section 1, "Data collection and consent"). */
-export const DATA_COLLECTION = ['websiteContent', 'authenticationInfo'] as const;
+export { DATA_COLLECTION };
 
-/** YouTube's and OpenRouter's hosts, which Connection checks and asks for again after a revoke. Each Site's hosts are handled in Settings, Sites. */
-export const REQUIRED_ORIGINS = ['https://www.youtube.com/*', 'https://openrouter.ai/*', 'https://i.ytimg.com/*'];
+/** YouTube's and OpenRouter's hosts, which Connection checks and asks for again after a revoke. Each Site's pages are handled in Settings, Sites. */
+export const REQUIRED_ORIGINS = ['https://www.youtube.com/*', 'https://openrouter.ai/*'];
 
 type PermissionsWithDataCollection = { data_collection?: readonly string[]; origins?: string[] };
 
@@ -34,17 +33,28 @@ export function requestOrigins(origins: string[]): Promise<boolean> {
   return browser.permissions.request({ origins });
 }
 
-/**
- * Whether Shoo still has access to the Site's pages: the user can take it away in the browser's settings. Without
- * the image host only Thumbnail rules lose their thumbnails, so it is not checked here.
- */
+const pagesHost = (site: SiteId): string => SITE_HOSTS[site][0]!;
+const imageHost = (site: SiteId): string => SITE_HOSTS[site][1]!;
+
+/** Whether Shoo still has access to the Site's pages: the user can take it away in the browser's settings. */
 export function hasSiteAccess(site: SiteId): Promise<boolean> {
-  return browser.permissions.contains({ origins: [SITE_HOSTS[site][0]!] });
+  return browser.permissions.contains({ origins: [pagesHost(site)] });
 }
 
-/** Asks for a Site's host access again. Must be the first statement of a click handler. */
+/** Asks for access to a Site's pages again. Must be the first statement of a click handler. */
 export function requestSiteAccess(site: SiteId): Promise<boolean> {
-  return browser.permissions.request({ origins: [...SITE_HOSTS[site]] });
+  return browser.permissions.request({ origins: [pagesHost(site)] });
+}
+
+/**
+ * Asks for the image hosts a Thumbnail rule downloads thumbnails from, for its one Site or every Site. They are
+ * optional host permissions, so a user without Thumbnail rules never grants them. Must be the first statement of the
+ * click that saves or turns on the Rule. The hosts also answer the background's fetch with
+ * `Access-Control-Allow-Origin: *`, so the caller saves the Rule whatever the answer. An error resolves false.
+ */
+export function requestThumbnailAccess(site: SiteId | undefined): Promise<boolean> {
+  const sites = site ? [site] : SITE_IDS;
+  return browser.permissions.request({ origins: sites.map(imageHost) }).catch(() => false);
 }
 
 /** Calls `cb` when any permission is added or removed (here, in the browser's settings, or by the background). */

@@ -1,5 +1,4 @@
 // Messages contract. Source of truth: docs/spec/architecture.md, Section 6.
-import { defineExtensionMessaging } from '@webext-core/messaging';
 import type {
   ActionStep,
   ColourCode,
@@ -19,6 +18,8 @@ import type {
   TileResult,
   VerdictSource,
 } from '~/core/types';
+import type { ParsedImport } from '~/store/import';
+import { sendWire } from './wire';
 
 export type DirectEndpointRequest = DirectEndpoint & { key?: string };
 
@@ -48,23 +49,18 @@ export interface RuleDisplay {
   colour?: ColourCode;
 }
 
-export interface EscalationSuggestion {
-  channelKey: string;
-  channelName: string;
-  removed: number;
-  judged: number;
-  ruleId?: string;
-}
-
+/** The stored OpenRouter key. Usage and limit come from OpenRouter, so they are left out until consent allows asking it. */
 export interface KeyUsage {
   label?: string;
   source?: 'oauth' | 'pasted';
   connectedAt: number;
-  usage: number;
+  usage?: number;
   /** Spend so far today (UTC), when OpenRouter reports it. */
   usageDaily?: number;
-  limit: number | null;
-  limitRemaining: number | null;
+  limit?: number | null;
+  limitRemaining?: number | null;
+  /** The fallback model that answered while the chosen model could not, until the chosen one answers again. */
+  fallbackModel?: string;
 }
 
 export interface ModelInfo {
@@ -136,7 +132,6 @@ export interface ProtocolMap {
   mutateRules(req: { ops: RuleOp[] }): { rules: Rule[]; rulesVersion: string } | { error: 'syncQuota' | 'invalidInput'; detail: string };
   removeException(req: { videoId: string }): void;
   undoFromActivity(req: { videoId: string }): { ok: true } | { ok: false; reason: 'expired' | 'notFound' };
-  listEscalations(): EscalationSuggestion[];
   confirmEscalation(req: { channelKey: string }): { ruleId: string };
   dismissEscalation(req: { channelKey: string }): void;
   markActivitySeen(req: { ids: string[] }): void;
@@ -151,6 +146,9 @@ export interface ProtocolMap {
   setKey(req: { key: string }): { ok: true; label?: string } | { ok: false; error: 'keyRejected' | 'offline' };
   disconnect(): void;
   getKeyUsage(): KeyUsage | { error: ReasonCode };
+  /** Whether a non-empty key is stored for a Decision provider reached directly and for the custom endpoint. */
+  getStoredKeys(): { direct: boolean; custom: boolean };
+  forgetKey(req: { endpoint: 'direct' | 'custom' }): void;
   /** `key` left out keeps the stored key, only when the saved endpoint has the same origin (else no key). */
   setCustomEndpoint(req: { baseUrl: string; model: string; key?: string }): { ok: true } | { ok: false; error: string };
   testCustomEndpoint(req: { baseUrl: string; model: string; key?: string }): { ok: true; latencyMs: number } | { ok: false; error: string };
@@ -160,8 +158,16 @@ export interface ProtocolMap {
   testDirectEndpoint(req: DirectEndpointRequest): { ok: true; latencyMs: number } | { ok: false; error: string };
   listModels(req: { refresh?: boolean }): { models: ModelInfo[]; fetchedAt: number } | { error: ReasonCode };
   exportData(): ShooExport;
-  importData(req: { file: unknown; mode: 'merge' | 'replace'; dryRun: boolean }): { preview: ImportPreview } | { error: 'invalidInput'; detail: string };
+  /** `file` is the export file as store/import.ts parseImportFile accepted it, in the options page. */
+  importData(req: { file: ParsedImport; mode: 'merge' | 'replace'; dryRun: boolean }): { preview: ImportPreview } | { error: 'invalidInput'; detail: string };
+  /** Deletes what Shoo saw and did (Activity, Verdict cache, counts, Escalation, Subscribed channels), keeping Rules, Exceptions and settings. */
+  clearHistory(): void;
   resetAll(): void;
 }
 
-export const { sendMessage, onMessage } = defineExtensionMessaging<ProtocolMap>();
+export type Data<K extends keyof ProtocolMap> = Parameters<ProtocolMap[K]>[0];
+export type Reply<K extends keyof ProtocolMap> = ReturnType<ProtocolMap[K]>;
+
+/** Sends a message to the background. Messages without a payload take no `data`. */
+export const sendMessage = <K extends keyof ProtocolMap>(type: K, ...data: Data<K> extends undefined ? [data?: undefined] : [data: Data<K>]) =>
+  sendWire(type, data[0]) as Promise<Reply<K>>;

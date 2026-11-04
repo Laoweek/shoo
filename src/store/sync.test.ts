@@ -17,7 +17,7 @@ import {
   toCompactRule,
   tombstone,
 } from './sync';
-import { makeException, makeRule, rng } from './testing/fixtures';
+import { checked, makeException, makeRule, rng } from './testing/fixtures';
 import { createMemoryArea, syncQuota, type QuotaArea } from './testing/quota-storage';
 import { createWriter } from './writer';
 
@@ -142,7 +142,7 @@ describe('sync budget (quota-enforcing fake around fakeBrowser storage.sync)', (
     const rand = rng(2);
     const rules = Array.from({ length: 150 }, (_, i) => makeRule(rand, i + 1, 200));
     const exceptions = Array.from({ length: 2150 }, (_, i) => makeException(rand, T0 + i, rules.map((r) => r.id)));
-    const res = await writer.importData(exportFile(rules, exceptions), 'merge', false);
+    const res = await writer.importData(checked(exportFile(rules, exceptions)), 'merge', false);
     expect(res).toEqual({ preview: { add: 150, update: 0, renumber: 0, invalid: [] } });
     await writer.flush();
 
@@ -187,7 +187,7 @@ describe('sync budget (quota-enforcing fake around fakeBrowser storage.sync)', (
 
     const sync = syncQuota(fakeBrowser.storage.sync as unknown as AreaLike);
     const writer = createWriter({ areas: fakeAreas(sync), now: () => T0 + 1e6 });
-    await writer.importData(exportFile(rules, []), 'merge', false);
+    await writer.importData(checked(exportFile(rules, [])), 'merge', false);
     await writer.flush();
     const stored = await sync.get(null);
     expect(Object.keys(stored).filter((k) => k.startsWith('rules:b')).sort()).toEqual(Object.keys(buckets).sort());

@@ -2,14 +2,29 @@
 // Section 7 (paste a key, OAuth PKCE, Disconnect, model picker), docs/spec/requirements.md §12 and §14.
 // Never log keys, Authorization headers, OAuth codes or verifiers, or error bodies.
 import { directProvider } from '~/core/providers';
+import { hasConsent } from '~/core/runtime';
 import type { DirectEndpoint } from '~/core/types';
 import { testEndpoint } from '~/engine/chat';
 import { testDirect } from '~/engine/decisions';
 import { checkKey } from '~/engine/key';
 import { defaultSleep } from '~/engine/net';
+import type { ModelsCache } from '~/engine/models';
 import { connectOpenRouter, exchangeHeadlessCode, KEY_LABEL, startHeadless } from '~/engine/oauth';
-import { clearOpenRouterKey, getCustomKey, getDirectKey, getOpenRouterKey, setCustomKey, setDirectKey, setOpenRouterKey } from '~/store/secret';
-import { isBool, isHttpUrl, isNonEmpty, isNum, isRecord, isShortStr, isStr, optional } from '../guards';
+import { getOne } from '~/store/areas';
+import { MODELS_KEY } from '~/store/local';
+import { CONSENT_VERSION } from '~/store/schema';
+import {
+  clearCustomKey,
+  clearDirectKey,
+  clearOpenRouterKey,
+  getCustomKey,
+  getDirectKey,
+  getOpenRouterKey,
+  setCustomKey,
+  setDirectKey,
+  setOpenRouterKey,
+} from '~/store/secret';
+import { isBool, isEndpointUrl, isHttpUrl, isLocalHost, isNonEmpty, isNum, isRecord, isShortStr, isStr, optional } from '../guards';
 import type { Routes } from '../router';
 import type { RuntimeRecord } from '../runtime-state';
 import type { Services } from '../services';
@@ -18,7 +33,7 @@ import { applySettings } from './settings';
 const KEY_MAX = 500;
 const isKey = (v: unknown): v is string => isNonEmpty(v) && v.length <= KEY_MAX;
 const isEndpoint = (v: unknown) =>
-  isRecord(v) && isHttpUrl(v.baseUrl) && isNonEmpty(v.model) && isShortStr(v.model) && optional(v.key, (k): k is string => isStr(k) && k.length <= KEY_MAX);
+  isRecord(v) && isEndpointUrl(v.baseUrl) && isNonEmpty(v.model) && isShortStr(v.model) && optional(v.key, (k): k is string => isStr(k) && k.length <= KEY_MAX);
 
 /**
  * A direct endpoint (decision-engine.md §12): a known provider, and an address on that provider's own
@@ -29,7 +44,7 @@ const isDirect = (v: unknown): v is DirectEndpoint & { key?: string } => {
   const p = directProvider(v.provider as string);
   if (!p || !isNonEmpty(v.model)) return false;
   const url = new URL(v.baseUrl);
-  return p.local ? url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1') : url.origin === new URL(p.baseUrl).origin;
+  return p.local ? url.protocol === 'http:' && isLocalHost(url) : url.origin === new URL(p.baseUrl).origin;
 };
 
 const originOf = (url: string): string | undefined => {
@@ -51,6 +66,8 @@ export function connectionRoutes(
   | 'exchangeHeadlessCode'
   | 'disconnect'
   | 'getKeyUsage'
+  | 'getStoredKeys'
+  | 'forgetKey'
   | 'setCustomEndpoint'
   | 'testCustomEndpoint'
   | 'setDirectEndpoint'
@@ -67,11 +84,21 @@ export function connectionRoutes(
     await state.refresh();
   }
 
-  /** OAuth step 6: store with label 'Shoo' and the connect date, then confirm with GET /api/v1/key. */
+  /**
+   * Whether Shoo may send anything to OpenRouter on its own: OpenRouter is the Decision provider in use, consent
+   * names it at the current version and, on Firefox, the data collection permission is still granted. Without
+   * consent the privacy policy promises nothing goes to OpenRouter, so the key is neither checked nor used.
+   */
+  async function openRouterAllowed(): Promise<boolean> {
+    const settings = await s.writer.getSettings();
+    return settings.engine === 'openrouter' && hasConsent(settings, CONSENT_VERSION) && platform.dataCollection().catch(() => false);
+  }
+
+  /** OAuth step 6: store with label 'Shoo' and the connect date, then confirm with GET /api/v1/key once consent allows it. */
   async function storeOAuthKey(key: string): Promise<boolean> {
     await setOpenRouterKey({ key, source: 'oauth', label: KEY_LABEL, connectedAt: s.now() }, local);
-    const check = await checkKey(platform.fetch, key);
-    if (!check.ok && check.error === 'keyRejected') {
+    const check = (await openRouterAllowed()) ? await checkKey(platform.fetch, key) : undefined;
+    if (check && !check.ok && check.error === 'keyRejected') {
       await clearOpenRouterKey(local);
       await keyChanged();
       return false;
@@ -80,25 +107,21 @@ export function connectionRoutes(
     return true;
   }
 
+  /** What testCustomEndpoint and testDirectEndpoint call the endpoint with. */
+  const testDeps = { fetch: platform.fetch, sleep: platform.sleep ?? defaultSleep, now: s.now };
+
   const snapshotForPage = async () => state.snapshot(await state.activeTabId());
 
   /**
-   * The key for a custom endpoint request. Left out, the stored key is reused only when the saved endpoint
-   * has the same origin, so a stored key never reaches another host. Otherwise the endpoint gets no key.
+   * The key for a custom or direct endpoint request. Left out, the stored key is reused only when that saved
+   * endpoint has the same origin, so a stored key never reaches another host. Otherwise the endpoint gets no key.
    */
-  async function endpointKey(baseUrl: string, key: string | undefined): Promise<string> {
+  async function requestKey(endpoint: 'custom' | 'direct', baseUrl: string, key: string | undefined): Promise<string> {
     if (key !== undefined) return key.trim();
-    const saved = (await s.writer.getSettings()).customEndpoint;
+    const settings = await s.writer.getSettings();
+    const saved = endpoint === 'custom' ? settings.customEndpoint : settings.direct;
     if (!saved || originOf(saved.baseUrl) !== originOf(baseUrl)) return '';
-    return (await getCustomKey(local))?.key ?? '';
-  }
-
-  /** The same rule for a direct endpoint's key: reused only for the saved direct endpoint's origin. */
-  async function directKey(baseUrl: string, key: string | undefined): Promise<string> {
-    if (key !== undefined) return key.trim();
-    const saved = (await s.writer.getSettings()).direct;
-    if (!saved || originOf(saved.baseUrl) !== originOf(baseUrl)) return '';
-    return (await getDirectKey(local))?.key ?? '';
+    return (await (endpoint === 'custom' ? getCustomKey : getDirectKey)(local))?.key ?? '';
   }
 
   const directOf = (r: DirectEndpoint): DirectEndpoint => ({ provider: r.provider, baseUrl: r.baseUrl.trim(), model: r.model.trim() });
@@ -128,6 +151,12 @@ export function connectionRoutes(
       invalid: { ok: false, error: 'keyRejected' },
       async run({ key }) {
         const trimmed = key.trim();
+        // Before consent the key is stored unchecked. getKeyUsage checks it once consent allows it.
+        if (!(await openRouterAllowed())) {
+          await setOpenRouterKey({ key: trimmed, source: 'pasted', connectedAt: s.now() }, local);
+          await keyChanged();
+          return { ok: true };
+        }
         const check = await checkKey(platform.fetch, trimmed);
         // A 5xx from /api/v1/key is not a verdict on the key: report it like a network problem.
         if (!check.ok) return { ok: false, error: check.error === 'keyRejected' ? 'keyRejected' : 'offline' };
@@ -178,6 +207,7 @@ export function connectionRoutes(
       async run() {
         const stored = await getOpenRouterKey(local);
         if (!stored) return { error: 'noKey' };
+        if (!(await openRouterAllowed())) return { ...(stored.label && { label: stored.label }), source: stored.source, connectedAt: stored.connectedAt };
         const check = await s.keyUsage.get(stored.key);
         if (!check.ok) {
           if (check.error === 'keyRejected') {
@@ -186,8 +216,9 @@ export function connectionRoutes(
           }
           return { error: check.error };
         }
+        const record = (await s.writer.getRuntime()) as RuntimeRecord;
         // A 200 proves the key works: lift a rejected-key state (a 403 can also come from the Decisions API).
-        if (((await s.writer.getRuntime()) as RuntimeRecord).keyRejected !== undefined) {
+        if (record.keyRejected !== undefined) {
           await state.clearFlags('keyRejected');
           await state.refresh();
         }
@@ -200,7 +231,27 @@ export function connectionRoutes(
           ...(check.info.usageDaily !== undefined && { usageDaily: check.info.usageDaily }),
           limit: check.info.limit,
           limitRemaining: check.info.limitRemaining,
+          ...(record.fallbackModel && { fallbackModel: record.fallbackModel }),
         };
+      },
+    },
+
+    getStoredKeys: {
+      from: 'page',
+      valid: () => true,
+      async run() {
+        const [direct, custom] = await Promise.all([getDirectKey(local), getCustomKey(local)]);
+        return { direct: !!direct?.key, custom: !!custom?.key };
+      },
+    },
+
+    /** Forgets a Decision provider's or the custom endpoint's key on this device. Its endpoint stays saved, without a key. */
+    forgetKey: {
+      from: 'page',
+      valid: (v) => isRecord(v) && (v.endpoint === 'direct' || v.endpoint === 'custom'),
+      async run({ endpoint }) {
+        await (endpoint === 'direct' ? clearDirectKey(local) : clearCustomKey(local));
+        await state.refresh();
       },
     },
 
@@ -213,7 +264,7 @@ export function connectionRoutes(
       valid: isEndpoint,
       invalid: { ok: false, error: 'invalidInput' },
       async run({ baseUrl, model, key }) {
-        await setCustomKey({ key: await endpointKey(baseUrl, key) }, local);
+        await setCustomKey({ key: await requestKey('custom', baseUrl, key) }, local);
         s.keyUsage.clear();
         // A new endpoint and key: a rejected-key or credits state from the previous engine no longer applies.
         await state.clearFlags('keyRejected', 'creditsExhausted');
@@ -226,12 +277,15 @@ export function connectionRoutes(
       from: 'page',
       valid: isEndpoint,
       invalid: { ok: false, error: 'invalidInput' },
+      // Only an endpoint on this computer is checked, before consent: a call online spends the user's credit.
       // Trimmed like setCustomEndpoint saves them, so the test checks what will be stored.
       run: async (req) =>
-        testEndpoint(
-          { fetch: platform.fetch, sleep: platform.sleep ?? defaultSleep, now: s.now },
-          { baseUrl: req.baseUrl.trim(), model: req.model.trim(), key: await endpointKey(req.baseUrl, req.key) },
-        ),
+        isLocalHost(new URL(req.baseUrl))
+          ? testEndpoint(
+              testDeps,
+              { baseUrl: req.baseUrl.trim(), model: req.model.trim(), key: await requestKey('custom', req.baseUrl, req.key) },
+            )
+          : { ok: false, error: 'invalidInput' },
     },
 
     /**
@@ -243,7 +297,7 @@ export function connectionRoutes(
       valid: isDirect,
       invalid: { ok: false, error: 'invalidInput' },
       async run(req) {
-        const key = await directKey(req.baseUrl, req.key);
+        const key = await requestKey('direct', req.baseUrl, req.key);
         // A provider online needs its key: saved without one, every request would come back 401.
         if (!key && !directProvider(req.provider)!.local) return { ok: false, error: 'noKey' };
         await setDirectKey({ key }, local);
@@ -261,7 +315,7 @@ export function connectionRoutes(
       // Only a model on this computer is checked before consent: a call online spends the user's credit.
       run: async (req) =>
         directProvider(req.provider)!.local
-          ? testDirect({ fetch: platform.fetch, sleep: platform.sleep ?? defaultSleep, now: s.now }, directOf(req), await directKey(req.baseUrl, req.key))
+          ? testDirect(testDeps, directOf(req), await requestKey('direct', req.baseUrl, req.key))
           : { ok: false, error: 'invalidInput' },
     },
 
@@ -269,7 +323,11 @@ export function connectionRoutes(
       from: 'page',
       valid: (v) => v === undefined || (isRecord(v) && optional(v.refresh, isBool)),
       invalid: { error: 'invalidInput' },
-      run: (req) => s.catalog.list(req?.refresh ? { refresh: true } : {}),
+      // GET /api/v1/models goes to OpenRouter too, so before consent only the stored list is served.
+      run: async (req) => {
+        if (await openRouterAllowed()) return s.catalog.list(req?.refresh ? { refresh: true } : {});
+        return (await getOne<ModelsCache>(local, MODELS_KEY)) ?? { error: 'noConsent' };
+      },
     },
   };
 }

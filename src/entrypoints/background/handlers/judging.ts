@@ -3,13 +3,13 @@
 // Source of truth: docs/spec/architecture.md Sections 5 (pipeline, Counting), 6 and 7,
 // docs/spec/decision-engine.md Sections 7.5 and 8.3.
 import { channelKey } from '~/core/channel';
-import { dayKey, emptyEscalation, escalationKey, recordJudged } from '~/core/escalation';
+import { dayKey, escalationKey } from '~/core/escalation';
 import { SURFACE_SITE } from '~/core/sites';
 import { newId } from '~/core/ids';
-import type { ActivityEvent, ReasonCode, Rule, TileFacts, TileResult } from '~/core/types';
+import type { ActivityEvent, ReasonCode, Rule, Settings, TileFacts, TileResult } from '~/core/types';
 import type { RuleDisplay } from '~/messaging/protocol';
 import { TRY_TITLE_MAX_CHARS } from '~/engine/judge';
-import { ACTIVITY_TITLE_MAX, queryActivity } from '~/store/local';
+import { ACTIVITY_TITLE_MAX, queryActivity, type JudgedTile } from '~/store/local';
 import { isBool, isNonEmpty, isNum, isRecord, isShortStr, isSite, isStr, isTileList, isWouldRemoveList, isWouldRemoveTiles, optional } from '../guards';
 import { InvalidInput, type Routes, type Sender } from '../router';
 import type { Services } from '../services';
@@ -19,6 +19,14 @@ const HIT_MEMO_MAX = 5000;
 export const KEPT_BY_RULE_DAY_MAX = 100;
 /** Try a title: longer input is invalidInput, so a page bug cannot send an arbitrarily long, paid title. */
 const TRY_CHANNEL_MAX_CHARS = 120;
+/** Ids content sends (batch, Rule, selector version) are UUIDs or short names. Longer ones are invalidInput. */
+const ID_MAX_CHARS = 64;
+export const isShortId = (v: unknown): v is string => isStr(v) && v.length <= ID_MAX_CHARS;
+
+// The bookkeeping each judgeTiles reply leaves running, per background.
+const bookkeeping = new WeakMap<Services, Promise<void>>();
+/** Settles once the bookkeeping of every judgeTiles reply so far has finished. */
+export const judgingSettled = (s: Services): Promise<void> => bookkeeping.get(s) ?? Promise.resolve();
 
 export const truncateTitle = (t: string | undefined): string | undefined => (t === undefined ? undefined : t.slice(0, ACTIVITY_TITLE_MAX));
 
@@ -61,34 +69,26 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
     return keptByRule.seen;
   };
 
-  async function countJudged(results: TileResult[], items: TileFacts[], sender: Sender): Promise<void> {
+  /**
+   * Escalation counts, Rule hits and Rescues of one batch. The writes are queued before the first await, so they
+   * keep their order with the batch's later reports even though the reply does not wait for them.
+   */
+  async function countJudged(results: TileResult[], items: TileFacts[], sender: Sender, settings: Settings): Promise<void> {
     if (sender.incognito) return;
     const day = writer.today();
     const facts = new Map(items.map((t) => [t.videoId, t]));
     const decided = results.filter((r) => r.status === 'decided');
+    const writes: Promise<void>[] = [];
 
-    // Escalation: each (channelKey, videoId) once per day when the pipeline decided the Tile.
-    const judged = decided.map((r) => facts.get(r.videoId)).filter((t): t is TileFacts => !!t?.channelName?.trim());
-    if (judged.length > 0) {
-      await writer.updateEscalation((all) => {
-        const next = { ...all };
-        for (const t of judged) {
-          const site = SURFACE_SITE[t.surface];
-          const key = escalationKey(channelKey(t.channelName!), site);
-          let rec = recordJudged(next[key] ?? emptyEscalation(), t.videoId, day);
-          if (!rec.name || !rec.site || (t.channelHandle && !rec.handle) || (t.channelId && !rec.id)) {
-            rec = {
-              ...rec,
-              name: rec.name ?? t.channelName!,
-              site,
-              ...(t.channelHandle && !rec.handle && { handle: t.channelHandle }),
-              ...(t.channelId && !rec.id && { id: t.channelId }),
-            };
-          }
-          next[key] = rec;
-        }
-        return next;
-      });
+    // Escalation: each (channelKey, videoId) once per day when the pipeline decided the Tile. Nothing while Off.
+    if (settings.escalationMode !== 'off') {
+      const judged: JudgedTile[] = [];
+      for (const r of decided) {
+        const t = facts.get(r.videoId);
+        if (!t?.channelName?.trim()) continue;
+        judged.push({ key: escalationKey(channelKey(t.channelName), SURFACE_SITE[t.surface]), videoId: t.videoId });
+      }
+      if (judged.length > 0) writes.push(writer.recordEscalationJudged(day, judged));
     }
 
     // ruleStats: remove Rule hits, and Keep rule hits for Rescues only (a keep that beat a removal, REQ-RULE-6).
@@ -103,7 +103,8 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
       hitMemo.add(memo);
       hits.push({ ruleId: id, at });
     }
-    if (hits.length > 0) await writer.recordRuleHits(hits);
+    if (hits.length > 0) writes.push(writer.recordRuleHits(hits));
+    await Promise.all(writes);
 
     // Activity: Rescues, Tiles a Keep rule (exact or Topic) kept from a removal. Recorded as seen, so they never light up like Removals.
     const keeps = decided.filter((r) => r.verdict?.outcome === 'keep' && r.verdict.source === 'keepRule' && r.verdict.ruleId && r.verdict.rescuedFrom);
@@ -184,13 +185,17 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
             end();
           }
         }
-        try {
-          await countJudged(results, items, sender);
-        } catch {
-          s.platform.log?.('countJudgedFailed');
-        }
+        // The reply waits for none of the bookkeeping, only for a fresh snapshot (a breaker may have tripped).
+        const done = countJudged(results, items, sender, base.settings)
+          .catch(() => s.platform.log?.('countJudgedFailed'))
+          .then(() => state.refresh(sender.tabId))
+          .then(
+            () => undefined,
+            () => s.platform.log?.('refreshFailed'),
+          );
+        bookkeeping.set(s, Promise.all([judgingSettled(s), done]).then(() => undefined));
         const rules = await writer.getRules();
-        const runtime = await state.refresh(sender.tabId);
+        const runtime = await state.snapshot(sender.tabId);
         return {
           results,
           rulesVersion,
@@ -211,7 +216,7 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
         isNonEmpty(v.title) &&
         v.title.length <= TRY_TITLE_MAX_CHARS &&
         optional(v.channelName, (c) => isStr(c) && c.length <= TRY_CHANNEL_MAX_CHARS) &&
-        optional(v.durationSec, isNum) &&
+        optional(v.durationSec, (d) => isNum(d) && d >= 0) &&
         optional(v.thumbnailUrl, isShortStr) &&
         optional(v.site, isSite),
       invalid: { error: 'invalidInput' },
@@ -228,7 +233,12 @@ export function judgingRoutes(s: Services): Pick<Routes, 'getRuntimeState' | 'ju
     recordWouldRemove: {
       from: 'content',
       // Larger than a batch: a Review → Dry-run switch reports every flagged Tile on the page at once.
-      valid: (v) => isRecord(v) && isWouldRemoveList(v.results) && isStr(v.batchId) && optional(v.tiles, isWouldRemoveTiles),
+      valid: (v) =>
+        isRecord(v) &&
+        isWouldRemoveList(v.results) &&
+        v.results.every((r) => optional(r.verdict?.ruleId, isShortId)) &&
+        isShortId(v.batchId) &&
+        optional(v.tiles, isWouldRemoveTiles),
       async run({ results, batchId, tiles }, sender) {
         const facts = new Map((tiles ?? []).map((t) => [t.videoId, t]));
         const at = s.now();

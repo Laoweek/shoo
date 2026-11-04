@@ -74,7 +74,8 @@ export function createBackground(platform: Platform) {
     },
 
     /**
-     * A closed tab: its Removals can no longer be undone, its private Exceptions and review count go.
+     * A closed tab: its Removals can no longer be undone, its private Exceptions, in-memory Verdicts and review
+     * count go.
      * Exclusive with recordRemovalTab and forgetRemovalTab, which read-modify-write the same session key.
      * Running it twice for one tab is harmless.
      */
@@ -84,6 +85,7 @@ export function createBackground(platform: Platform) {
         await forgetRemovalTabsOf(session, tabId);
         await clearPrivateTab(session, tabId);
       });
+      s.judge.forgetTab(tabId);
       await s.state.forgetTab(tabId);
     },
 

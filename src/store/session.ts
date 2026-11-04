@@ -64,6 +64,11 @@ export async function forgetRemovalTab(session: AreaLike, videoId: string): Prom
   await session.set({ [REMOVAL_TABS_KEY]: tabs });
 }
 
+/** Forgets every Removal's tab (Clear history). */
+export async function clearRemovalTabs(session: AreaLike): Promise<void> {
+  await session.remove(REMOVAL_TABS_KEY);
+}
+
 /** Drops every Removal of a closed tab. */
 export async function forgetRemovalTabsOf(session: AreaLike, tabId: number): Promise<void> {
   const tabs = await getRemovalTabs(session);

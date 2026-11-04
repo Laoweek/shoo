@@ -1,6 +1,6 @@
 // The removed-Tile annotation over the Site's own placeholder (docs/spec/ui-design.md Section 4,
 // "Removed-Tile annotation").
-import { useEffect, useRef } from 'preact/hooks';
+import { Component, createRef } from 'preact';
 import type { ColourCode } from '~/core/types';
 import { t } from '~/i18n';
 import { EyesSvg } from '../eyes/EyesSvg';
@@ -40,38 +40,43 @@ export interface AnnotationProps extends RuleNaming {
  * placeholder (components.css). Names stay whole for screen readers. "Already shooed above" sits on a Tile whose own
  * title still shows, so it has no second line.
  */
-export function RemovedAnnotation(props: AnnotationProps) {
-  const named = { rule: ruleLabel(props) };
-  const title = props.duplicate ? '' : (props.title ?? '').trim();
-  const channelName = props.duplicate ? '' : (props.channelName ?? '').trim();
-  const keep = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (props.focusKeep) keep.current?.focus({ preventScroll: true });
-  }, []);
-  return (
-    <div class={props.duplicate ? 'annot dup' : props.channel ? 'annot chan' : 'annot'}>
-      <span class="sr">{srLabel(props, named, title, channelName)}</span>
-      <EyesSvg state="watching" width={22} />
-      <span class="by" aria-hidden="true">
-        {props.duplicate ? t('annotation.duplicate') : props.channel ? t('annotation.channelShooedBy') : t('annotation.shooedBy')}
-      </span>
-      <RuleTag ruleRef={props.ruleRef} ruleName={props.ruleName} ruleText={props.ruleText} colour={props.colour} hidden />
-      {!props.duplicate && props.onKeep && (
-        <button ref={keep} type="button" class="link" aria-label={t('chip.keepLabel')} onClick={props.onKeep}>
-          {t('common.keep')}
-        </button>
-      )}
-      {!props.duplicate && props.hasChannel && props.onAlwaysKeepChannel && (
-        <button type="button" class="link ch" aria-label={t('common.keepChannel')} title={t('common.keepChannel')} onClick={props.onAlwaysKeepChannel}>
-          <span class="tx">{t('common.keepChannel')}</span>
-          <span class="ib" aria-hidden="true">
-            <UserCheckIcon />
-          </span>
-        </button>
-      )}
-      {(title || channelName) && <VideoLine title={title} channelName={channelName} channelFirst={!!props.channel} />}
-    </div>
-  );
+export class RemovedAnnotation extends Component<AnnotationProps> {
+  private keep = createRef<HTMLButtonElement>();
+
+  override componentDidMount(): void {
+    if (this.props.focusKeep) this.keep.current?.focus({ preventScroll: true });
+  }
+
+  override render() {
+    const props = this.props;
+    const named = { rule: ruleLabel(props) };
+    const title = props.duplicate ? '' : (props.title ?? '').trim();
+    const channelName = props.duplicate ? '' : (props.channelName ?? '').trim();
+    return (
+      <div class={props.duplicate ? 'annot dup' : props.channel ? 'annot chan' : 'annot'}>
+        <span class="sr">{srLabel(props, named, title, channelName)}</span>
+        <EyesSvg state="watching" width={22} />
+        <span class="by" aria-hidden="true">
+          {props.duplicate ? t('annotation.duplicate') : props.channel ? t('annotation.channelShooedBy') : t('annotation.shooedBy')}
+        </span>
+        <RuleTag ruleRef={props.ruleRef} ruleName={props.ruleName} ruleText={props.ruleText} colour={props.colour} hidden />
+        {!props.duplicate && props.onKeep && (
+          <button ref={this.keep} type="button" class="link" aria-label={t('chip.keepLabel')} onClick={props.onKeep}>
+            {t('common.keep')}
+          </button>
+        )}
+        {!props.duplicate && props.hasChannel && props.onAlwaysKeepChannel && (
+          <button type="button" class="link ch" aria-label={t('common.keepChannel')} title={t('common.keepChannel')} onClick={props.onAlwaysKeepChannel}>
+            <span class="tx">{t('common.keepChannel')}</span>
+            <span class="ib" aria-hidden="true">
+              <UserCheckIcon />
+            </span>
+          </button>
+        )}
+        {(title || channelName) && <VideoLine title={title} channelName={channelName} channelFirst={!!props.channel} />}
+      </div>
+    );
+  }
 }
 
 function srLabel(props: AnnotationProps, named: { rule: string }, title: string, channel: string): string {

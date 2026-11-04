@@ -24,7 +24,6 @@ beforeEach(() => {
   tabUrl = 'https://www.youtube.com/';
   replies.getRuntimeState = () => runtime;
   replies.getKeyUsage = () => ({ connectedAt: 1, usage: 0, limit: null, limitRemaining: null, label: 'Shoo' });
-  replies.listEscalations = () => [];
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => [{ url: tabUrl } as Browser.tabs.Tab]);
   hostsGranted = true;
   browser.permissions.contains = (() => Promise.resolve(hostsGranted)) as typeof browser.permissions.contains;
@@ -148,6 +147,19 @@ describe('popup screen states (ui-design.md Section 8)', () => {
     const credits = await popup();
     expect(text(credits)).toContain('api.cloudflare.com says the key is out of credits.');
     expect(text(credits)).not.toContain('OpenRouter');
+  });
+
+  it('with a direct Decision provider whose key was forgotten, names its host and turns quick add off', async () => {
+    fake.settings.engine = 'direct';
+    fake.settings.direct = { provider: 'typesafe', baseUrl: 'https://api.typesafe.ai/v1', model: 'jev-1.13' };
+    fake.settings.consent = { version: CONSENT_VERSION, acceptedAt: 1, customHost: 'api.typesafe.ai' };
+    replies.getKeyUsage = () => ({ error: 'noKey' });
+    runtime = snapshot({ reason: 'noKey', eye: 'paused' });
+    const el = await popup();
+    expect(text(el)).toContain('Shoo has no key for api.typesafe.ai. Add one in Settings, Connection.');
+    expect(text(el)).not.toContain('OpenRouter');
+    expect(hasButton(el, 'Fix in Settings')).toBe(true);
+    expect((el.querySelector('#quick-add') as HTMLInputElement).disabled).toBe(true);
   });
 
   it('off disables the Mode control, migrating disables quick add', async () => {
@@ -297,7 +309,7 @@ describe('popup actions', () => {
 
   it('shows Escalations waiting with Ban and Not now', async () => {
     fake.rules = [{ id: 'r2', ref: 'R2', polarity: 'remove', kind: 'topic', text: 'Crypto', colour: 'c2', enabled: true, origin: 'user', createdAt: 1, updatedAt: 1 }];
-    replies.listEscalations = () => [{ channelKey: 'crypto kingz', channelName: 'Crypto Kingz', removed: 4, judged: 6, ruleId: 'r2' }];
+    fake.escalations = [{ channelKey: 'crypto kingz', channelName: 'Crypto Kingz', removed: 4, judged: 6, ruleId: 'r2' }];
     replies.confirmEscalation = () => ({ ruleId: 'r9' });
     const el = await popup();
     expect(text(el)).toContain('Crypto Kingz');
@@ -320,6 +332,6 @@ describe('popup actions', () => {
   it('sends nothing but reads on open', async () => {
     await popup();
     const names = new Set(sendMessage.mock.calls.map((c) => c[0]));
-    expect([...names].sort()).toEqual(['getKeyUsage', 'getRuntimeState', 'listEscalations']);
+    expect([...names].sort()).toEqual(['getKeyUsage', 'getRuntimeState']);
   });
 });

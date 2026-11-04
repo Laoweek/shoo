@@ -6,6 +6,7 @@ import type { ProtocolMap, RuleDisplay } from '~/messaging/protocol';
 import { youtube } from '~/sites/youtube';
 import { SURFACES, visiblePage } from '~/sites/youtube/surfaces';
 import { FIXTURES, fakeIntersection, loadPage, manualScheduler, microtasks, simulateYouTube, type WireOptions } from '~/sites/youtube/test-harness';
+import { shadowRootOf } from '~/ui/in-page/roots';
 import { createPipeline, type Pipeline } from './pipeline';
 import type { Data, Send } from './send';
 import { createPageUi, type PageUi } from './ui';
@@ -198,8 +199,9 @@ export function setupHome(state: Partial<RuntimeSnapshot> = {}, wire: Partial<Wi
     kinds: (videoId) => tilesOf(videoId).map((el) => ui.kindOf(el)),
     shadowOf(el) {
       const host = ui.hostOf(el);
-      if (!host?.shadowRoot) throw new Error('no Shoo host on this Tile');
-      return host.shadowRoot;
+      const root = host && shadowRootOf(host);
+      if (!root) throw new Error('no Shoo host on this Tile');
+      return root;
     },
     broadcast(over) {
       bg.state = { ...bg.state, ...over };
@@ -210,5 +212,25 @@ export function setupHome(state: Partial<RuntimeSnapshot> = {}, wire: Partial<Wi
   return env;
 }
 
-export const overlayRoot = () => document.querySelector('shoo-summary-host')?.shadowRoot ?? null;
+export function overlayRoot(): ShadowRoot | null {
+  const host = document.querySelector('shoo-summary-host');
+  return host && shadowRootOf(host);
+}
 export const shooHosts = () => document.querySelectorAll('shoo-chip-host, shoo-summary-host, shoo-overlay').length;
+
+const realSetImmediate = setImmediate; // captured before the fake timers replace it
+/** Run `fn` and return the promise rejections nothing handled, instead of failing the test run with them. */
+export async function collectUnhandled(fn: () => Promise<void>): Promise<unknown[]> {
+  const saved = process.listeners('unhandledRejection');
+  const seen: unknown[] = [];
+  process.removeAllListeners('unhandledRejection');
+  process.on('unhandledRejection', (reason) => seen.push(reason));
+  try {
+    await fn();
+    await new Promise<void>((resolve) => realSetImmediate(resolve)); // Node reports unhandled rejections after a turn
+  } finally {
+    process.removeAllListeners('unhandledRejection');
+    for (const listener of saved) process.on('unhandledRejection', listener);
+  }
+  return seen;
+}

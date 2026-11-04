@@ -1,6 +1,7 @@
 // storage.local: settings, Verdict cache, Activity, counters, stats, Escalation, runtime, model list,
 // Subscribed channels, Exception archive. Source of truth: docs/spec/architecture.md Section 8
 // ("storage.local"), docs/spec/decision-engine.md Sections 1.2 (Verdict cache record) and 8.3 (accounting).
+import { channelKey } from '~/core/channel';
 import { dayKey, pruneEscalation, type EscalationRecord } from '~/core/escalation';
 import { fnv1a32 } from '~/core/ids';
 import { siteOfVideo, videoSite } from '~/core/sites';
@@ -8,7 +9,7 @@ import type { FailureState } from '~/core/runtime';
 import type { SubscribedChannels } from '~/core/subscriptions';
 import type { ActivityEvent, ActivityKind, Exception, Settings, SiteId } from '~/core/types';
 import type { TextModelResult, ThumbModelResult } from '~/core/verdict';
-import { getDefined, getOne, isQuotaError, isRecord, itemBytes, type AreaLike } from './areas';
+import { getDefined, getOne, isQuotaError, isRecord, itemBytes, stableJson, type AreaLike } from './areas';
 import { SETTINGS_KEY, withDefaults } from './schema';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -73,88 +74,180 @@ export async function setSettings(local: AreaLike, settings: Settings): Promise<
 }
 
 // ---------------------------------------------------------------------------------------------------
-// Verdict cache (decision-engine.md Section 1.2)
+// Verdict cache (decision-engine.md Section 1.2): 1,024 small buckets by hash, so a batch reads and rewrites a few
+// KB, in a compact layout, each record kept at most 30 days
+
+/** A cached answer with `v`, the answer version it was asked under (answerVersions in core/ids.ts). */
+type Versioned<T> = T & { v?: string };
 
 export interface VerdictCacheRecord {
-  text?: TextModelResult;
-  thumb?: ThumbModelResult;
+  text?: Versioned<TextModelResult>;
+  thumb?: Versioned<ThumbModelResult>;
   rulesVersion: string;
   at: number; // epoch ms of the newest write
 }
 
-export const VERDICT_BUCKET_MAX = 320;
-const verdictKey = (bucket: string) => `verdicts:${bucket}`;
+export const VERDICT_BUCKETS = 1024;
+export const VERDICT_BUCKET_MAX = 20;
+export const verdictKey = (videoId: string) => `vc:${fnv1a32(videoId) % VERDICT_BUCKETS}`;
+const VERDICT_KEYS = Array.from({ length: VERDICT_BUCKETS }, (_, n) => `vc:${n}`);
+/** The 64 buckets of Shoo 0.2.0, deleted when the writer starts. */
+const LEGACY_VERDICT_KEYS = VIDEO_BUCKETS.map((b) => `verdicts:${b}`);
 
-type VerdictBucket = Record<string, VerdictCacheRecord>;
+/**
+ * A bucket as stored: the versions and models its records name, listed once, and each record as
+ * `{ v: version index, a: at, t?: text, h?: thumb }`. A result's fields go under short names, and its model and its
+ * own answer version `v`, when it has one, become indexes into those lists.
+ */
+interface StoredVerdictBucket {
+  v: string[];
+  m: string[];
+  r: Record<string, { v: number; a: number; t?: Record<string, unknown>; h?: Record<string, unknown> }>;
+}
 
-/** Records for these videos whose `rulesVersion` matches. Misses and stale records are left out. */
-export async function getVerdicts(local: AreaLike, videoIds: string[], rulesVersion: string): Promise<Map<string, VerdictCacheRecord>> {
-  const keys = [...new Set(videoIds.map((v) => verdictKey(videoBucket(v))))];
-  const raw = keys.length > 0 ? await getDefined(local, keys) : {};
-  const out = new Map<string, VerdictCacheRecord>();
-  for (const v of videoIds) {
-    const bucket = raw[verdictKey(videoBucket(v))];
-    const rec = isRecord(bucket) ? (bucket[v] as VerdictCacheRecord | undefined) : undefined;
-    if (rec && rec.rulesVersion === rulesVersion) out.set(v, rec);
+type Records = Map<string, VerdictCacheRecord>;
+
+const SHORT: Record<string, string> = { pRemove: 'p', ref: 'r', pKeep: 'k', keepRef: 'kr', keepOnly: 'o', model: 'm' };
+const TEXT_LONG: Record<string, string> = { p: 'pRemove', r: 'ref', k: 'pKeep', kr: 'keepRef', o: 'keepOnly', m: 'model' };
+const THUMB_LONG: Record<string, string> = { r: 'ref', m: 'model' };
+
+/** A result with its fields renamed through `names` (others keep their name), its model and version mapped. */
+function renamed(result: object, names: Record<string, string>, model: (x: never) => unknown, version: (x: never) => unknown): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(result).map(([k, x]) => {
+      const name = names[k] ?? k;
+      return [name, name === 'm' || name === 'model' ? model(x as never) : name === 'v' ? version(x as never) : x];
+    }),
+  );
+}
+
+function decodeBucket(raw: unknown): Records {
+  const out: Records = new Map();
+  if (!isRecord(raw) || !Array.isArray(raw.v) || !Array.isArray(raw.m) || !isRecord(raw.r)) return out;
+  const { v: versions, m: models, r } = raw as unknown as StoredVerdictBucket;
+  const model = (i: number) => models[i];
+  const version = (i: number) => versions[i];
+  for (const [videoId, c] of Object.entries(r)) {
+    const rec: VerdictCacheRecord = { rulesVersion: versions[c.v]!, at: c.a };
+    if (c.t) rec.text = renamed(c.t, TEXT_LONG, model, version) as unknown as Versioned<TextModelResult>;
+    if (c.h) rec.thumb = renamed(c.h, THUMB_LONG, model, version) as unknown as Versioned<ThumbModelResult>;
+    out.set(videoId, rec);
   }
   return out;
 }
 
-export async function getVerdict(local: AreaLike, videoId: string, rulesVersion: string): Promise<VerdictCacheRecord | undefined> {
-  return (await getVerdicts(local, [videoId], rulesVersion)).get(videoId);
+function encodeBucket(records: Records): StoredVerdictBucket {
+  const out: StoredVerdictBucket = { v: [], m: [], r: {} };
+  const indexIn = (list: string[], s: string) => {
+    if (!list.includes(s)) list.push(s);
+    return list.indexOf(s);
+  };
+  const model = (s: string) => indexIn(out.m, s);
+  const version = (s: string) => indexIn(out.v, s);
+  for (const [videoId, { rulesVersion, at, text, thumb }] of records) {
+    const c: StoredVerdictBucket['r'][string] = { v: version(rulesVersion), a: at };
+    if (text) c.t = renamed(text, SHORT, model, version);
+    if (thumb) c.h = renamed(thumb, SHORT, model, version);
+    out.r[videoId] = c;
+  }
+  return out;
+}
+
+/** First epoch ms the Verdict cache keeps: the start of the first day retention keeps. */
+function verdictCutoff(now: number): number {
+  const d = new Date(now);
+  d.setDate(d.getDate() - (RETENTION_DAYS - 1));
+  return d.setHours(0, 0, 0, 0);
+}
+
+/** The newest `max` records written since `cutoff`. */
+function keepNewest(records: Records, max: number, cutoff: number): Records {
+  const fresh = [...records].filter(([, rec]) => rec.at >= cutoff);
+  if (fresh.length > max) fresh.sort(([, a], [, b]) => b.at - a.at).splice(max);
+  return new Map(fresh);
+}
+
+/** Records for these videos whose `rulesVersion` matches and that are not past 30 days. Misses and stale records are left out. */
+export async function getVerdicts(local: AreaLike, videoIds: string[], rulesVersion: string, now: number): Promise<Map<string, VerdictCacheRecord>> {
+  const keys = [...new Set(videoIds.map(verdictKey))];
+  const raw = keys.length > 0 ? await getDefined(local, keys) : {};
+  const buckets = new Map(keys.map((k) => [k, decodeBucket(raw[k])]));
+  const cutoff = verdictCutoff(now);
+  const out = new Map<string, VerdictCacheRecord>();
+  for (const v of videoIds) {
+    const rec = buckets.get(verdictKey(v))!.get(v);
+    if (rec && rec.rulesVersion === rulesVersion && rec.at >= cutoff) out.set(v, rec);
+  }
+  return out;
+}
+
+export async function getVerdict(local: AreaLike, videoId: string, rulesVersion: string, now: number): Promise<VerdictCacheRecord | undefined> {
+  return (await getVerdicts(local, [videoId], rulesVersion, now)).get(videoId);
 }
 
 export interface VerdictPut {
   videoId: string;
   rulesVersion: string;
-  text?: TextModelResult;
-  thumb?: ThumbModelResult;
+  text?: Versioned<TextModelResult>;
+  thumb?: Versioned<ThumbModelResult>;
   at: number;
 }
 
 /**
- * Stores model results. A record with the same `rulesVersion` is merged (text and thumb kept side by
- * side), any other is replaced. Each bucket keeps its 320 newest records by `at`.
+ * Stores model results. A record with the same `rulesVersion` is merged (text and thumb kept side by side), any
+ * other is replaced. Each bucket keeps its 20 newest records by `at`, and none older than 30 days.
  */
 export async function putVerdicts(local: AreaLike, puts: VerdictPut[]): Promise<void> {
   if (puts.length === 0) return;
+  const cutoff = verdictCutoff(Math.max(...puts.map((p) => p.at)));
   await withQuotaRetry(local, async () => {
-    const keys = [...new Set(puts.map((p) => verdictKey(videoBucket(p.videoId))))];
+    const keys = [...new Set(puts.map((p) => verdictKey(p.videoId)))];
     const raw = await getDefined(local, keys);
-    const buckets: Record<string, VerdictBucket> = {};
-    for (const k of keys) buckets[k] = isRecord(raw[k]) ? { ...(raw[k] as VerdictBucket) } : {};
+    const buckets = new Map(keys.map((k) => [k, decodeBucket(raw[k])]));
     for (const p of puts) {
-      const bucket = buckets[verdictKey(videoBucket(p.videoId))]!;
-      const prev = bucket[p.videoId];
+      const bucket = buckets.get(verdictKey(p.videoId))!;
+      const prev = bucket.get(p.videoId);
       const base: Partial<VerdictCacheRecord> = prev && prev.rulesVersion === p.rulesVersion ? prev : {};
       const next: VerdictCacheRecord = { ...base, rulesVersion: p.rulesVersion, at: p.at };
       if (p.text) next.text = p.text;
       if (p.thumb) next.thumb = p.thumb;
-      bucket[p.videoId] = next;
+      bucket.set(p.videoId, next);
     }
-    for (const k of keys) buckets[k] = capBucket(buckets[k]!, VERDICT_BUCKET_MAX);
-    await local.set(buckets);
+    const writes: Record<string, StoredVerdictBucket> = {};
+    for (const [k, records] of buckets) writes[k] = encodeBucket(keepNewest(records, VERDICT_BUCKET_MAX, cutoff));
+    await local.set(writes);
   });
 }
 
-function capBucket(bucket: VerdictBucket, max: number): VerdictBucket {
-  const entries = Object.entries(bucket);
-  if (entries.length <= max) return bucket;
-  entries.sort(([, a], [, b]) => b.at - a.at);
-  return Object.fromEntries(entries.slice(0, max));
+/** Drops the oldest `fraction` of the Verdict cache's records. */
+export async function evictOldestVerdicts(local: AreaLike, fraction: number): Promise<void> {
+  const raw = await getDefined(local, VERDICT_KEYS);
+  const buckets = new Map(Object.entries(raw).map(([k, v]) => [k, decodeBucket(v)]));
+  const all = [...buckets.values()].flatMap((records) => [...records]).sort(([, a], [, b]) => a.at - b.at);
+  const oldest = new Set(all.slice(0, Math.floor(all.length * fraction)).map(([videoId]) => videoId));
+  await writeVerdictBuckets(local, buckets, (records) => new Map([...records].filter(([videoId]) => !oldest.has(videoId))));
 }
 
-/** Drops the oldest `fraction` of records in every Verdict cache bucket. */
-export async function evictOldestVerdicts(local: AreaLike, fraction: number): Promise<void> {
-  const keys = VIDEO_BUCKETS.map(verdictKey);
-  const raw = await getDefined(local, keys);
-  const next: Record<string, VerdictBucket> = {};
-  for (const [k, v] of Object.entries(raw)) {
-    if (!isRecord(v)) continue;
-    const n = Object.keys(v).length;
-    next[k] = capBucket(v as VerdictBucket, Math.floor(n * (1 - fraction)));
+/** Rewrites the buckets `keep` changes, and removes those it empties. */
+async function writeVerdictBuckets(local: AreaLike, buckets: Map<string, Records>, keep: (records: Records) => Records): Promise<void> {
+  const set: Record<string, StoredVerdictBucket> = {};
+  const remove: string[] = [];
+  for (const [k, records] of buckets) {
+    const kept = keep(records);
+    if (kept.size === records.size) continue;
+    if (kept.size === 0) remove.push(k);
+    else set[k] = encodeBucket(kept);
   }
-  if (Object.keys(next).length > 0) await local.set(next);
+  if (Object.keys(set).length > 0) await local.set(set);
+  if (remove.length > 0) await local.remove(remove);
+}
+
+/**
+ * Deletes the Verdict cache of Shoo 0.2.0 (64 `verdicts:<char>` buckets). Its records were asked under one version
+ * for all answers, so none would match the answer versions they are looked up by now, and they could only miss.
+ */
+export async function removeLegacyVerdicts(local: AreaLike): Promise<void> {
+  await local.remove(LEGACY_VERDICT_KEYS);
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -188,7 +281,7 @@ export async function appendActivity(local: AreaLike, events: ActivityEvent[]): 
     const index = await getIndex(local);
     const byDay = new Map<string, ActivityEvent[]>();
     for (const e of events) {
-      const ev = e.title !== undefined && e.title.length > ACTIVITY_TITLE_MAX ? { ...e, title: e.title.slice(0, ACTIVITY_TITLE_MAX) } : e;
+      const ev = capFields(e);
       const day = dayKey(ev.at);
       byDay.set(day, [...(byDay.get(day) ?? []), ev]);
     }
@@ -200,14 +293,20 @@ export async function appendActivity(local: AreaLike, events: ActivityEvent[]): 
       let page = pages > 0 ? ((await getOne<ActivityEvent[]>(local, key)) ?? []) : [];
       let bytes = (index.bytes ?? {})[day] ?? 0;
       bytes -= pages > 0 ? itemBytes(key, page) : 0;
+      let open = itemBytes(key, page);
       for (const ev of list) {
+        // The cap drops older days first, and a day's own events past it are not recorded.
+        const size = itemBytes('', ev) + 1;
+        if (bytes + open + size > ACTIVITY_MAX_BYTES) break;
         if (page.length >= ACTIVITY_PAGE_MAX) {
           writes[activityPageKey(day, n)] = page;
           bytes += itemBytes(activityPageKey(day, n), page);
           n++;
           page = [];
+          open = itemBytes(activityPageKey(day, n), page);
         }
         page = [...page, ev];
+        open += size;
       }
       writes[activityPageKey(day, n)] = page;
       bytes += itemBytes(activityPageKey(day, n), page);
@@ -222,6 +321,17 @@ export async function appendActivity(local: AreaLike, events: ActivityEvent[]): 
     await local.set({ ...writes, [ACTIVITY_INDEX_KEY]: withoutDays(index, drop) });
     if (drop.length > 0) await local.remove(drop.flatMap((d) => pageKeys(d, index.days[d] ?? 0)));
   });
+}
+
+/** An event with its title and channel name cut to 120 characters, and the channel key taken from the cut name. */
+function capFields(e: ActivityEvent): ActivityEvent {
+  const out = { ...e };
+  if (e.title && e.title.length > ACTIVITY_TITLE_MAX) out.title = e.title.slice(0, ACTIVITY_TITLE_MAX);
+  if (e.channelName && e.channelName.length > ACTIVITY_TITLE_MAX) {
+    out.channelName = e.channelName.slice(0, ACTIVITY_TITLE_MAX);
+    if (e.channelKey) out.channelKey = channelKey(out.channelName);
+  }
+  return out;
 }
 
 /** Oldest days to drop so the total stays within 3 MB. The newest day is never dropped. */
@@ -278,26 +388,34 @@ export interface ActivityQuery {
   limit?: number;
 }
 
-/** Matching events, newest first. */
+/**
+ * Matching events, newest first. With a `limit`, days are read newest first and reading stops once a whole day
+ * brings the matches to the limit.
+ */
 export async function queryActivity(local: AreaLike, q: ActivityQuery = {}): Promise<ActivityEvent[]> {
   const index = await getIndex(local);
-  const days = Object.keys(index.days).filter((d) => (!q.fromDay || d >= q.fromDay) && (!q.toDay || d <= q.toDay));
-  const keys = days.flatMap((d) => pageKeys(d, index.days[d] ?? 0));
-  if (keys.length === 0) return [];
-  const raw = await getDefined(local, keys);
+  const days = Object.keys(index.days)
+    .filter((d) => (!q.fromDay || d >= q.fromDay) && (!q.toDay || d <= q.toDay))
+    .sort()
+    .reverse();
   const needle = q.text?.trim().toLocaleLowerCase();
+  const matches = (e: ActivityEvent) =>
+    (!q.kinds || q.kinds.includes(e.kind)) &&
+    (!q.ruleId || e.ruleId === q.ruleId) &&
+    (!q.batchId || e.batchId === q.batchId) &&
+    (!q.videoId || e.videoId === q.videoId) &&
+    (!q.site || siteOfVideo(e) === q.site) &&
+    (!needle || [e.title, e.channelName, e.detail].some((s) => s?.toLocaleLowerCase().includes(needle)));
+  // Without a limit every day is needed, so they are read in one call.
+  const reads = q.limit === undefined ? [days] : days.map((d) => [d]);
   const out: ActivityEvent[] = [];
-  for (const page of Object.values(raw)) {
-    if (!Array.isArray(page)) continue;
-    for (const e of page as ActivityEvent[]) {
-      if (q.kinds && !q.kinds.includes(e.kind)) continue;
-      if (q.ruleId && e.ruleId !== q.ruleId) continue;
-      if (q.batchId && e.batchId !== q.batchId) continue;
-      if (q.videoId && e.videoId !== q.videoId) continue;
-      if (q.site && siteOfVideo(e) !== q.site) continue;
-      if (needle && ![e.title, e.channelName, e.detail].some((s) => s?.toLocaleLowerCase().includes(needle))) continue;
-      out.push(e);
+  for (const group of reads) {
+    const keys = group.flatMap((d) => pageKeys(d, index.days[d] ?? 0));
+    if (keys.length === 0) continue;
+    for (const page of Object.values(await getDefined(local, keys))) {
+      if (Array.isArray(page)) out.push(...(page as ActivityEvent[]).filter(matches));
     }
+    if (q.limit !== undefined && out.length >= q.limit) break;
   }
   out.sort((a, b) => b.at - a.at);
   return q.limit === undefined ? out : out.slice(0, q.limit);
@@ -414,21 +532,151 @@ export function hitsThisWeek(stat: RuleStat | undefined, now: number): number {
 }
 
 // ---------------------------------------------------------------------------------------------------
-// Escalation, runtime, model list
+// Escalation: each channel's state in one key, the videos judged on a day in one key per day, so a batch
+// reads and writes only today's key
 
 export const ESCALATION_KEY = 'escalation';
-export type EscalationStore = Record<string, EscalationRecord>;
+export const escalationDayKey = (day: string) => `escalation:${day}`;
+/** Set once a day's judged videos reached ESCALATION_DAY_MAX_BYTES and a video went uncounted. */
+export const escalationFullKey = (day: string) => `escalation:${day}:full`;
+/** A day's judged videos stop growing past this size, so 30 days stay within about 3 MB whatever the Tiles say. */
+export const ESCALATION_DAY_MAX_BYTES = 100 * 1024;
+/** Size of the channel records. Past it the records whose last Topic removal is oldest go first. */
+export const ESCALATION_RECORDS_MAX_BYTES = 512 * 1024;
 
-export async function getEscalation(local: AreaLike): Promise<EscalationStore> {
-  return (await getOne<EscalationStore>(local, ESCALATION_KEY)) ?? {};
+/** A channel's state without its judged videos, which live in the day keys. */
+export type EscalationMeta = Omit<EscalationRecord, 'judged'>;
+export type EscalationMetaStore = Record<string, EscalationMeta>;
+/** Full records, judged videos of the 30-day window included. */
+export type EscalationStore = Record<string, EscalationRecord>;
+/** Records stored before the day keys also hold their judged videos. */
+type StoredMeta = EscalationMeta & Partial<Pick<EscalationRecord, 'judged'>>;
+
+export async function getEscalationMeta(local: AreaLike): Promise<Record<string, StoredMeta>> {
+  return (await getOne<Record<string, StoredMeta>>(local, ESCALATION_KEY)) ?? {};
 }
 
-export async function updateEscalation(local: AreaLike, fn: (all: EscalationStore) => EscalationStore): Promise<EscalationStore> {
-  return withQuotaRetry(local, async () => {
-    const next = fn(await getEscalation(local));
-    await local.set({ [ESCALATION_KEY]: next });
-    return next;
+/**
+ * Full records with the videos judged in the 30-day window. With `pick`, only the channel records it accepts,
+ * and the day keys are not read when it accepts none. Without it, also channels that have only judged videos.
+ */
+export async function getEscalation(local: AreaLike, now: number, pick?: (key: string, meta: EscalationMeta) => boolean): Promise<EscalationStore> {
+  const out: EscalationStore = {};
+  for (const [key, { judged, ...rec }] of Object.entries(await getEscalationMeta(local))) {
+    if (!pick || pick(key, rec)) out[key] = { ...rec, judged: { ...judged } };
+  }
+  if (pick && Object.keys(out).length === 0) return out;
+  const days = Array.from({ length: RETENTION_DAYS }, (_, i) => {
+    const d = new Date(now);
+    return dayKey(d.setDate(d.getDate() - i));
   });
+  const shards = await getDefined(local, days.map(escalationDayKey));
+  for (const day of days) {
+    for (const [key, ids] of Object.entries((shards[escalationDayKey(day)] ?? {}) as Record<string, string[]>)) {
+      if (pick && !out[key]) continue;
+      const rec = (out[key] ??= { judged: {}, topicRemoved: {} });
+      rec.judged[day] = [...new Set([...(rec.judged[day] ?? []), ...ids])];
+    }
+  }
+  return out;
+}
+
+/** Bytes a value adds inside a JSON object or array, separator included. */
+const jsonBytes = (v: unknown) => itemBytes('', v) + 1;
+
+/** A judged Tile's channel (its Escalation key) and video. */
+export interface JudgedTile {
+  key: string;
+  videoId: string;
+}
+
+/**
+ * Counts each Tile's video once on `day` for its channel, at most ESCALATION_DAY_MAX_BYTES a day. The first video
+ * left out marks the day full (`escalationFullKey`). Reads and writes only that day's keys, and writes nothing
+ * when every video was already counted.
+ */
+export async function recordEscalationJudged(local: AreaLike, day: string, tiles: JudgedTile[]): Promise<void> {
+  if (tiles.length === 0) return;
+  await withQuotaRetry(local, async () => {
+    const shardKey = escalationDayKey(day);
+    const fullKey = escalationFullKey(day);
+    const stored = await local.get([shardKey, fullKey]);
+    const shard = { ...(stored[shardKey] as Record<string, string[]> | undefined) };
+    let bytes = itemBytes(shardKey, shard);
+    let changed = false;
+    let cut = false;
+    for (const { key, videoId } of tiles) {
+      const ids = shard[key];
+      if (ids?.includes(videoId)) continue;
+      const added = ids ? jsonBytes(videoId) : jsonBytes(key) + jsonBytes([videoId]);
+      if (bytes + added > ESCALATION_DAY_MAX_BYTES) {
+        cut = true;
+        continue;
+      }
+      shard[key] = [...(ids ?? []), videoId];
+      bytes += added;
+      changed = true;
+    }
+    const writes: Record<string, unknown> = {};
+    if (changed) writes[shardKey] = shard;
+    if (cut && stored[fullKey] !== true) writes[fullKey] = true;
+    if (Object.keys(writes).length > 0) await local.set(writes);
+  });
+}
+
+/** Whether `day` left judged videos uncounted. Its Topic removals then go uncounted too, so no share rests on a cut count. */
+export async function escalationDayFull(local: AreaLike, day: string): Promise<boolean> {
+  return (await getOne<boolean>(local, escalationFullKey(day))) === true;
+}
+
+/** Drops the records whose last Topic removal is oldest until the store fits, keeping pending suggestions and "Not now". */
+function capMeta(all: EscalationMetaStore): EscalationMetaStore {
+  let bytes = itemBytes(ESCALATION_KEY, all);
+  if (bytes <= ESCALATION_RECORDS_MAX_BYTES) return all;
+  const last = (rec: EscalationMeta) => Object.keys(rec.topicRemoved).sort().pop() ?? '';
+  const out = { ...all };
+  for (const [key, rec] of Object.entries(all).sort(([, a], [, b]) => last(a).localeCompare(last(b)))) {
+    if (bytes <= ESCALATION_RECORDS_MAX_BYTES) break;
+    if (rec.suggestedAt !== undefined || rec.dismissedAt !== undefined) continue;
+    delete out[key];
+    bytes -= jsonBytes(key) + jsonBytes(rec);
+  }
+  return out;
+}
+
+/** Read-modify-write of the channel records. Returning `all` unchanged writes nothing. */
+export async function updateEscalation(local: AreaLike, fn: (all: EscalationMetaStore) => EscalationMetaStore): Promise<EscalationMetaStore> {
+  return withQuotaRetry(local, async () => {
+    const all = await getEscalationMeta(local);
+    const next = fn(all);
+    if (next === all) return all;
+    const capped = capMeta(next);
+    await local.set({ [ESCALATION_KEY]: capped });
+    return capped;
+  });
+}
+
+/** Deletes every Escalation count and record (Escalation turned Off). */
+export async function clearEscalation(local: AreaLike): Promise<void> {
+  await local.remove(Object.keys(await local.get(null)).filter((k) => /^escalation(:|$)/.test(k)));
+}
+
+/**
+ * Moves judged videos stored inside the channel records (before the day keys) into the day keys, merged with
+ * what those hold, then drops them from the records, with any record left with no Topic removal. A run cut short
+ * before the records are rewritten repeats safely.
+ */
+export async function splitEscalationDays(local: AreaLike): Promise<void> {
+  const meta = await getEscalationMeta(local);
+  if (!Object.values(meta).some((rec) => rec.judged)) return;
+  const byDay: Record<string, JudgedTile[]> = {};
+  for (const [key, rec] of Object.entries(meta)) {
+    for (const [day, ids] of Object.entries(rec.judged ?? {})) for (const videoId of ids) (byDay[day] ??= []).push({ key, videoId });
+  }
+  for (const [day, tiles] of Object.entries(byDay)) await recordEscalationJudged(local, day, tiles);
+  const next: EscalationMetaStore = {};
+  for (const [key, { judged: _judged, ...rec }] of Object.entries(meta)) if (Object.keys(rec.topicRemoved).length > 0) next[key] = rec;
+  await withQuotaRetry(local, () => local.set({ [ESCALATION_KEY]: next }));
 }
 
 export const RUNTIME_KEY = 'runtime';
@@ -495,6 +743,12 @@ export const archiveKey = (bucket: string) => `exceptions:archive:${bucket}`;
 const ARCHIVE_KEYS = VIDEO_BUCKETS.map(archiveKey);
 /** The sync `excEpoch` the archive belongs to. An archive from an older epoch was removed by a Reset or replace import. */
 export const ARCHIVE_EPOCH_KEY = 'exceptions:epoch';
+/**
+ * How many Exceptions the archive holds and when the newest was kept, so the Settings index can count them and the
+ * judge can pick recent kept examples without reading the archive. Absent means empty. An archive from before it
+ * gets it when the writer starts.
+ */
+export const ARCHIVE_SUMMARY_KEY = 'exceptions:summary';
 type ArchiveBucket = Record<string, Exception>;
 
 /** Archived Exceptions. Empty when the archive is older than `epoch` (a Reset elsewhere not yet applied here). */
@@ -506,6 +760,38 @@ export async function getArchive(local: AreaLike, epoch = 0): Promise<Exception[
 
 const archiveEpoch = (raw: Record<string, unknown>): number => (typeof raw[ARCHIVE_EPOCH_KEY] === 'number' ? raw[ARCHIVE_EPOCH_KEY] : 0);
 
+/** Archived Exceptions for these videos, reading only the buckets they fall in. Empty like `getArchive` for an older epoch. */
+export async function getArchived(local: AreaLike, videoIds: string[], epoch = 0): Promise<Exception[]> {
+  if (videoIds.length === 0) return [];
+  const keys = [...new Set(videoIds.map((v) => archiveKey(videoBucket(v))))];
+  const raw = await getDefined(local, [...keys, ARCHIVE_EPOCH_KEY]);
+  if (archiveEpoch(raw) < epoch) return [];
+  return videoIds.flatMap((v) => {
+    const bucket = raw[archiveKey(videoBucket(v))];
+    const x = isRecord(bucket) ? (bucket[v] as Exception | undefined) : undefined;
+    return x ? [x] : [];
+  });
+}
+
+export interface ArchiveSummary {
+  count: number;
+  /** The newest archived Exception's `at`, 0 when there is none. */
+  newestAt: number;
+}
+
+const EMPTY_SUMMARY: ArchiveSummary = { count: 0, newestAt: 0 };
+
+/** How many Exceptions the archive holds and the newest one's `at`, without reading them. */
+export async function getArchiveSummary(local: AreaLike, epoch = 0): Promise<ArchiveSummary> {
+  const raw = await getDefined(local, [ARCHIVE_SUMMARY_KEY, ARCHIVE_EPOCH_KEY]);
+  return archiveEpoch(raw) < epoch ? EMPTY_SUMMARY : archiveSummary(raw);
+}
+
+const archiveSummary = (raw: Record<string, unknown>): ArchiveSummary => {
+  const s = raw[ARCHIVE_SUMMARY_KEY];
+  return isRecord(s) && typeof s.count === 'number' && typeof s.newestAt === 'number' ? { count: s.count, newestAt: s.newestAt } : EMPTY_SUMMARY;
+};
+
 /**
  * Adds Exceptions to the archive, removes `removeIds` and every entry not newer than its `removedAt`
  * record, then keeps the 5,000 newest. Writes only the buckets that changed. With an `epoch` above the
@@ -514,7 +800,7 @@ const archiveEpoch = (raw: Record<string, unknown>): number => (typeof raw[ARCHI
 export async function updateArchive(local: AreaLike, add: Exception[], removeIds: string[] = [], removedAt: Record<string, number> = {}, epoch?: number): Promise<void> {
   if (add.length === 0 && removeIds.length === 0 && Object.keys(removedAt).length === 0 && epoch === undefined) return;
   await withQuotaRetry(local, async () => {
-    const raw = await getDefined(local, [...ARCHIVE_KEYS, ARCHIVE_EPOCH_KEY]);
+    const raw = await getDefined(local, [...ARCHIVE_KEYS, ARCHIVE_EPOCH_KEY, ARCHIVE_SUMMARY_KEY]);
     const all = new Map<string, Exception>();
     const stale = epoch !== undefined && archiveEpoch(raw) < epoch;
     if (!stale) {
@@ -539,9 +825,12 @@ export async function updateArchive(local: AreaLike, add: Exception[], removeIds
       const next = buckets[k];
       if (!next) {
         if (k in raw) remove.push(k);
-      } else if (JSON.stringify(next) !== JSON.stringify(raw[k])) set[k] = next;
+      } else if (stableJson(next) !== stableJson(raw[k])) set[k] = next;
     }
     if (stale && kept.length > 0) set[ARCHIVE_EPOCH_KEY] = epoch;
+    const summary: ArchiveSummary = { count: kept.length, newestAt: kept[0]?.at ?? 0 };
+    const stored = archiveSummary(raw);
+    if (stored.count !== summary.count || stored.newestAt !== summary.newestAt) set[ARCHIVE_SUMMARY_KEY] = summary;
     if (Object.keys(set).length > 0) await local.set(set);
     if (remove.length > 0) await local.remove(remove);
   });
@@ -551,8 +840,8 @@ export async function updateArchive(local: AreaLike, add: Exception[], removeIds
 // Retention (alarm `shoo:retention`, daily)
 
 /**
- * Deletes Activity days, counters days, ruleStats days and Escalation days older than 30 days. Rule
- * totals and `lastHitAt` stay. Escalation records with nothing left and no "Not now" are dropped.
+ * Deletes Activity days, counters days, ruleStats days, Verdict cache records and Escalation days older than 30
+ * days. Rule totals and `lastHitAt` stay. Escalation records with nothing left are dropped, "Not now" or not.
  */
 export async function pruneRetention(local: AreaLike, now: number): Promise<void> {
   const start = retentionStart(now);
@@ -572,12 +861,17 @@ export async function pruneRetention(local: AreaLike, now: number): Promise<void
     prunedStats[id] = { ...s, days: Object.fromEntries(Object.entries(s.days).filter(([d]) => d >= start)) };
   }
 
-  const esc = (all[ESCALATION_KEY] as EscalationStore | undefined) ?? {};
-  const prunedEsc: EscalationStore = {};
-  for (const [key, rec] of Object.entries(esc)) {
-    const p = pruneEscalation(rec, now);
-    const empty = Object.keys(p.judged).length === 0 && Object.keys(p.topicRemoved).length === 0;
-    if (!empty || p.dismissedAt !== undefined) prunedEsc[key] = p;
+  const verdictBuckets = new Map(Object.entries(all).flatMap(([k, v]) => (k.startsWith('vc:') ? [[k, decodeBucket(v)] as const] : [])));
+  const cutoff = verdictCutoff(now);
+  await writeVerdictBuckets(local, verdictBuckets, (records) => keepNewest(records, Infinity, cutoff));
+
+  const oldEscalationDays = Object.keys(all).filter((k) => k.startsWith('escalation:') && k.slice('escalation:'.length) < start);
+  if (oldEscalationDays.length > 0) await local.remove(oldEscalationDays);
+  const prunedEsc: Record<string, StoredMeta> = {};
+  for (const [key, rec] of Object.entries((all[ESCALATION_KEY] ?? {}) as Record<string, StoredMeta>)) {
+    const { judged, ...pruned } = pruneEscalation({ judged: {}, ...rec }, now);
+    // A record with no removal left cannot qualify, and its "Not now" holds nothing back: 3 more removals are needed either way.
+    if (Object.keys(pruned.topicRemoved).length > 0 || Object.keys(judged).length > 0) prunedEsc[key] = rec.judged ? { ...pruned, judged } : pruned;
   }
   await local.set({ [RULE_STATS_KEY]: prunedStats, [ESCALATION_KEY]: prunedEsc });
 }

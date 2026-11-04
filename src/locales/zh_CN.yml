@@ -99,6 +99,7 @@ popup:
     breakerSite: "Shoo 已暂停：{site} 的菜单变了。"
     breakerModel: "Shoo 已暂停：OpenRouter 没有响应。"
     # A direct Decision provider or a chat model is active: the copy names its host, not OpenRouter.
+    endpointNoKey: 'Shoo 没有 {host} 的密钥。请到设置的“连接”中添加。'
     endpointRejected: '{host} 拒绝了 Shoo。请到设置的“连接”中检查。'
     breakerEndpoint: "Shoo 已暂停：{host} 没有响应。"
     noCreditsEndpoint: '{host} 表示此密钥的额度已用完。'
@@ -419,6 +420,7 @@ exceptions:
   noMatch: 没有匹配的例外。
   empty: 还没有例外。你保留的视频会显示在这里。
   search: 搜索例外
+  more: 显示更多
   wantedBy: '{rule} 想移除它'
   error:
     load: 无法加载例外。请刷新页面重试。
@@ -496,6 +498,7 @@ connection:
   usage: '已用 {usage}，上限 {limit}'
   noLimit: '已用 {usage}，未设上限'
   usageToday: '今天已用 {usage}'
+  fellBack: '你选的模型无法回答，因此 OpenRouter 改问了 {model}。在你的模型再次回答之前会一直显示此提示。'
   disconnect: 断开连接
   disconnectNote: '在此设备上忘记密钥。请到 OpenRouter 撤销它：'
   reconnectWarning: 重新连接会创建新密钥。请到 openrouter.ai/keys 撤销旧密钥。
@@ -507,6 +510,13 @@ connection:
     label: OpenRouter 密钥
     save: 保存密钥
     invalid: OpenRouter 拒绝了这个密钥。
+  # Forget for the keys of a Decision provider reached directly and of the chat model.
+  keys:
+    title: 此设备上的其他密钥
+    direct: '{provider} 密钥（{host}）'
+    custom: '聊天模型密钥（{host}）'
+    forget: 忘记密钥
+    note: 在此设备上忘记密钥。重新添加密钥之前，Shoo 无法再使用该端点。如需让密钥失效，请到其提供方撤销。
   consent:
     title: Shoo 会发送什么
     give: 同意发送
@@ -598,6 +608,7 @@ connection:
       modelPlaceholder: 模型的 API 标识符
     sendsTo: Shoo 发送到 {host}。
     sendsToLocal: Shoo 发送到本机上的 {host}。
+    ownTerms: '{provider} 自己的条款决定它会保留哪些数据。OpenRouter 排除会用你的数据训练模型的服务商的设置，在这里不适用。'
     images: 能看封面，所以封面规则也能用。
     textOnly: 只看标题。封面规则需要能读图的模型。
     tooManyRules: '{provider} 最多支持 {max} 条主题规则，现在开启了 {count} 条。关闭一些之前，主题规则不会生效。'
@@ -648,7 +659,7 @@ advanced:
     suggest: 建议
     automatic: 自动
     hint:
-      'off': Shoo 从不建议屏蔽频道。
+      'off': Shoo 从不建议屏蔽频道，不按频道计数，并忘掉以往的计数和所有“以后再说”选择。
       suggest: 频道的视频总被移除时，Shoo 会建议屏蔽它。
       automatic: 频道的视频总被移除时，Shoo 会屏蔽它并告诉你。
   dailyCap:
@@ -683,6 +694,14 @@ advanced:
     removes: '替换会先删除你当前的规则（{rules}）和例外（{exceptions}）。'
     syncQuota: 浏览器同步存储放不下这些内容，导入会失败。请先删除一些规则或例外。
     done: 已导入。
+  clearHistory:
+    label: 清除历史记录
+    hint: 删除活动记录、缓存的判定、本周移除和保留的计数、屏蔽频道的建议，以及你订阅的频道列表。你的规则、保留规则、屏蔽频道、例外、设置和密钥都会保留。
+    confirm: 删除 Shoo 在这台电脑上的历史记录？Shoo 已检查过的视频再次出现时会重新检查，这会产生模型调用费用。此操作无法撤销。
+    button: 清除历史记录
+    confirmButton: 删除历史记录
+    done: Shoo 的历史记录已删除。
+    error: 无法清除历史记录，请重试。
   reset:
     label: 重置
     hint: 删除所有规则、保留规则、屏蔽频道、例外、设置、密钥、活动记录和缓存的判定。
@@ -741,9 +760,11 @@ onboarding:
         custom: 你自己的接口
         customWhen: （如果你设置了）
       never:
-        title: 从不发送
+        title: 从不发送给其中任何一方
         urls: 网址
         ids: 视频 ID，包括 Bilibili 的 BV 号
+        channels: 频道 ID 和标识名
+        subscriptions: 你的 YouTube 订阅
         history: 你的观看记录
         cookies: Cookie
         comments: 评论

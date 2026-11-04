@@ -3,9 +3,9 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { harness } from './testing';
 
 const registered: string[] = [];
-vi.mock('~/messaging/protocol', () => ({
-  onMessage: (type: string) => void registered.push(type),
-  sendMessage: vi.fn(),
+vi.mock('~/messaging/wire', () => ({
+  onWire: (type: string) => void registered.push(type),
+  sendWire: vi.fn(),
 }));
 
 describe('background entrypoint', () => {

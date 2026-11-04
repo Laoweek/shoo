@@ -19,16 +19,30 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
   return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) } as DOMRect;
 }
 
-/** A ResizeObserver stand-in (jsdom has none): `FakeRO.last.cb()` fires the latest one. */
+/** A ResizeObserver stand-in (jsdom has none). `resize(el)` delivers what the browser would when `el` changed size. */
 class FakeRO {
+  static all = new Set<FakeRO>();
   static last: FakeRO | null = null;
   targets: Element[] = [];
-  constructor(public cb: () => void) {
+  constructor(public notify: (entries: ReadonlyArray<{ target: Element }>) => void) {
+    FakeRO.all.add(this);
     FakeRO.last = this;
   }
   observe = (el: Element) => void this.targets.push(el);
-  disconnect = vi.fn();
+  unobserve = (el: Element) => void (this.targets = this.targets.filter((t) => t !== el));
+  disconnect = vi.fn(() => void (this.targets = []));
+  /** One notification for every target it observes (the annotation host's own observer). */
+  cb = () => this.notify(this.targets.map((target) => ({ target })));
 }
+
+/** One notification, from each observer that watches them, for these elements. */
+function resize(...els: Element[]): void {
+  for (const ro of FakeRO.all) {
+    const hit = els.filter((el) => ro.targets.includes(el));
+    if (hit.length > 0) ro.notify(hit.map((target) => ({ target })));
+  }
+}
+const observed = (el: Element) => [...FakeRO.all].some((ro) => ro.targets.includes(el));
 
 // Snapshot of every YouTube element's attributes, to prove mounting never touches them.
 function attrs(root: Element): string {
@@ -49,14 +63,15 @@ function placed(surface: SurfaceId, html: string, thumbWidth: number) {
 }
 
 describe('chip host', () => {
-  it('appends one host with an open shadow root to mountParent, over the bottom-left of the thumbnail', () => {
+  it('appends one host with a closed shadow root to mountParent, over the bottom-left of the thumbnail', () => {
     const { tile, parent } = placed('home', FIXTURES.homeTile, 320);
     const before = attrs(tile);
     const h = mountChipHost(youtube, tile, 'home', { forceOverlay: false }) as NonNullable<ReturnType<typeof mountChipHost>>;
     expect(h.host.localName).toBe(CHIP_HOST_TAG);
     expect(parent.lastElementChild).toBe(h.host);
     expect(h.host.closest('a')).toBeNull();
-    expect(h.shadow.mode).toBe('open');
+    expect(h.shadow.mode).toBe('closed');
+    expect(h.host.shadowRoot).toBeNull(); // a page script cannot reach Rule text or Shoo's buttons
     expect(h.host.style.position).toBe('absolute');
     expect(h.host.style.left).toBe('18px'); // 110 - 100 + 8
     expect(h.host.style.top).toBe(`${220 + 180 - 200 - 8}px`); // thumbnail bottom - parent top - 8
@@ -71,7 +86,7 @@ describe('chip host', () => {
   it('is compact below 320 px (Watch sidebar thumbnails of 200 to 310 px) and re-evaluates on resize', () => {
     expect(COMPACT_BELOW_PX).toBe(320);
     const { tile, thumb } = placed('watchSidebar', FIXTURES.watchTile, 260);
-    const fire = () => FakeRO.last?.cb();
+    const fire = () => resize(thumb);
     const onCompactChange = vi.fn();
     const h = mountChipHost(youtube, tile, 'watchSidebar', { forceOverlay: false, ResizeObserver: FakeRO, onCompactChange });
     expect(h?.compact).toBe(true); // 260 px: the full chip would wrap to three rows
@@ -82,7 +97,7 @@ describe('chip host', () => {
     fire();
     expect(h?.compact).toBe(false);
     expect(onCompactChange).toHaveBeenCalledWith(false);
-    expect(FakeRO.last?.targets).toContain(h?.host); // a repaint (kept note, variant flip) re-runs the placement
+    expect(observed(h!.host)).toBe(true); // a repaint (kept note, variant flip) re-runs the placement
   });
 
   it('sizes the host by its content in any containing block, capped clear of the badge zone', () => {
@@ -113,6 +128,58 @@ describe('chip host', () => {
     expect(h.host.hasAttribute('data-measuring')).toBe(false);
   });
 
+  it('places new chips at the first ResizeObserver notification, with every host of the batch measured in one layout', () => {
+    const tiles = [0, 1, 2].map(() => placed('home', FIXTURES.homeTile, 360));
+    let hosts: HTMLElement[] = [];
+    const reads: boolean[] = [];
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      if (this.localName !== CHIP_HOST_TAG) return 0;
+      // Every host is in its measuring state and none is placed yet, so the browser lays the page out once.
+      reads.push(hosts.every((h) => h.hasAttribute('data-measuring') && h.style.maxWidth === ''));
+      return 120;
+    });
+    const handles = tiles.map(({ tile }) => mountChipHost(youtube, tile, 'home', { forceOverlay: false, ResizeObserver: FakeRO })!);
+    hosts = handles.map((h) => h.host);
+    expect(reads).toEqual([]); // nothing to measure before the caller renders into the host
+    resize(...tiles.map((t) => t.thumb), ...hosts);
+    expect(reads).toEqual([true, true, true]);
+    for (const h of hosts) expect(h.style.left).toBe('18px');
+    expect(handles[0]!.thumbWidth()).toBe(360);
+    for (const h of handles) h.destroy();
+  });
+
+  it('on a body resize only moves the overlay chips whose thumbnail moved, without measuring them again', () => {
+    const a = placed('shortsShelf', FIXTURES.shortsTile, 200);
+    const b = placed('shortsShelf', FIXTURES.shortsTile, 200);
+    let reads = 0;
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      if (this.localName === CHIP_HOST_TAG) reads += 1;
+      return 120;
+    });
+    const ha = mountChipHost(youtube, a.tile, 'shortsShelf', { ResizeObserver: FakeRO })!;
+    const hb = mountChipHost(youtube, b.tile, 'shortsShelf', { ResizeObserver: FakeRO })!;
+    expect(observed(document.body)).toBe(true); // content inserted above a Tile moves it without resizing its thumbnail
+    resize(a.thumb, b.thumb, ha.host, hb.host);
+    expect(reads).toBe(2);
+    expect(ha.host.style.top).toBe(`${220 + 112.5 - 8}px`);
+    const bTop = hb.host.style.top;
+
+    vi.spyOn(a.thumb, 'getBoundingClientRect').mockReturnValue(rect(110, 300, 200, 112.5)); // a shelf inserted above
+    resize(document.body);
+    expect(reads).toBe(2);
+    expect(ha.host.style.top).toBe(`${300 + 112.5 - 8}px`);
+    expect(ha.host.style.left).toBe('118px');
+    expect(hb.host.style.top).toBe(bTop);
+
+    vi.spyOn(b.thumb, 'getBoundingClientRect').mockReturnValue(rect(110, 220, 260, 146.25)); // a new size: placed in full
+    resize(document.body);
+    expect(reads).toBe(3);
+    expect(hb.host.style.top).toBe(`${220 + 146.25 - 8}px`);
+    ha.destroy();
+    hb.destroy();
+    expect(observed(document.body)).toBe(false);
+  });
+
   it('mounts Shorts shelf chips in the page-level overlay, above YouTube\'s page-level hover preview', () => {
     const { tile, parent } = placed('shortsShelf', FIXTURES.shortsTile, 275);
     vi.spyOn(window, 'getComputedStyle').mockReturnValue({ position: 'relative' } as CSSStyleDeclaration);
@@ -133,7 +200,7 @@ describe('chip host', () => {
     expect(h.compact).toBe(false);
     expect(h.host.style.visibility).toBe('hidden');
     vi.spyOn(thumb, 'getBoundingClientRect').mockReturnValue(rect(110, 220, 469, 264));
-    FakeRO.last?.cb();
+    resize(thumb);
     expect(h.host.style.visibility).toBe('');
     expect(h.host.style.top).toBe(`${220 + 264 - 200 - 8}px`);
     expect(h.compact).toBe(false);

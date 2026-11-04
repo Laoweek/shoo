@@ -377,7 +377,7 @@ Inside YouTube and Bilibili the same world travels without a bundled font. The R
 
 ## Colors
 
-Warm neutrals, one orange, two pale Verdict pills and ten Rule dots. Every token has a light value and a `-dark` twin: extension pages switch with `prefers-color-scheme` or `data-theme`, and in-page UI switches with the `data-dark` attribute that follows the Site's own theme.
+Warm neutrals, one orange, two pale Verdict pills and ten Rule dots. Every token has a light value and a `-dark` twin: extension pages switch with `prefers-color-scheme` or `data-theme`, and in-page UI switches with the `data-dark` attribute that follows the Site's own theme. The tokens the in-page UI reads live in `src/ui/tokens-shared.css` on `:root, :host`. Those only extension pages use (`ground`, `stroke`, `line`, `lit`, `knob`, the Verdict pill colours and the shadows) live in `src/ui/tokens.css` on `:root`, which imports the shared file, so they never enter a shadow root. The eyes split the same way into `src/ui/eyes-shared.css` and `src/ui/eyes.css`.
 
 ### Primary
 - **Press Orange** (`action`, #e4572f, dark #ff7a50): the only bright colour. It fills primary buttons, Add a Rule, the on switch, checked checkboxes and radios, the current section's dot and the chip's Remove button. It holds at least 3:1 on paper, the ground and tinted rows in both themes (3.7 and 3.3 in light), so the on switch and checked boxes are visible wherever they sit.
@@ -500,6 +500,9 @@ Soft, rounded, and they sink a little when pressed.
 - **Border:** none. Inside a card, groups are split by 1 px `line` rules and radio lists sit under a `line-strong` rule.
 - **Internal Padding:** 20 px (24 px for Try a title from 640 px wide).
 - **Callouts:** `lit` fill, 14 px radius, about 12 by 16 px padding, no shadow, for confirmations, consent and commands to copy.
+- **Confirmed delete:** Advanced ends with two cards built from one component, Clear history then Reset. Each is a sub-heading over a card with a 13 px muted hint and an outline button. Pressing it swaps the button for a `lit` callout with the question in 600 `danger` text, an orange confirm pill and an outline Cancel.
+- **Other keys on this device:** in Connection, under the providers, a `line` rule, a sub-heading and one row per stored key (a direct provider's, the chat model's) with its host and an outline `Forget key`, then a 13 px muted note.
+- **Show more:** a long list (Exceptions, 100 rows at a time) ends with an outline button 16 px below its last row.
 
 ### Inputs / Fields
 - **Style:** paper, 1 px `edge` border, 12 px radius, 16 px text, 36 px tall (42 px in Try a title), muted placeholder.
@@ -513,6 +516,7 @@ Soft, rounded, and they sink a little when pressed.
 ### Navigation
 - **Settings index:** the wordmark on the bare ground, then 40 px pill rows in 15 px 500 ink with each count right-aligned in 13 px muted tabular figures. The current section is a paper pill with the Card shadow, 600 text and a 7 px orange dot, and other rows take the tint on hover. Mode and Filtering strength sit at the foot under a `line-strong` rule. Below 768 px the rows wrap into 36 px pills and the foot hides.
 - **Onboarding progress:** four 6 px bars, ink up to the current step and `line-strong` after it, with 12 px step names under them.
+- **Privacy policy link:** a 600 ink link with a 3 px underline offset and a 14 px Lucide `external-link` icon, at 13 px beside the onboarding step 1 buttons and at the line's size under the consent disclosure in Connection.
 - **Popup footer:** the connection status in muted text on the left, `Activity` and `Settings` on the right, under a `line-strong` rule.
 
 ### Rule number and dot (signature)

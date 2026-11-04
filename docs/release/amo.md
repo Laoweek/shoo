@@ -10,8 +10,8 @@ Listing copy, reviewer notes, data collection declaration, sources and signing s
 | Minimum Firefox | 140.0 (`gecko.strict_min_version`) |
 | Background | event page (`background.scripts`) |
 | Data collection | `required: ["none"]`, `optional: ["websiteContent", "authenticationInfo"]` |
-| Extension zip | `.output/shoo-0.2.0-firefox.zip` from `pnpm zip:firefox` |
-| Sources zip | `.output/shoo-0.2.0-sources.zip`, written by the same command |
+| Extension zip | `shoo-0.2.0-firefox.zip` from the GitHub Release `v0.2.0`, built by CI with `pnpm zip:firefox` |
+| Sources zip | `shoo-0.2.0-sources.zip` from the same Release, written by the same command |
 | `web-ext lint` (10.7.0, 2026-10-10, rerun on the 0.2.0 build before upload) | 0 errors, 0 notices, 2 warnings `UNSAFE_VAR_ASSIGNMENT` (Preact's own innerHTML code path, no page data reaches it) |
 
 ### No `gecko_android`
@@ -53,7 +53,7 @@ The manifest declares nothing required and two optional categories. Firefox show
 | `authenticationInfo` | optional | The user's OpenRouter key, sent only to OpenRouter, the key of a provider the user reaches directly (Cloudflare, TypeSafe or Perplexity), sent only to that provider, and the key of the user's own endpoint if one is set up, sent only to that endpoint. MDN defines the category as "passwords, usernames, personal identification numbers (PINs), security questions, and registration information for extensions that offer account-based services". It does not name API keys. AMO policy counts any data handled outside the add-on as transmission, so declaring it is the conservative choice. The CWS form declares Authentication information too, so both stores match (REQ-PRIV-3) |
 | `browsingActivity` | no | Shoo never sends URLs, video IDs or history |
 
-Runtime checks in the build: the background calls `permissions.contains({ data_collection: ['websiteContent'] })` on every RuntimeState snapshot and listens to `permissions.onRemoved`, so revoking the permission in about:addons stops sending at once.
+Runtime checks in the build: the background calls `permissions.contains({ data_collection: ['websiteContent', 'authenticationInfo'] })` on every RuntimeState snapshot and listens to `permissions.onRemoved`, so revoking either permission in about:addons stops sending at once. Withdraw consent in Settings also removes the data_collection permission (`permissions.remove`).
 
 Review risk: because `required` is `["none"]`, the install prompt says the add-on collects no data. Mozilla's page describes the optional list as "ancillary" collection, and judging Topic rules is Shoo's main feature. A reviewer could ask for `websiteContent` to move to `required`. That would remove the Exact-rules-only path on Firefox (REQ-PRIV-2), so answer with the reviewer notes below first. Implicit consent does not apply, because judging runs in the background, not on a single user command.
 
@@ -62,19 +62,19 @@ Review risk: because `required` is `["none"]`, the install prompt says the add-o
 ```
 What Shoo does: on youtube.com (Home, Watch sidebar, Shorts shelf) it matches recommended videos against rules the user writes and, when one matches, clicks YouTube's own "Not interested" or "Don't recommend channel" menu item. It never hides content.
 
-Bilibili: on from install, like YouTube. The manifest runs the packaged content-scripts/bilibili.js on https://www.bilibili.com/*, and its host permissions include https://www.bilibili.com/* and https://i0.hdslb.com/* (thumbnails for Thumbnail rules). On Bilibili's Home it does the same as on YouTube, through Bilibili's own 内容不感兴趣 and 不想看此UP主 menu items. The user can turn either site off in Settings, Sites.
+Bilibili: on from install, like YouTube. The manifest runs the packaged content-scripts/bilibili.js on Bilibili's Home only (https://www.bilibili.com/ and https://www.bilibili.com/?*), the one page with a supported Surface, and its host permissions include https://www.bilibili.com/*. Its image host https://i0.hdslb.com/*, like YouTube's https://i.ytimg.com/*, is an optional host permission requested when the user turns on a Thumbnail rule. On Bilibili's Home it does the same as on YouTube, through Bilibili's own 内容不感兴趣 and 不想看此UP主 menu items. The user can turn either site off in Settings, Sites.
 
-Data and consent: the data_collection permissions (websiteContent, authenticationInfo) are optional and requested at runtime from the "Agree and continue" button in onboarding (first statement of the click handler) or "Give consent" in Settings. The onboarding screen shows exactly what is sent and to whom before the prompt. Without consent, or after the permission is revoked in about:addons (checked with permissions.contains and permissions.onRemoved), Shoo works with local Exact rules only and sends nothing.
+Data and consent: the data_collection permissions (websiteContent, authenticationInfo) are optional and requested at runtime from the "Agree and continue" button in onboarding (first statement of the click handler) or "Give consent" in Settings. The onboarding screen shows exactly what is sent and to whom before the prompt. Without consent, or after the permission is revoked in about:addons (checked with permissions.contains and permissions.onRemoved), Shoo works with local Exact rules only and sends nothing. Withdraw consent in Settings also removes the data_collection permission.
 
-What is sent after consent: per video the title, channel name, length and which part of YouTube or Bilibili it appeared on, plus the thumbnail only when the user has a Thumbnail rule. Per request the text of the user's Topic and Thumbnail rules and of Keep rules written as a sentence, and the titles and channel names of up to 10 videos the user kept. Destination: OpenRouter (https://openrouter.ai/api/alpha/decisions) with provider.data_collection "deny", routed to Cloudflare by default, TypeSafe or OpenAI on fallback, or the provider of another decision model the user picks in Settings. Instead of OpenRouter the user can choose, in onboarding or Settings, Cloudflare (api.cloudflare.com), TypeSafe (api.typesafe.ai) or Perplexity (api.perplexity.ai) directly with their own key, a Decision model on localhost (Ollama, llama.cpp, LM Studio), or a custom OpenAI-compatible endpoint. Before any user data goes to that host, the screen names it and asks for consent, and that host is requested as an optional host permission (on Firefox without the port, since Firefox match patterns take none). For a model on localhost, Shoo first sends one synthetic title, with no user data, to check that it answers. Never sent to any model host: URLs, video IDs (YouTube's and Bilibili's BV ids), channel IDs (including Bilibili's numeric uid), handles, Bilibili cover paths, the user's subscriptions, cookies, watch history, comments, page HTML or account details. Nothing goes to the developer, there is no analytics.
+What is sent after consent: per video the title, channel name, length and which part of YouTube or Bilibili it appeared on, plus the thumbnail only when the user has a Thumbnail rule. Per request the text of the user's Topic and Thumbnail rules and of Keep rules written as a sentence, and the titles and channel names of up to 10 videos the user kept. Destination: OpenRouter (https://openrouter.ai/api/alpha/decisions) with provider.data_collection "deny", routed to Cloudflare by default, TypeSafe or OpenAI on fallback, or the provider of another decision model the user picks in Settings. Instead of OpenRouter the user can choose, in onboarding or Settings, Cloudflare (api.cloudflare.com), TypeSafe (api.typesafe.ai) or Perplexity (api.perplexity.ai) directly with their own key, a Decision model on localhost (Ollama, llama.cpp, LM Studio), or a custom OpenAI-compatible endpoint. Before any user data goes to that host, the screen names it and asks for consent, and that host is requested as an optional host permission (on Firefox without the port, since Firefox match patterns take none). For a model on localhost, Shoo first sends one synthetic title, with no user data, to check that it answers. Never sent to any model host: URLs, video IDs (YouTube's and Bilibili's BV ids), channel IDs (including Bilibili's numeric uid), handles, Bilibili cover paths, the user's subscriptions, cookies, watch history, comments, page HTML or account details. A remove Rule set to skip Subscribed channels sends those channels' videos in requests of their own without that Rule, so the model host could tell which of the channel names it receives belong to Subscribed channels. Nothing goes to the developer, there is no analytics.
 
 Credentials: every fetch from the background to OpenRouter, a model provider, a custom endpoint, i.ytimg.com or i0.hdslb.com uses credentials: "omit". Settings (Activity and the videos a Rule matched) shows thumbnails from the same two image hosts as ordinary images, without a referrer. There is one request that carries cookies: while the user has a remove Rule set to skip channels they are subscribed to, the background reads https://www.youtube.com/feed/channels with the user's YouTube cookies (credentials: "include", redirects refused, 20 s timeout), about once a day (a failed read, for example when signed out, is retried after 1 hour, then twice as long after each further failure, up to 24 hours), never started for a private-window tab or for Bilibili, to learn which YouTube channels the user is subscribed to (src/engine/subscriptions.ts). It uses the existing youtube.com host permission. The parsed channel list stays in storage.local and is never sent anywhere.
 
-Thumbnails: with a Thumbnail rule, the background downloads the thumbnail from i.ytimg.com (YouTube's image server) or i0.hdslb.com (Bilibili's, with the cover path the page showed) and sends the image bytes, without the video ID or path, to the model.
+Thumbnails: with a Thumbnail rule, the background downloads the thumbnail from i.ytimg.com (YouTube's image server) or i0.hdslb.com (Bilibili's, with the cover path the page showed) without cookies, referrer or HTTP cache, and sends the image bytes alone, without the video ID, path, title or channel, to the model.
 
 Key: the user's own OpenRouter key, pasted or created through OpenRouter's PKCE sign-in via identity.launchWebAuthFlow (callback identity.getRedirectURL("openrouter")). If that flow fails, OpenRouter shows a code the user pastes. The key lives in storage.local and is read only by the background (enforced by an import-boundary lint rule and a bundle test). Connecting requires an OpenRouter account.
 
-Private windows: for incognito sender tabs Shoo writes nothing to storage.local or storage.sync about videos or choices (no Activity, Verdict cache, stats or Exceptions). Videos kept in a private tab are held in memory-only storage.session and removed when that tab closes. Today's private-window counts for the daily spending cap stay in storage.session until the browser exits. The only storage.local writes are connection health state: failure counts (model, menu-action and markup failures) and the key-rejected and credits-used-up flags, with no video information, so a failure seen in a private window still pauses Shoo.
+Private windows: for incognito sender tabs Shoo writes nothing to storage.local or storage.sync about videos or choices (no Activity, Verdict cache, stats or Exceptions). Their model answers are kept in the background's memory only, at most 4,000 records over all private tabs, gone when the background stops. Videos kept in a private tab are held in memory-only storage.session and removed when that tab closes. Today's private-window counts for the daily spending cap stay in storage.session until the browser exits. The only storage.local writes are connection health state: failure counts (model, menu-action and markup failures) and the key-rejected and credits-used-up flags, with no video information, so a failure seen in a private window still pauses Shoo.
 
 No remote code: all scripts are in the package, responses are JSON data, no eval. The two UNSAFE_VAR_ASSIGNMENT lint warnings are inside Preact's runtime.
 
@@ -100,21 +100,30 @@ Assessment: nothing reaches disk except counts with no browsing data, which fits
 
 `pnpm zip:firefox` writes `.output/shoo-0.2.0-sources.zip` with `src/`, `public/`, `scripts/`, `wxt.config.ts`, `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `.nvmrc`, `README-SOURCES.md` and `THIRD_PARTY_NOTICES.md`. It holds no `.env*`, `docs/`, `.impeccable/` or `test/fixtures/` (checked 2026-10-10). Mozilla's default reviewer machine is Ubuntu 24.04 ARM64 with Node 24.14.0 and npm. README-SOURCES.md names Node 24.x and pnpm 11.9.0 via corepack, which covers the difference Mozilla asks builders to state.
 
-Before each upload, rerun the reproducibility check (`cross-browser-and-stores.md` Section 3): unzip the sources zip into an empty directory, `pnpm install --frozen-lockfile && pnpm zip:firefox`, unzip both extension zips and compare the sha256 of every file. A run on macOS on 2026-10-10 matched all 60 files of the rebuilt Firefox package. It has not been run on Ubuntu yet.
+CI checks reproducibility on every push to `main` and every version tag (`cross-browser-and-stores.md` Section 3). The `package` job in `.github/workflows/ci.yml` unzips the sources zip outside the checkout, rebuilds it on Ubuntu with `pnpm install --frozen-lockfile && pnpm zip:firefox`, and fails unless every file of the rebuilt Firefox package matches the shipped one by sha256. A Release exists only when that check passed for its tag, so its sources zip rebuilds its Firefox zip.
 
 ## Signing an unlisted build
 
 Needs the publisher's AMO account. Never put AMO credentials in the repo or `.env.local`.
 
-Before either path: check that the manifest has no `gecko_android` (above), rebuild, run `pnpm check` and `pnpm zip:firefox`, and rerun the reproducibility check.
+Upload only the zips that the `release` job attached to the GitHub Release of the version tag, never a local build. CI built them from the tag after `pnpm check` and the reproducibility check. A local Firefox build from a tree with uncommitted changes carries no marker, because `wxt.config.ts` stamps the commit only into the Chrome build.
+
+Before either path, download the Release into an empty directory outside the repo and check that its manifest has no `gecko_android` (above):
+
+```sh
+mkdir shoo-v0.2.0 && cd shoo-v0.2.0
+gh release download v0.2.0 --repo Laoweek/shoo --pattern 'shoo-0.2.0-*.zip'
+unzip -q shoo-0.2.0-firefox.zip -d firefox
+grep -q gecko_android firefox/manifest.json && echo 'Stop: the manifest declares gecko_android'
+```
 
 ### Option A: Developer Hub (web)
 
 1. Sign in at https://addons.mozilla.org/developers/ and choose Submit a New Add-on.
 2. Choose **On your own** (unlisted, self-distributed).
-3. Upload `.output/shoo-0.2.0-firefox.zip`. Wait for validation (expect the two Preact warnings).
+3. Upload `shoo-0.2.0-firefox.zip` from the Release. Wait for validation (expect the two Preact warnings).
 4. Platforms: Firefox desktop only. If Android is pre-ticked and locked, `gecko_android` is still in the manifest. Stop and remove it.
-5. Answer yes to "Do you need to submit source code?" and upload `.output/shoo-0.2.0-sources.zip`.
+5. Answer yes to "Do you need to submit source code?" and upload `shoo-0.2.0-sources.zip` from the Release.
 6. Paste the reviewer notes above. Submit.
 7. When the version shows as signed, download the `.xpi` and install it in Firefox (drag it onto a window, or about:addons, Install Add-on From File).
 
@@ -122,20 +131,22 @@ Unlisted versions are signed after automated validation and can still get a huma
 
 ### Option B: `web-ext sign`
 
-Create API credentials at https://addons.mozilla.org/developers/addon/api/key/ and keep them in a password manager. Then, from the repo root:
+Create API credentials at https://addons.mozilla.org/developers/addon/api/key/ and keep them in a password manager. web-ext runs with those credentials and installs about 316 packages that no lockfile pins, so the command pins web-ext to an exact version and refuses any package published in the last 7 days (`minimum-release-age` is in minutes). Raise the version on purpose, never to a release younger than a week. Then, in the directory the Release was downloaded to:
 
 ```sh
-pnpm zip:firefox
-export WEB_EXT_API_KEY='<JWT issuer from AMO>'      # do not commit, do not echo
-export WEB_EXT_API_SECRET='<JWT secret from AMO>'
-pnpm dlx web-ext@10 sign \
-  --channel=unlisted \
-  --source-dir=.output/firefox-mv3 \
-  --upload-source-code=.output/shoo-0.2.0-sources.zip \
-  --artifacts-dir=.output/signed
+(
+  read -rs 'WEB_EXT_API_KEY?JWT issuer: ' && echo
+  read -rs 'WEB_EXT_API_SECRET?JWT secret: ' && echo
+  export WEB_EXT_API_KEY WEB_EXT_API_SECRET
+  pnpm dlx --config.minimum-release-age=10080 web-ext@10.8.0 sign \
+    --channel=unlisted \
+    --source-dir=firefox \
+    --upload-source-code=shoo-0.2.0-sources.zip \
+    --artifacts-dir=signed
+)
 ```
 
-`--channel` is required. The command waits up to 15 minutes for signing (`--approval-timeout`) and writes the signed `.xpi` to `.output/signed/`. web-ext 10 needs Node 22 or later. Add the reviewer notes on the version's page in the Developer Hub (passing them through `--amo-metadata` was not checked).
+The prompts keep the credentials out of shell history, and the subshell drops them when signing ends. The `read` lines use zsh syntax, the macOS default shell. In bash, write `read -rsp 'JWT issuer: ' WEB_EXT_API_KEY` instead. `--channel` is required. The command waits up to 15 minutes for signing (`--approval-timeout`) and writes the signed `.xpi` to `signed/`. web-ext 10.8.0 needs Node 20 or later. Add the reviewer notes on the version's page in the Developer Hub (passing them through `--amo-metadata` was not checked).
 
 ## Sources checked (2026-10-10)
 

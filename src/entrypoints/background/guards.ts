@@ -1,12 +1,13 @@
 // Hand-written payload guards for every inbound message (docs/spec/architecture.md Section 13: validate payload
 // shapes in the router). A failed guard runs nothing: the route answers its `invalid` reply, or router.ts rejects
 // the message with InvalidInput.
+import { clip } from '~/core/budget';
 import { BILIBILI_COVER_PATH, SITE_IDS } from '~/core/sites';
-import { SHELF_IDS, SURFACE_IDS, type ActionStep, type Mode, type NativeAction, type Settings, type ShelfId, type SiteId, type SurfaceId, type TileFacts, type TileResult } from '~/core/types';
+import { SHELF_IDS, SURFACE_IDS, type ActionStep, type Mode, type NativeAction, type Settings, type ShelfId, type SiteId, type SurfaceId, type TileFacts, type TileResult, isRecord, TILE_CHANNEL_MAX } from '~/core/types';
 
 export type Guard<T> = (v: unknown) => v is T;
 
-export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+export { isRecord };
 export const isStr = (v: unknown): v is string => typeof v === 'string';
 export const isNonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
 export const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -38,15 +39,18 @@ export const isShortStr = (v: unknown): v is string => isStr(v) && v.length <= M
 export const optionalStr = (v: unknown) => optional(v, isShortStr);
 export const isVideoId = (v: unknown): v is string => isNonEmpty(v) && v.length <= 64;
 
+// Counted in code points, as content cuts a channel name (content/watcher.ts).
+const isChannelField = (v: unknown) => isStr(v) && clip(v, TILE_CHANNEL_MAX) === v;
+
 export function isTileFacts(v: unknown): v is TileFacts {
   return (
     isRecord(v) &&
     isVideoId(v.videoId) &&
     isSurface(v.surface) &&
     isShortStr(v.title) &&
-    optionalStr(v.channelName) &&
-    optionalStr(v.channelHandle) &&
-    optionalStr(v.channelId) &&
+    optional(v.channelName, isChannelField) &&
+    optional(v.channelHandle, isChannelField) &&
+    optional(v.channelId, isChannelField) &&
     optional(v.durationSec, isNum) &&
     optional(v.viewCount, isNum) &&
     isBool(v.isShort) &&
@@ -102,16 +106,16 @@ const PATCH_GUARDS: { [K in keyof Settings]?: (v: unknown) => boolean } = {
   strength: (v) => isRecord(v) && oneOf(['cautious', 'balanced', 'eager', 'custom'] as const)(v.preset) && isNum(v.custom) && v.custom >= 0 && v.custom <= 1,
   engine: oneOf(['openrouter', 'custom'] as const),
   models: (v) => isRecord(v) && isNonEmpty(v.text) && isNonEmpty(v.image) && isShortStr(v.text) && isShortStr(v.image),
-  customEndpoint: (v) => v === undefined || (isRecord(v) && isHttpUrl(v.baseUrl) && isNonEmpty(v.model) && isShortStr(v.model)),
   regexEnabled: isBool,
   shelfDismissal: flags(isShelf),
   onboarding: (v) => isRecord(v) && isNum(v.step) && isBool(v.done),
 };
 
 /**
- * Keeps the known, writable keys of a settings patch. `generation` belongs to the writer and `consent` to
- * giveConsent and withdrawConsent, so both are stripped with unknown keys. Returns undefined when a known
- * key has a value of the wrong shape.
+ * Keeps the known, writable keys of a settings patch. `generation` belongs to the writer, `consent` to
+ * giveConsent and withdrawConsent, and `customEndpoint` and `direct` to setCustomEndpoint and
+ * setDirectEndpoint (which keep a stored key on its own origin), so they are stripped with unknown keys.
+ * Returns undefined when a known key has a value of the wrong shape.
  */
 export function cleanSettingsPatch(v: unknown): Patch | undefined {
   if (!isRecord(v)) return undefined;
@@ -133,4 +137,14 @@ export function isHttpUrl(v: unknown): v is string {
   } catch {
     return false;
   }
+}
+
+/** localhost or 127.0.0.1: an address on this computer. */
+export const isLocalHost = ({ hostname }: URL) => hostname === 'localhost' || hostname === '127.0.0.1';
+
+/** A custom endpoint address, the rule its form applies: https anywhere, http only on this computer. */
+export function isEndpointUrl(v: unknown): v is string {
+  if (!isHttpUrl(v)) return false;
+  const url = new URL(v);
+  return url.protocol === 'https:' || isLocalHost(url);
 }

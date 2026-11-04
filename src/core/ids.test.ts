@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exactVersion, fnv1a32, fnv1a64, keepQuestionId, newId, questionId, rulesVersion, type RulesVersionInputs } from './ids';
+import { answerVersions, exactVersion, fnv1a32, fnv1a64, keepQuestionId, newId, questionId, rulesVersion, type RulesVersionInputs } from './ids';
 import type { Rule } from './types';
 
 const rule = (over: Partial<Rule>): Rule => ({
@@ -51,6 +51,7 @@ describe('rulesVersion', () => {
     models: { text: 'cloudflare/clef-flash', image: 'cloudflare/clef-flash' },
     textFraming: 'choice',
     requestShapeVersion: 1,
+    thumbnailShapeVersion: 1,
     engine: 'openrouter',
   };
   const v = rulesVersion(base);
@@ -69,6 +70,7 @@ describe('rulesVersion', () => {
     ['framing', { textFraming: 'noul' }],
     ['a Topic rule limited to one Site', { rules: [rule({ site: 'bilibili' }), base.rules[1]!] }],
     ['request shape', { requestShapeVersion: 2 }],
+    ['thumbnail shape', { thumbnailShapeVersion: 2 }],
     ['custom engine', { engine: 'custom', customEndpoint: { baseUrl: 'https://llm.example', model: 'm' } }],
   ])('changes with %s', (_, patch) => {
     expect(rulesVersion({ ...base, ...patch })).not.toBe(v);
@@ -85,9 +87,48 @@ describe('rulesVersion', () => {
     expect(rulesVersion({ ...base, ...patch })).toBe(v);
   });
 
+  it("changes a custom endpoint's version with the chat prompt version, and no other engine's", () => {
+    const custom: RulesVersionInputs = { ...base, engine: 'custom', customEndpoint: { baseUrl: 'https://llm.example', model: 'm' }, chatPromptVersion: 1 };
+    expect(rulesVersion({ ...custom, chatPromptVersion: 2 })).not.toBe(rulesVersion(custom));
+    expect(rulesVersion({ ...base, chatPromptVersion: 2 })).toBe(v);
+  });
+
   it('treats identical Rule tuples deterministically', () => {
     const dup = { ...base, rules: [rule({}), rule({ id: 'id-2' })] };
     expect(rulesVersion(dup)).toBe(rulesVersion({ ...dup, rules: [...dup.rules].reverse() }));
+  });
+});
+
+describe('answerVersions', () => {
+  const base: RulesVersionInputs = {
+    rules: [rule({}), rule({ id: 'k', ref: 'K1', polarity: 'keep', text: 'Programming tutorials' }), rule({ id: 't', ref: 'R2', kind: 'thumbnail', text: 'Faces' })],
+    models: { text: 'cloudflare/clef-flash', image: 'cloudflare/clef-flash' },
+    textFraming: 'choice',
+    requestShapeVersion: 1,
+    thumbnailShapeVersion: 1,
+    engine: 'openrouter',
+  };
+  const v = answerVersions(base);
+  const [topic, keep, thumb] = base.rules as [Rule, Rule, Rule];
+
+  it.each<[string, Partial<RulesVersionInputs>, 'text' | 'thumb']>([
+    ['a Topic rule edit', { rules: [{ ...topic, text: 'Other' }, keep, thumb] }, 'text'],
+    ['a Topic Keep rule removed', { rules: [topic, thumb] }, 'text'],
+    ['the text model', { models: { text: 'typesafe/jev-1.13', image: 'cloudflare/clef-flash' } }, 'text'],
+    ['the request shape', { requestShapeVersion: 2 }, 'text'],
+    ['a Thumbnail rule edit', { rules: [topic, keep, { ...thumb, text: 'Arrows' }] }, 'thumb'],
+    ['the image model', { models: { text: 'cloudflare/clef-flash', image: 'x/y' } }, 'thumb'],
+    ['the thumbnail shape', { thumbnailShapeVersion: 2 }, 'thumb'],
+  ])('changes one answer version and keeps the other on %s', (_, patch, part) => {
+    const next = answerVersions({ ...base, ...patch });
+    expect(next[part]).not.toBe(v[part]);
+    expect(next[part === 'text' ? 'thumb' : 'text']).toBe(v[part === 'text' ? 'thumb' : 'text']);
+  });
+
+  it('changes both with the direct endpoint in use', () => {
+    const next = answerVersions({ ...base, engine: 'direct', direct: { provider: 'cloudflare', baseUrl: 'https://x', model: 'm' } });
+    expect(next.text).not.toBe(v.text);
+    expect(next.thumb).not.toBe(v.thumb);
   });
 });
 

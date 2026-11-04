@@ -1,6 +1,9 @@
 // Escalation counting. Source of truth: docs/spec/requirements.md §9, docs/spec/architecture.md
 // Section 5 ("Counting") and Section 8 (`local:escalation`).
-import type { SiteId } from './sites';
+import { channelIdentity, channelsMatch, ruleChannelIdentity, type ChannelIdentity } from './channel';
+import { isBannedChannel } from './rules';
+import { videoSite, type SiteId } from './sites';
+import type { Exception, Rule } from './types';
 
 /** One channel's counts in `local:escalation`, keyed by ChannelKey. Days are local 'YYYY-MM-DD'. */
 export interface EscalationRecord {
@@ -44,28 +47,20 @@ function windowStart(now: number): string {
   return dayKey(d.getTime());
 }
 
-export function emptyEscalation(): EscalationRecord {
-  return { judged: {}, topicRemoved: {} };
-}
-
-/** Counts a judged Tile once per day. Returns a new record. */
-export function recordJudged(rec: EscalationRecord, videoId: string, day: string): EscalationRecord {
-  const ids = rec.judged[day] ?? [];
-  if (ids.includes(videoId)) return rec;
-  return { ...rec, judged: { ...rec.judged, [day]: [...ids, videoId] } };
-}
+/** A channel's Topic removal counts, with or without its judged videos (store/local.ts keeps those apart). */
+type Removals = Pick<EscalationRecord, 'topicRemoved'>;
 
 /** Counts one Removal by a Topic rule. Returns a new record. */
-export function recordTopicRemoval(rec: EscalationRecord, day: string): EscalationRecord {
+export function recordTopicRemoval<T extends Removals>(rec: T, day: string): T {
   return { ...rec, topicRemoved: { ...rec.topicRemoved, [day]: (rec.topicRemoved[day] ?? 0) + 1 } };
 }
 
-export function totalTopicRemovals(rec: EscalationRecord): number {
+export function totalTopicRemovals(rec: Removals): number {
   return Object.values(rec.topicRemoved).reduce((sum, n) => sum + n, 0);
 }
 
 /** "Not now": suppresses the suggestion until RESUGGEST_AFTER_REMOVALS more Topic removals. */
-export function dismissEscalation(rec: EscalationRecord, now: number): EscalationRecord {
+export function dismissEscalation<T extends Removals>(rec: T, now: number): T {
   return { ...rec, dismissedAt: now, removalsAtDismiss: totalTopicRemovals(rec) };
 }
 
@@ -108,4 +103,31 @@ export function pruneEscalation(rec: EscalationRecord, now: number): EscalationR
     out.removalsAtDismiss = Math.max(0, rec.removalsAtDismiss - dropped);
   }
   return out;
+}
+
+/** What a channel's record says about the channel itself. */
+type ChannelFields = Pick<EscalationRecord, 'name' | 'handle' | 'id' | 'site'>;
+
+/** A record stored before Sites has no Site and is YouTube's, as its key without a Site prefix says. */
+export const recordSite = (rec: ChannelFields): SiteId => rec.site ?? 'youtube';
+
+export const recordIdentity = (key: string, rec: ChannelFields): ChannelIdentity => {
+  const identity = channelIdentity(rec.name ?? key, rec.handle, rec.id) ?? { key };
+  return { ...identity, site: recordSite(rec) };
+};
+
+const live = (rules: Rule[]) => rules.filter((r) => r.deletedAt === undefined);
+
+export function bannedRuleFor(rules: Rule[], identity: ChannelIdentity): Rule | undefined {
+  return live(rules).find((r) => isBannedChannel(r) && channelsMatch(ruleChannelIdentity(r) ?? {}, identity));
+}
+
+export function keepRuleFor(rules: Rule[], identity: ChannelIdentity): Rule | undefined {
+  return live(rules).find((r) => r.kind === 'channel' && r.polarity === 'keep' && channelsMatch(ruleChannelIdentity(r) ?? {}, identity));
+}
+
+/** REQ-ESC-3: any Keep rule for the channel (enabled or not) or any Exception with its ChannelKey, on the channel's Site. */
+export function isProtected(identity: ChannelIdentity, rules: Rule[], exceptions: Exception[]): boolean {
+  const kept = (x: Exception) => x.channelKey === identity.key && (!identity.site || videoSite(x.videoId) === identity.site);
+  return keepRuleFor(rules, identity) !== undefined || exceptions.some(kept);
 }

@@ -46,9 +46,9 @@ export function App() {
   const controlsOff = loading || r.reason === 'off' || r.reason === 'migrating';
 
   const keyNow = r?.reason === 'noKey' ? (r.detail === 'keyRejected' ? 'rejected' : 'none') : keyState(key.data);
-  // A direct Decision provider or a custom endpoint: no OpenRouter key involved.
+  // A direct Decision provider or a custom endpoint: no OpenRouter key involved, only its own saved key.
   const custom = !!s && s.engine !== 'openrouter';
-  const modelOk = hasConsent(s) && (custom || keyNow === 'connected' || keyNow === 'unknown');
+  const modelOk = hasConsent(s) && (custom ? r?.reason !== 'noKey' : keyNow === 'connected' || keyNow === 'unknown');
 
   const send = async (fn: () => Promise<unknown>) => {
     setError(false);

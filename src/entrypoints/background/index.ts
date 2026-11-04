@@ -1,7 +1,7 @@
 // Background entrypoint (Chrome service worker, Firefox event page). Everything that matters lives in
 // storage, so every listener is registered synchronously here and the router can be rebuilt on any wake-up.
 // Source of truth: docs/spec/architecture.md Section 11 (lifecycle) and Section 6 (messages).
-import { onMessage } from '~/messaging/protocol';
+import { onWire } from '~/messaging/wire';
 import { createBackground } from './app';
 import { browserPlatform } from './platform';
 import type { Inbound } from './router';
@@ -10,11 +10,7 @@ export default defineBackground(() => {
   const bg = createBackground(browserPlatform());
   const quiet = (what: string) => (e: unknown) => bg.services.platform.log?.(what, { name: e instanceof Error ? e.name : 'unknown' });
 
-  for (const type of Object.keys(bg.routes) as Inbound[]) {
-    (onMessage as (t: Inbound, cb: (m: { data: unknown; sender: Parameters<typeof bg.dispatch>[2] }) => Promise<unknown>) => void)(type, (m) =>
-      bg.dispatch(type, m.data, m.sender),
-    );
-  }
+  for (const type of Object.keys(bg.routes) as Inbound[]) onWire(type, (data, sender) => bg.dispatch(type, data, sender));
 
   browser.runtime.onInstalled.addListener(({ reason }) => void bg.onInstalled(reason).catch(quiet('onInstalled')));
   browser.runtime.onStartup.addListener(() => void bg.onStartup().catch(quiet('onStartup')));

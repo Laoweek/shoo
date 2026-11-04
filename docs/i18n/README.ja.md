@@ -51,7 +51,7 @@ flowchart LR
 
 同意すると、Shoo は動画ごとに、タイトル、チャンネル名、長さ、YouTube または Bilibili のどこに表示されたかを送ります。サムネイルは、サムネイルルールがある場合にだけ送ります。各リクエストには、そのサイトで働くトピックルール、トピック保持ルール（Topic Keep rule）、サムネイルルールの本文と、あなたが残した動画のうち最大 10 本のタイトルとチャンネル名も含まれます。送り先は、あなたが選んだ判定プロバイダー（Decision provider）です。つまり、OpenRouter とその転送先のモデルプロバイダー（初期設定では Cloudflare、予備として TypeSafe か OpenAI、または別のモデルを選んだ場合はそのモデルのプロバイダー）、直接つないだ Cloudflare、TypeSafe、Perplexity、あるいはあなたのコンピューター上のモデルです。コンピューター上のモデルの場合、端末から外に出るものは何もありません。Settings でチャットモデルを設定した場合は、代わりにそのモデルが同じデータを受け取ります。ただしサムネイルは含まれません。
 
-Shoo がモデルプロバイダーに Web アドレス、動画 ID、Cookie、視聴履歴、コメント、アカウント情報を送ることはありません。開発者には何も送られず、アクセス解析もありません。送信内容の完全な一覧、保存方法、保持期間は[プライバシーポリシー](https://laoweek.github.io/shoo/release/privacy-policy.html)にあります。お問い合わせ：shoo@piran.xyz
+Shoo がモデルプロバイダーに Web アドレス、動画 ID、チャンネル ID やハンドル、登録チャンネル、Cookie、視聴履歴、コメント、アカウント情報を送ることはありません。ただし、登録済みのチャンネルを対象外にするルールがあると、そのチャンネルの動画は別のリクエストで送られるため、モデルプロバイダーは受け取ったチャンネルのうちどれをあなたが登録しているか推測できます。開発者には何も送られず、アクセス解析もありません。送信内容の完全な一覧、保存方法、保持期間は[プライバシーポリシー](https://laoweek.github.io/shoo/release/privacy-policy.html)にあります。お問い合わせ：shoo@piran.xyz
 
 ## 現状
 
@@ -78,7 +78,7 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 
 ## ビルドとリリース
 
-[CI](../../.github/workflows/ci.yml) は、プルリクエストと `main` へのプッシュのたびに `pnpm check` を実行します。さらに `main` へのプッシュのたびに、配布用パッケージとして Chrome の zip、Firefox の zip、Firefox のソースの zip をビルドします。これらはワークフロー実行の artifacts からダウンロードできます。
+[CI](../../.github/workflows/ci.yml) は、プルリクエストと `main` へのプッシュのたびに `pnpm check` を実行します。さらに `main` へのプッシュのたびに、配布用パッケージとして Chrome の zip、Firefox の zip、Firefox のソースの zip をビルドします。これらはワークフロー実行の artifacts からダウンロードできます。同じ実行で、ソースの zip から Firefox の zip をビルドし直し、すべてのファイルが一致しなければ失敗します。
 
 リリースするには、`package.json` の `version` を設定してコミットし、それに合ったタグをプッシュします。
 
@@ -87,7 +87,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-CI はタグが `package.json` と一致するかを確認し、3 つの zip を添えた GitHub Release を公開します。Chrome ウェブストアと Firefox Add-ons へのアップロードは手作業です。ストア掲載文とストアのフォームは [docs/release/](../release/) にあります。
+CI はタグが `package.json` と一致するかを確認し、3 つの zip を添えた GitHub Release を公開します。Chrome ウェブストアと Firefox Add-ons へのアップロードは手作業で、その GitHub Release の zip を使います。ローカルでビルドしたものは使いません。ストア掲載文とストアのフォームは [docs/release/](../release/) にあります。
 
 ## 開発
 

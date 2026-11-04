@@ -49,7 +49,7 @@ Nothing goes to a model provider until you agree on the first screen, and "Use E
 
 After you agree, Shoo sends for each video its title, channel name, length and where on YouTube or Bilibili it appeared, and the thumbnail only if you have a Thumbnail rule. Each request also carries the text of your Topic, Topic Keep and Thumbnail rules that work on that site and the titles and channel names of up to 10 videos you kept. It goes to the Decision provider you chose: OpenRouter and the model provider it routes to (Cloudflare by default, TypeSafe or OpenAI as fallbacks, or the provider of another model you pick), Cloudflare, TypeSafe or Perplexity directly, or a model on your computer, where nothing leaves the device. A chat model you set up in Settings gets the same data instead, without thumbnails.
 
-Shoo never sends a model provider web addresses, video IDs, cookies, watch history, comments or account details. Nothing goes to the developer, and there is no analytics. The full list, storage and retention are in the [privacy policy](https://laoweek.github.io/shoo/release/privacy-policy.html). Questions: shoo@piran.xyz.
+Shoo never sends a model provider web addresses, video IDs, channel IDs or handles, your subscriptions, cookies, watch history, comments or account details. A Rule set to skip channels you're subscribed to sends those channels' videos in requests of their own, so a model provider could tell which of the channels it sees you subscribe to. Nothing goes to the developer, and there is no analytics. The full list, storage and retention are in the [privacy policy](https://laoweek.github.io/shoo/release/privacy-policy.html). Questions: shoo@piran.xyz.
 
 ## Status
 
@@ -76,7 +76,7 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 
 ## Builds and releases
 
-[CI](.github/workflows/ci.yml) runs `pnpm check` on every pull request and every push to `main`. Every push to `main` then builds the distribution packages: the Chrome zip, the Firefox zip and the Firefox sources zip. Download them from the workflow run's artifacts.
+[CI](.github/workflows/ci.yml) runs `pnpm check` on every pull request and every push to `main`. Every push to `main` then builds the distribution packages: the Chrome zip, the Firefox zip and the Firefox sources zip. Download them from the workflow run's artifacts. The same run rebuilds the Firefox zip from the sources zip and fails unless every file matches.
 
 To release, set `version` in `package.json`, commit, then push a matching tag:
 
@@ -85,7 +85,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-CI checks that the tag matches `package.json` and publishes a GitHub Release with the three zips. Uploading to the Chrome Web Store and Firefox Add-ons is a manual step. The listing copy and store forms are in [docs/release/](docs/release/).
+CI checks that the tag matches `package.json` and publishes a GitHub Release with the three zips. Uploading to the Chrome Web Store and Firefox Add-ons is a manual step that uses the zips from that GitHub Release, never a local build. The listing copy and store forms are in [docs/release/](docs/release/).
 
 ## Development
 

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { isBannedChannel } from '~/core/rules';
 import { t } from '~/i18n';
 import { sendMessage } from '~/messaging/protocol';
-import { readExceptions, readRules, readSettings, watchExceptions, watchRules, watchSettings } from '~/store/read';
+import { readExceptionCount, readExceptions, readRules, readSettings, watchExceptions, watchRules, watchSettings } from '~/store/read';
 import { SkeletonRows, Wordmark } from '~/ui/components';
 import { hasConsent, keyState } from '~/ui/pages/consent';
 import { useAsync, useRuntime } from '~/ui/pages/hooks';
@@ -31,13 +31,19 @@ const NAV_LABEL: Record<Section, () => string> = {
   advanced: () => t('settings.nav.advanced'),
 };
 
+/** The Exceptions list, and the Rules section's budget meter, which weighs recent kept videos. */
+const SECTIONS_READING_EXCEPTIONS: Section[] = ['rules', 'exceptions'];
+
 const VIEWS = { rules: Rules, keep: Keep, banned: Banned, exceptions: Exceptions, activity: Activity, sites: Sites, connection: Connection, advanced: Advanced };
 
 export function App() {
   const [route, setRoute] = useState<Route>(() => parseHash(location.hash));
   const settings = useAsync(() => readSettings(), [watchSettings]);
   const rules = useAsync(() => readRules(), [watchRules]);
-  const exceptions = useAsync(() => readExceptions(), [watchExceptions]);
+  // The archive holds up to 5,000 Exceptions, so only the sections that list or weigh them read it.
+  const listsExceptions = SECTIONS_READING_EXCEPTIONS.includes(route.section);
+  const exceptions = useAsync(() => (listsExceptions ? readExceptions() : Promise.resolve(undefined)), listsExceptions ? [watchExceptions] : [], [listsExceptions]);
+  const exceptionCount = useAsync(() => readExceptionCount(), [watchExceptions]);
   const runtime = useRuntime();
   const key = useAsync(() => sendMessage('getKeyUsage'), []);
   const [reading, setReading] = useState(false);
@@ -72,7 +78,9 @@ export function App() {
   // says so otherwise (for example while Shoo is off).
   const runtimeNoKey = runtime.data?.reason === 'noKey';
   const keyNow = runtimeNoKey ? (runtime.data?.detail === 'keyRejected' ? 'rejected' : 'none') : keyState(key.data);
-  const modelOk = consent && ((!!settings.data && settings.data.engine !== 'openrouter') || keyNow === 'connected' || keyNow === 'unknown');
+  // A direct Decision provider or a custom endpoint has only its own saved key, so the runtime's noKey decides.
+  const custom = !!settings.data && settings.data.engine !== 'openrouter';
+  const modelOk = consent && (custom ? !runtimeNoKey : keyNow === 'connected' || keyNow === 'unknown');
   const data: PageData = {
     settings: settings.data,
     rules: rules.data,
@@ -100,9 +108,9 @@ export function App() {
       rules: all.filter((r) => r.polarity === 'remove').length,
       keep: all.filter((r) => r.polarity === 'keep').length,
       banned: all.filter(isBannedChannel).length,
-      exceptions: exceptions.data?.length,
+      exceptions: exceptions.data?.length ?? exceptionCount.data,
     } as Partial<Record<Section, number>>;
-  }, [rules.data, exceptions.data]);
+  }, [rules.data, exceptions.data, exceptionCount.data]);
 
   const eyes = useMemo(() => ({ reading: setReading, wide: setWide }), []);
   const View = VIEWS[route.section];

@@ -7,7 +7,8 @@ import { getOne, isRecord, type Areas } from './areas';
 export const SCHEMA = 1;
 // 2: the consent names the provider of another model and the direct and local Decision providers (REQ-PRIV-1).
 // 3: the consent also names Bilibili's Home, where Shoo works from install (ADR 0011).
-export const CONSENT_VERSION = 3;
+// 4: the never-sent row names its recipients and lists channel IDs, handles and subscriptions.
+export const CONSENT_VERSION = 4;
 
 export const DEFAULT_SETTINGS: Settings = {
   generation: 0,

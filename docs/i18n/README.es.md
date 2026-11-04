@@ -51,7 +51,7 @@ Nada llega a un proveedor de modelos hasta que aceptas en la primera pantalla, y
 
 Una vez que aceptas, Shoo envía de cada vídeo su título, el nombre del canal, la duración y el lugar de YouTube o Bilibili donde apareció, y la miniatura solo si tienes una regla de miniatura. Cada solicitud incluye además el texto de tus reglas de tema, de tus reglas de conservación de tema (Topic Keep rules) y de tus reglas de miniatura que funcionan en ese sitio, y los títulos y nombres de canal de hasta 10 vídeos que conservaste. Todo ello va al proveedor de decisión (Decision provider) que elegiste: OpenRouter y el proveedor del modelo al que OpenRouter lo dirige (Cloudflare por defecto, TypeSafe u OpenAI como alternativas, o el proveedor de otro modelo que elijas), Cloudflare, TypeSafe o Perplexity directamente, o un modelo en tu ordenador, en cuyo caso nada sale del dispositivo. Si configuras un modelo de chat en Settings, es ese modelo el que recibe los mismos datos, sin las miniaturas.
 
-Shoo nunca envía a un proveedor de modelos direcciones web, ID de vídeo, cookies, historial de reproducciones, comentarios ni datos de tu cuenta. No se envía nada al desarrollador y no hay analítica. La lista completa, el almacenamiento y la conservación de los datos están en la [política de privacidad](https://laoweek.github.io/shoo/release/privacy-policy.html). Preguntas: shoo@piran.xyz.
+Shoo nunca envía a un proveedor de modelos direcciones web, ID de vídeo, ID ni identificadores de canal, tus suscripciones, cookies, historial de reproducciones, comentarios ni datos de tu cuenta. Una regla configurada para no afectar a los canales a los que estás suscrito envía los vídeos de esos canales en solicitudes aparte, así que un proveedor de modelos podría deducir a cuáles de los canales que ve estás suscrito. No se envía nada al desarrollador y no hay analítica. La lista completa, el almacenamiento y la conservación de los datos están en la [política de privacidad](https://laoweek.github.io/shoo/release/privacy-policy.html). Preguntas: shoo@piran.xyz.
 
 ## Estado
 
@@ -78,7 +78,7 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 
 ## Compilaciones y versiones
 
-La [CI](../../.github/workflows/ci.yml) ejecuta `pnpm check` en cada pull request y en cada push a `main`. Después, cada push a `main` compila los paquetes de distribución: el zip de Chrome, el zip de Firefox y el zip de código fuente de Firefox. Puedes descargarlos de los artefactos de la ejecución del workflow.
+La [CI](../../.github/workflows/ci.yml) ejecuta `pnpm check` en cada pull request y en cada push a `main`. Después, cada push a `main` compila los paquetes de distribución: el zip de Chrome, el zip de Firefox y el zip de código fuente de Firefox. Puedes descargarlos de los artefactos de la ejecución del workflow. La misma ejecución vuelve a compilar el zip de Firefox a partir del zip de código fuente y falla si algún archivo no coincide.
 
 Para publicar una versión, ajusta `version` en `package.json`, haz commit y luego sube una etiqueta que coincida:
 
@@ -87,7 +87,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-La CI comprueba que la etiqueta coincide con `package.json` y publica una GitHub Release con los tres zips. La subida a la Chrome Web Store y a Firefox Add-ons es un paso manual. Los textos de las fichas y los formularios de las tiendas están en [docs/release/](../release/).
+La CI comprueba que la etiqueta coincide con `package.json` y publica una GitHub Release con los tres zips. La subida a la Chrome Web Store y a Firefox Add-ons es un paso manual que usa los zips de esa GitHub Release, nunca una compilación local. Los textos de las fichas y los formularios de las tiendas están en [docs/release/](../release/).
 
 ## Desarrollo
 

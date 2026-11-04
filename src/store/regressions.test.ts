@@ -7,7 +7,7 @@ import type { AreaLike, Areas } from './areas';
 import { getArchive, getRuntime, queryActivity } from './local';
 import { parseImportedException, parseImportedRule } from './import';
 import { parseSync, readSync, SyncStore, toCompactRule } from './sync';
-import { makeDevice, makeRule, rng, type Device } from './testing/fixtures';
+import { checked, makeDevice, makeRule, rng, type Device } from './testing/fixtures';
 import { createMemoryArea, syncQuota, withQuota } from './testing/quota-storage';
 import { createWriter } from './writer';
 
@@ -83,7 +83,7 @@ describe('Exception removals across devices', () => {
     expect(await b.writer.getExceptions()).toHaveLength(5);
     a.clock.t = T0 + 1000;
     const fresh = Array.from({ length: 200 }, (_, i) => ({ videoId: `new${String(i).padStart(8, '0')}`, title: 'new', at: T0 + 100 + i }));
-    await a.writer.importData({ format: 'shoo-rules', version: 1, exportedAt: 'x', rules: [], exceptions: fresh }, 'replace', false);
+    await a.writer.importData(checked({ format: 'shoo-rules', version: 1, exportedAt: 'x', rules: [], exceptions: fresh }), 'replace', false);
     await settle([a, b]);
     const onB = (await b.writer.getExceptions()).map((x) => x.videoId);
     expect(onB.some((v) => v.startsWith('old'))).toBe(false);
@@ -122,7 +122,7 @@ describe('import and privacy', () => {
     if (!('rules' in res)) throw new Error('add failed');
     const backup = await writer.exportData();
     await writer.mutateRules([{ op: 'delete', id: res.rules[0]!.id }]);
-    expect(await writer.importData(backup, 'merge', false)).toEqual({ preview: { add: 0, update: 0, renumber: 0, invalid: [] } });
+    expect(await writer.importData(checked(backup), 'merge', false)).toEqual({ preview: { add: 0, update: 0, renumber: 0, invalid: [] } });
     expect(await writer.getRules()).toEqual([]);
   });
 
@@ -251,7 +251,7 @@ describe('Reset and replace import remove every Exception on every device', () =
     expect(await getArchive(b.areas.local)).toHaveLength(50);
     a.clock.t += 1000;
     const fresh = Array.from({ length: 10 }, (_, i) => ({ videoId: vid('new', i), title: 'new', at: T0 + i }));
-    await a.writer.importData({ format: 'shoo-rules', version: 1, exportedAt: 'x', rules: [], exceptions: fresh }, 'replace', false);
+    await a.writer.importData(checked({ format: 'shoo-rules', version: 1, exportedAt: 'x', rules: [], exceptions: fresh }), 'replace', false);
     await settle([a, b]);
     for (const d of [a, b]) {
       const xs = await d.writer.getExceptions();
@@ -426,10 +426,10 @@ describe('import: dry runs, replace and merge across devices', () => {
     const writer = createWriter({ areas: { sync: syncQuota(createMemoryArea()), local: createMemoryArea(), session: createMemoryArea() }, now: () => T0 + 1e7 });
     const rand = rng(4);
     const big = importFile(Array.from({ length: 300 }, (_, i) => ({ ...makeRule(rand, i + 1, 200), polarity: 'remove', kind: 'topic', ref: `R${i + 1}`, colour: 'c1', params: undefined })));
-    const dry = await writer.importData(big, 'merge', true);
+    const dry = await writer.importData(checked(big), 'merge', true);
     expect('preview' in dry && dry.preview.syncQuota).toBe(true);
-    expect(await writer.importData(big, 'merge', false)).toEqual({ error: 'invalidInput', detail: 'syncQuota' });
-    const small = await writer.importData(importFile([]), 'merge', true);
+    expect(await writer.importData(checked(big), 'merge', false)).toEqual({ error: 'invalidInput', detail: 'syncQuota' });
+    const small = await writer.importData(checked(importFile([])), 'merge', true);
     expect('preview' in small && small.preview.syncQuota).toBeUndefined();
   });
 
@@ -443,9 +443,9 @@ describe('import: dry runs, replace and merge across devices', () => {
     const older = { ...res.rules[0]!, text: 'older copy', updatedAt: 1 };
     const incoming = { ...makeRule(rng(9), 3), polarity: 'remove', kind: 'topic', ref: 'R3', colour: 'c3', params: undefined };
     const f = importFile([older, incoming], [{ videoId: vid('keep', 2), title: 'k2', at: T0 }, { videoId: vid('keep', 3), title: 'k3', at: T0 }]);
-    expect(await writer.importData(f, 'merge', true)).toEqual({ preview: { add: 1, update: 0, renumber: 0, invalid: [] } });
-    expect(await writer.importData(f, 'replace', true)).toEqual({ preview: { add: 1, update: 1, renumber: 0, invalid: [], remove: { rules: 1, exceptions: 1 } } });
-    expect(await writer.importData(f, 'replace', false)).toEqual({ preview: { add: 1, update: 1, renumber: 0, invalid: [], remove: { rules: 1, exceptions: 1 } } });
+    expect(await writer.importData(checked(f), 'merge', true)).toEqual({ preview: { add: 1, update: 0, renumber: 0, invalid: [] } });
+    expect(await writer.importData(checked(f), 'replace', true)).toEqual({ preview: { add: 1, update: 1, renumber: 0, invalid: [], remove: { rules: 1, exceptions: 1 } } });
+    expect(await writer.importData(checked(f), 'replace', false)).toEqual({ preview: { add: 1, update: 1, renumber: 0, invalid: [], remove: { rules: 1, exceptions: 1 } } });
     expect((await writer.getRules()).map((r) => r.text)).toEqual(['older copy', incoming.text]);
     expect((await writer.getExceptions()).map((x) => x.videoId).sort()).toEqual([vid('keep', 2), vid('keep', 3)]);
   });
@@ -461,7 +461,7 @@ describe('import: dry runs, replace and merge across devices', () => {
     a.clock.t += 100;
     const one = { ...makeRule(rng(5), 1), polarity: 'remove', kind: 'topic', ref: 'R1', colour: 'c1', params: undefined, createdAt: T0 };
     const two = { ...makeRule(rng(6), 1), polarity: 'remove', kind: 'topic', ref: 'R1', colour: 'c2', params: undefined, createdAt: T0 + 1 };
-    expect(await a.writer.importData(importFile([one, two]), 'replace', false)).toMatchObject({ preview: { add: 2, renumber: 1 } });
+    expect(await a.writer.importData(checked(importFile([one, two])), 'replace', false)).toMatchObject({ preview: { add: 2, renumber: 1 } });
     await settle([a, b]);
     for (const d of [a, b]) expect((await d.writer.getRules()).map((r) => r.id).sort()).toEqual([one.id, two.id].sort());
   });
@@ -479,7 +479,7 @@ describe('import: dry runs, replace and merge across devices', () => {
     await a.writer.removeException(vid('keep', 1));
     await settle([a, b]);
     a.clock.t += 100;
-    await a.writer.importData(JSON.parse(JSON.stringify(backup)), 'merge', false);
+    await a.writer.importData(checked(JSON.parse(JSON.stringify(backup))), 'merge', false);
     await settle([a, b]);
     expect((await a.writer.getExceptions()).map((x) => x.videoId)).toEqual([vid('keep', 1)]);
     expect((await b.writer.getExceptions()).map((x) => x.videoId)).toEqual([vid('keep', 1)]);
@@ -502,7 +502,7 @@ describe('import: dry runs, replace and merge across devices', () => {
     await a.writer.resetAll();
     await settle([a, b]);
     a.clock.t += 100;
-    await a.writer.importData(backup, 'merge', false);
+    await a.writer.importData(checked(backup), 'merge', false);
     await settle([a, b]);
     for (const d of [a, b]) {
       expect((await d.writer.getRules()).map((r) => r.text)).toEqual(['drama', 'crypto']);

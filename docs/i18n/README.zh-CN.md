@@ -51,7 +51,7 @@ flowchart LR
 
 在你同意之后，Shoo 会为每个视频发送它的标题、频道名称、时长以及它出现在 YouTube 或 Bilibili 上的位置，只有当你设有封面规则时才会发送封面。每次请求还会附带你在该网站上生效的主题规则、主题保留规则（Topic Keep rule）和封面规则的文字，以及最多 10 个你保留过的视频的标题和频道名称。这些数据会发送给你选择的决策服务商（Decision provider）：OpenRouter 及其转发到的模型服务商（默认是 Cloudflare，备用为 TypeSafe 或 OpenAI，或者你选择的其他模型的服务商），直接连接的 Cloudflare、TypeSafe 或 Perplexity，或者你电脑上的模型，此时任何数据都不会离开设备。如果你在 Settings 中设置了聊天模型，则改由它接收同样的数据，但不包括封面。
 
-Shoo 从不向模型服务商发送网址、视频 ID、Cookie、观看记录、评论或账号信息。没有任何数据发送给开发者，也没有任何分析统计。完整清单以及存储和保留方式见[隐私政策](https://laoweek.github.io/shoo/release/privacy-policy.html)。如有疑问请联系：shoo@piran.xyz。
+Shoo 从不向模型服务商发送网址、视频 ID、频道 ID 和标识名、你的订阅、Cookie、观看记录、评论或账号信息。不过，如果某条规则设置为跳过你已订阅的频道，这些频道的视频会单独发送请求，模型服务商因此可能推断出它看到的频道中哪些是你订阅的。没有任何数据发送给开发者，也没有任何分析统计。完整清单以及存储和保留方式见[隐私政策](https://laoweek.github.io/shoo/release/privacy-policy.html)。如有疑问请联系：shoo@piran.xyz。
 
 ## 状态
 
@@ -78,7 +78,7 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 
 ## 构建与发布
 
-[CI](../../.github/workflows/ci.yml) 会在每个拉取请求和每次推送到 `main` 时运行 `pnpm check`。之后，每次推送到 `main` 都会构建分发包：Chrome zip、Firefox zip 和 Firefox 源码 zip。可以从该工作流运行的 artifacts 中下载。
+[CI](../../.github/workflows/ci.yml) 会在每个拉取请求和每次推送到 `main` 时运行 `pnpm check`。之后，每次推送到 `main` 都会构建分发包：Chrome zip、Firefox zip 和 Firefox 源码 zip。可以从该工作流运行的 artifacts 中下载。同一次运行还会用源码 zip 重新构建 Firefox zip，只要有任何文件不一致就会失败。
 
 发布时，先在 `package.json` 中设置 `version` 并提交，然后推送一个对应的标签：
 
@@ -87,7 +87,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-CI 会检查标签是否与 `package.json` 一致，并发布一个附带这三个 zip 的 GitHub Release。上传到 Chrome 应用商店和 Firefox 附加组件网站需要手动完成。商店介绍文案和商店表单见 [docs/release/](../release/)。
+CI 会检查标签是否与 `package.json` 一致，并发布一个附带这三个 zip 的 GitHub Release。上传到 Chrome 应用商店和 Firefox 附加组件网站需要手动完成，并且使用该 GitHub Release 中的 zip，绝不使用本地构建。商店介绍文案和商店表单见 [docs/release/](../release/)。
 
 ## 开发
 

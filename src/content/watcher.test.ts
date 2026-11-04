@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SurfaceId } from '~/core/types';
+import { isTileFacts } from '~/entrypoints/background/guards';
 import { youtube } from '~/sites/youtube';
 import { visiblePage } from '~/sites/youtube/surfaces';
 import { FIXTURES, appendContinuation, fakeIntersection, loadPage, manualScheduler, microtasks, parse } from '~/sites/youtube/test-harness';
@@ -91,6 +92,50 @@ describe('watcher on the composed Home page', () => {
     expect(observed.some((el) => el.closest('[hidden]'))).toBe(false);
   });
 
+  it('cuts an oversize title and channel name and drops an oversize handle or channel ID, so the batch still goes', () => {
+    const long = (n: number) => 'x'.repeat(n);
+    const surfaces = Object.fromEntries(
+      Object.entries(youtube.surfaces).map(([id, def]) => [
+        id,
+        def && {
+          ...def,
+          extract: (el: Element, doc: Document) => {
+            const facts = def.extract(el, doc);
+            return facts && { ...facts, title: long(5000), channelName: long(500), channelHandle: `@${long(200)}`, channelId: `UC${long(200)}` };
+          },
+        },
+      ]),
+    );
+    const t = started({ site: { ...youtube, surfaces } });
+    t.io.trigger(true);
+    const facts = t.batches.flat()[0]!.facts;
+    expect(facts.title).toHaveLength(1000);
+    expect(facts.channelName).toHaveLength(120);
+    expect(facts).not.toHaveProperty('channelHandle');
+    expect(facts).not.toHaveProperty('channelId');
+  });
+
+  it('cuts a 2,000-character title and a 500-character channel name without splitting a pair into a Tile the background accepts', () => {
+    const surfaces = Object.fromEntries(
+      Object.entries(youtube.surfaces).map(([id, def]) => [
+        id,
+        def && {
+          ...def,
+          extract: (el: Element, doc: Document) => {
+            const facts = def.extract(el, doc);
+            return facts && { ...facts, title: 'a' + '😀'.repeat(1000), channelName: '𝕏'.repeat(500) };
+          },
+        },
+      ]),
+    );
+    const t = started({ site: { ...youtube, surfaces } });
+    t.io.trigger(true);
+    const facts = t.batches.flat()[0]!.facts;
+    expect(facts.title).toBe('a' + '😀'.repeat(499));
+    expect(facts.channelName).toBe('𝕏'.repeat(120));
+    expect(isTileFacts(facts)).toBe(true);
+  });
+
   it('marks sent Tiles pending and never sends a decorated Tile twice', () => {
     const t = started();
     t.io.trigger(true);
@@ -176,6 +221,20 @@ describe('watcher on the composed Home page', () => {
     await t.settle();
     expect(t.resets).toEqual([[el, 'FIXTURE0007']]);
     expect(t.w.decor(el)).toEqual({ videoId: 'FIXTURE0999', state: 'pending' });
+  });
+
+  it('keeps watching a decorated Tile for in-place reuse after YouTube re-rendered its content', async () => {
+    const t = started();
+    t.io.trigger(true);
+    const el = homeTileOf('FIXTURE0007');
+    t.w.setDecor(el, 'chip');
+    el.innerHTML = el.innerHTML.replace('Fixture title 7', 'Fixture title 7 '); // same video, new elements
+    appendContinuation(grid());
+    await t.settle();
+    expect(t.resets).toEqual([]);
+    el.querySelector('.ytLockupViewModelHost')?.classList.replace('content-id-FIXTURE0007', 'content-id-FIXTURE0999');
+    await t.settle();
+    expect(t.resets).toEqual([[el, 'FIXTURE0007']]);
   });
 
   it('rescan re-sends Tiles outside the viewport when they come back into view', () => {

@@ -24,7 +24,7 @@ Shoo watches recommendation Tiles on YouTube and Bilibili desktop, judges each o
 - REQ-SURF-1b: Shorts shelf Tiles show no channel and offer only "Not interested". Channel-based Rules (Banned channels, channel and Artist channel Keep rules) cannot match there. Settings says so next to the Shorts shelf switch.
 - REQ-SURF-2: Tile types judged: videos, Shorts, live streams. Upcoming streams are judged once a captured fixture shows how to recognize them (pending fixture). Until then a Tile without a duration is judged only if it carries a live badge and no upcoming marker. Mixes, playlists, podcasts, movies and ads are never judged or acted on.
 - REQ-SURF-3: Never act on the currently playing video.
-- REQ-SURF-4: New Tiles are reviewed as they appear (scrolling, in-app navigation). The same video is never sent to the Decision model twice for the same Rules (Verdict cache, REQ-COST-1). The same video shown in several places on one page gets the same Verdict everywhere, and in Auto mode the Native action runs once per video per page.
+- REQ-SURF-4: New Tiles are reviewed as they appear (scrolling, in-app navigation). The same video is never sent to the Decision model twice for the same Rules within 30 days (Verdict cache, REQ-COST-1). The same video shown in several places on one page gets the same Verdict everywhere, and in Auto mode the Native action runs once per video per page.
 - REQ-SURF-5: Desktop only. Any desktop window width the Site supports.
 
 ## 4. Rules
@@ -87,7 +87,7 @@ Text comparisons run on NFKC-normalized, casefolded, trimmed strings. A Rule nev
 ## 8. Exceptions and learning
 
 - REQ-EXC-1: Undoing a Removal or clicking Keep (Review chip or Activity row) creates an **Exception** for that exact video. That video is never judged again on any Surface.
-- REQ-EXC-2: The 10 most recent Exceptions are sent to the Decision model with the Rules as "examples the user kept anyway", within the ~2,000-token budget the model reads.
+- REQ-EXC-2: Up to 10 of the most recent Exceptions kept from an enabled remove Topic rule that works on the batch's Site are sent to the Decision model with the Rules as "examples the user kept anyway", within the ~2,000-token budget the model reads. Exceptions from Banned channels, Exact or Thumbnail rules, disabled or deleted Rules, and Exceptions with no Rule are never sent.
 - REQ-EXC-3: "Always keep this channel" (from undo, chips, the removed-Tile annotation and Activity) creates a Keep rule for that channel. It is unavailable for Tiles without a channel. Adding a Keep rule for a Banned channel asks whether to lift the ban.
 - REQ-EXC-4: No LLM prompt rewriting, no prompt versions (ADR 0004).
 
@@ -121,20 +121,20 @@ Text comparisons run on NFKC-normalized, casefolded, trimmed strings. A Rule nev
 
 ## 13. Cost and safety
 
-- REQ-COST-1: **Verdict cache** keyed by video ID and Rules version (defined in `docs/spec/architecture.md`): a video is never sent to the model twice for the same Rules. Exact rule edits and Filtering strength changes never trigger model calls.
+- REQ-COST-1: **Verdict cache** keyed by video ID and Rules version (defined in `docs/spec/architecture.md`): a video is never sent to the model twice for the same Rules within 30 days (cache records are kept 30 days). Exact rule edits and Filtering strength changes never trigger model calls.
 - REQ-COST-2: The popup shows today's judged count, removed count and spend.
 - REQ-COST-3: **Daily cap**, default 5,000 judged Tiles. Reaching it stops model calls until local midnight with one notice. Exact rules, Keep rules and Exceptions keep working.
 - REQ-COST-4: Failure categories: model calls, Native actions, and the Site markup check, each shared by every Site (a trip names the Site that caused it). 5 consecutive failures in one category trip it. A tripped model category stops model calls (Exact rules keep working). A tripped Native action or markup category stops Native actions. Either shows one notice with a "Resume" action. A success resets only its own category.
 
 ## 14. Data sent and consent
 
-- REQ-PRIV-1 (canonical data list, copied verbatim into `PRODUCT.md`, store listings, the Chrome Web Store form and the privacy policy. Onboarding and Settings, Connection present these facts as structured sections that must contain every fact of REQ-PRIV-1 and nothing else, see `ui-design.md` Section 7):
+- REQ-PRIV-1 (the one canonical data list, copied verbatim into `PRODUCT.md`, store listings, the Chrome Web Store form and the privacy policy. Onboarding and Settings, Connection present these facts as structured sections that must contain every fact of REQ-PRIV-1 and nothing else, see `ui-design.md` Section 7):
   - **Per Tile:** title, channel name, duration, Surface (which names its Site, such as YouTube's Home or Bilibili's Home), and the thumbnail image only when a Thumbnail rule is on.
   - **Per request:** the text of the enabled Topic rules, Thumbnail rules and Topic Keep rules, and up to 10 Exception titles with their channel names.
   - **Recipients:** OpenRouter, and through it the model provider: Cloudflare (default, `cloudflare/clef-flash`), TypeSafe (text fallback, `typesafe/jev-1.13`), OpenAI (image fallback, `openai/gpt-6-luna-decisions`), or the provider of another model the user picks in Settings. Instead of OpenRouter, only when the user chooses one and after consent names its host: Cloudflare, TypeSafe or Perplexity reached directly, a Decision model on the user's computer (nothing leaves the device), or the user's own endpoint.
-  - **Never:** URLs, video IDs (YouTube's and Bilibili's BV ids), cookies, watch history, comments, page HTML, or the user's YouTube or Bilibili account details.
+  - **Never, to any of these recipients:** URLs, video IDs (YouTube's and Bilibili's BV ids), channel IDs and handles, the user's YouTube subscriptions, cookies, watch history, comments, page HTML, or the user's YouTube or Bilibili account details.
 - REQ-PRIV-2: First run asks for consent to send that data before anything is sent. Declining keeps Shoo usable with Exact rules only, and consent can be given later from Connection in Settings. Try a title also needs consent.
-- REQ-PRIV-3: Firefox declares `data_collection_permissions` with nothing required and `websiteContent` optional, requested at runtime when the user agrees, so the decline path exists on Firefox too. Chrome Web Store privacy disclosures and Limited Use statement match REQ-PRIV-1. Both stores declare the API key the same way (`docs/spec/cross-browser-and-stores.md`).
+- REQ-PRIV-3: Firefox declares `data_collection_permissions` with nothing required and `websiteContent` and `authenticationInfo` optional, both requested at runtime when the user agrees, so the decline path exists on Firefox too. Withdrawing consent in Settings also removes them. Chrome Web Store privacy disclosures and Limited Use statement match REQ-PRIV-1. Both stores declare the API key the same way (`docs/spec/cross-browser-and-stores.md`).
 
 ## 15. First run
 
@@ -146,7 +146,7 @@ Text comparisons run on NFKC-normalized, casefolded, trimmed strings. A Rule nev
 
 ## 17. Settings sections
 
-- REQ-SET-1: Rules (with Try a title), Keep rules, Banned channels, Exceptions, Activity, Sites (each Site's switch and its Surfaces, and under YouTube the Shelf dismissal switches), Connection (where Shoo checks videos: OpenRouter connect, paste or disconnect, or a Decision provider, then consent, model, Filtering strength, chat model), Advanced (regex rules, exact strength slider, notification style, Escalation setting, Daily cap, import/export, Reset). Reset erases every Rule, Exception, setting, the key, Activity and the Verdict cache on this device after one confirmation. Keep the total small: no setting ships that nothing reads.
+- REQ-SET-1: Rules (with Try a title), Keep rules, Banned channels, Exceptions, Activity, Sites (each Site's switch and its Surfaces, and under YouTube the Shelf dismissal switches), Connection (where Shoo checks videos: OpenRouter connect, paste or disconnect, or a Decision provider, then consent, model, Filtering strength, chat model), Advanced (regex rules, exact strength slider, notification style, Escalation setting, Daily cap, import/export, Clear history, Reset). Reset erases every Rule, Exception, setting, the key, Activity and the Verdict cache on this device after one confirmation. Clear history deletes Activity, the Verdict cache, Rule hit and Rescue counts, past days' counters, Escalation counts and suggestions, and the Subscribed channels list on this device after one confirmation. It keeps Rules, Exceptions, settings and the key. Keep the total small: no setting ships that nothing reads.
 
 ## 18. Keyboard
 

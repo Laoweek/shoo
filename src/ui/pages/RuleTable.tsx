@@ -14,6 +14,7 @@ import { hitsThisWeek, type RuleStats, type StoredSubscriptions } from '~/store/
 import { readActivity, readSubscriptions, watchSubscriptions } from '~/store/read';
 import { Button, RuleRef, Switch, ruleLabel } from '../components';
 import { count, ruleSiteLabel, weekStart, when } from './format';
+import { requestThumbnailAccess } from './consent';
 import { useAsync } from './hooks';
 import { Select, Status, TextInput, focusHeading } from './parts';
 import {
@@ -167,6 +168,7 @@ function RuleRow({ rule, stats, now, regexEnabled, truncated, open, onToggle, on
   };
 
   const toggle = async (v: boolean) => {
+    if (v && rule.kind === 'thumbnail') void requestThumbnailAccess(ruleSite(rule));
     setEnabled(v);
     setError(undefined);
     const res = await mutate([{ op: 'update', id: rule.id, patch: { enabled: v } }]);
@@ -308,6 +310,7 @@ function RulePanel({ rule, stats, now }: { rule: Rule; stats: RuleStats; now: nu
   };
 
   const moveTo = async (site: SiteId | undefined) => {
+    if (rule.kind === 'thumbnail' && rule.enabled) void requestThumbnailAccess(site);
     setError(false);
     const res = await mutate([sitePatch(rule, site)]);
     if (!res.ok) setError(true);
@@ -496,6 +499,8 @@ export function AddRule({ polarity, regexEnabled, modelOk, onKeepChannel, onAdde
   const save = async () => {
     if (!op || busy) return;
     if (regexCheck && !regexCheck.ok) return setError(t(`rules.regex.reason.${regexCheck.reason}`));
+    // Before any await: Firefox accepts permissions.request only while the click or Enter is still being handled.
+    if (op.op === 'add' && op.rule.kind === 'thumbnail') void requestThumbnailAccess(op.rule.site);
     setBusy(true);
     setError(undefined);
     try {

@@ -1,6 +1,6 @@
 // Onboarding (docs/spec/ui-design.md Section 7, REQ-ONB-1): four steps on one page with a progress line.
 // The step is saved in settings.onboarding, so closing the page resumes at the same step.
-import { Ban, Check, ListChecks, Undo2 } from 'lucide-preact';
+import { Ban, Check, ExternalLink, ListChecks, Undo2 } from 'lucide-preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Mode, Rule, RuleKind } from '~/core/types';
 import { t } from '~/i18n';
@@ -11,6 +11,7 @@ import { consentClick, hasConsent, keyState } from '~/ui/pages/consent';
 import { Disclosure } from '~/ui/pages/Disclosure';
 import { DirectSetup, ProviderPicker } from '~/ui/pages/EndpointSetup';
 import { useAsync, useOnline } from '~/ui/pages/hooks';
+import { PRIVACY_POLICY_URL } from '~/ui/pages/nav';
 import { Status, TextInput } from '~/ui/pages/parts';
 import type { ProviderId } from '~/ui/pages/providers';
 import { findAdded, ruleHints } from '~/ui/pages/rules';
@@ -170,6 +171,11 @@ export function WhatStep({ headingRef, isFirefox, onAgree, onExactOnly }: { head
           </Button>
         </div>
         <p class="m-0 text-[13px] text-muted">{t('onboarding.what.later')}</p>
+        {/* Outside the disclosure, so the link is not part of what the user agrees to (CONSENT_VERSION). */}
+        <a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" class="inline-flex items-center gap-1 text-[13px] font-semibold text-ink underline underline-offset-[3px]">
+          {t('connection.consent.policy')}
+          <ExternalLink size={14} strokeWidth={1.75} aria-hidden="true" />
+        </a>
       </div>
       <Status tone="danger" class="mt-3">
         {failed ? t('onboarding.error') : ''}

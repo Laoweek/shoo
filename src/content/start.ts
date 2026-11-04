@@ -1,9 +1,9 @@
 // What every Site's content script runs: boot the pipeline for that Site (architecture.md Section 12, ADR 0011).
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
-import { onMessage } from '~/messaging/protocol';
 import type { Site } from '~/sites/site';
 import { readEnabled } from '~/store/read';
 import { boot } from './boot';
+import { onMessage } from './messaging';
 import { browserSend } from './send';
 
 export async function startContent(ctx: ContentScriptContext, site: Site): Promise<void> {
@@ -12,7 +12,7 @@ export async function startContent(ctx: ContentScriptContext, site: Site): Promi
     site,
     send: browserSend,
     readEnabled: () => readEnabled(site.id),
-    listen: (type, cb) => onMessage(type, (m) => cb(m.data as never) as never),
+    listen: onMessage,
   });
   // Extension reloaded or updated: this orphaned script removes its UI and observers.
   ctx.onInvalidated(() => booted.dispose());

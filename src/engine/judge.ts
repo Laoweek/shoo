@@ -4,14 +4,14 @@
 import { MAX_KEPT_EXAMPLES, MAX_QUESTIONS_PER_REQUEST } from '~/core/budget';
 import { tileChannelIdentity } from '~/core/channel';
 import { compileExact, type CompiledExact } from '~/core/exact';
-import { cacheVersion, exactVersion, rulesVersion } from '~/core/ids';
+import { answerVersions, cacheVersion, exactVersion, rulesVersion, type RulesVersionInputs } from '~/core/ids';
 import { directProvider, readsImages, topicRuleLimit } from '~/core/providers';
 import { activeRules, exampleOn, rulesOn, runExactStages, type ExactStageOutcome } from '~/core/rules';
 import { SURFACE_SITE } from '~/core/sites';
 import { subscribedMatcher, type SubscribedChannels } from '~/core/subscriptions';
 import type { Exception, ReasonCode, Rule, Settings, SiteId, TileFacts, TileResult } from '~/core/types';
 import { finalVerdict, needsThumbnailPass, type ThumbModelResult } from '~/core/verdict';
-import { buildChatRequest, chatCost, parseChatResponse, sendChat } from './chat';
+import { buildChatRequest, CHAT_PROMPT_VERSION, chatCost, parseChatResponse, sendChat } from './chat';
 import {
   buildKeepOnlyRequest,
   buildTextRequest,
@@ -27,6 +27,7 @@ import {
   sendDecisions,
   TEXT_FRAMING,
   textBatchSizeFor,
+  THUMBNAIL_SHAPE_VERSION,
   validateResponse,
   type BuiltRequest,
   type CachedText,
@@ -37,10 +38,16 @@ import {
 import { defaultSleep, Semaphore, TEXT_IN_FLIGHT, THUMBNAIL_IN_FLIGHT, type FetchLike, type Sleep } from './net';
 import { fetchThumbnail, parseThumbnailInput } from './thumbnails';
 
-/** decision-engine.md §1.2. Structurally the same as `VerdictCacheRecord` in store/local.ts. */
+/** A cached answer with `v`, the answer version it was asked under (answerVersions in core/ids.ts). */
+type Versioned<T> = T & { v?: string };
+
+/**
+ * decision-engine.md §1.2. Structurally the same as `VerdictCacheRecord` in store/local.ts. Every record is stored
+ * under VERDICT_RECORD_VERSION, and each part is checked against its own `v`.
+ */
 export interface VerdictCacheRecord {
-  text?: CachedText;
-  thumb?: ThumbModelResult;
+  text?: Versioned<CachedText>;
+  thumb?: Versioned<ThumbModelResult>;
   rulesVersion: string;
   at: number;
 }
@@ -49,10 +56,16 @@ export interface VerdictCacheRecord {
 export interface VerdictPut {
   videoId: string;
   rulesVersion: string;
-  text?: CachedText;
-  thumb?: ThumbModelResult;
+  text?: Versioned<CachedText>;
+  thumb?: Versioned<ThumbModelResult>;
   at: number;
 }
+
+/**
+ * The store's record key for every Verdict cache record. The store merges writes under one key, so a new text
+ * answer keeps the thumbnail answer beside it and the reverse.
+ */
+export const VERDICT_RECORD_VERSION = 'answers';
 
 /** Per call. `private` comes from `sender.tab.incognito`: no Verdict cache writes, counters go to session storage. */
 export interface JudgeContext {
@@ -64,8 +77,11 @@ export interface JudgeContext {
  * Reported once per request chain. Mapping for the router (architecture.md Section 7):
  * ok → recordSuccess('model'). Otherwise: 'keyRejected' sets the rejected-key state, 'creditsExhausted'
  * trips breakerModel with detail creditsExhausted, and `countsAsFailure` → recordFailure('model').
+ * `thumbnail` marks an answer from the thumbnail pass, whose fallback is FALLBACK_MODELS.image.
  */
-export type ModelOutcome = { ok: true; model: string; fallback: boolean } | { ok: false; reason: ReasonCode; countsAsFailure: boolean };
+export type ModelOutcome =
+  | { ok: true; fallback: boolean; thumbnail?: true }
+  | { ok: false; reason: ReasonCode; countsAsFailure: boolean };
 
 export interface JudgeDeps {
   now(): number;
@@ -90,7 +106,7 @@ export interface JudgeDeps {
    * context never starts a read.
    */
   subscriptions?(ctx: JudgeContext): Promise<SubscribedChannels | undefined>;
-  /** Records for these videos whose rulesVersion matches (store/local.ts getVerdicts). */
+  /** Records for these videos whose rulesVersion matches (store/local.ts getVerdicts). Read-only, so private contexts read it too. */
   cacheGet(videoIds: string[], rulesVersion: string): Promise<Map<string, VerdictCacheRecord>>;
   /** store/local.ts putVerdicts. Never called for private contexts or Try a title. */
   cachePut(puts: VerdictPut[]): Promise<void>;
@@ -115,6 +131,7 @@ export interface JudgeResult {
   costUsd: number;
 }
 
+/** Checked by the tryTitle route (handlers/judging.ts): a non-blank title, a short channel name, a duration of 0 or more. */
 export interface TryTitleInput {
   title: string;
   channelName?: string;
@@ -134,6 +151,8 @@ export interface Judge {
   tryTitle(input: TryTitleInput, ctx: JudgeContext): Promise<TryTitleResult>;
   /** rulesVersion for the current Rules and settings (architecture.md Section 9). */
   rulesVersionFor(rules: Rule[], settings: Settings): string;
+  /** Drops a closed private tab's in-memory Verdict cache. */
+  forgetTab(tabId: number): void;
 }
 
 /** videoId of the synthetic Try a title Tile when no thumbnail URL was given. Never sent anywhere. */
@@ -142,14 +161,15 @@ export const TRY_TITLE_MAX_CHARS = 300;
 
 /**
  * The Rules that apply to a Tile. A Tile from a Subscribed channel gets a view without the remove Rules that
- * skip Subscribed channels: they are never asked about it, and its answers are cached under `cacheRv`.
+ * skip Subscribed channels: they never remove it, and its answers are cached under their own `textV` and `thumbV`.
  */
 interface RuleView {
   topicRemove: Rule[];
   thumbnail: Rule[];
   rulesByRef: Map<string, Rule>;
   hasTopicRules: boolean;
-  cacheRv: string;
+  textV: string;
+  thumbV: string;
 }
 
 interface Slot {
@@ -179,6 +199,12 @@ interface RunOptions {
   ignoreSubscriptions?: true;
 }
 
+/**
+ * Records in the in-memory Verdict cache of private tabs, all tabs together. Their answers live there instead of in
+ * storage (REQ-ACTV-3), so a rescan of the same page does not send its titles again. A background restart drops it.
+ */
+export const PRIVATE_CACHE_MAX = 4000;
+
 const chunk = <T>(list: T[], size: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
@@ -201,25 +227,49 @@ function withoutKeepOnly(r: CachedText): CachedText {
 }
 
 /**
- * The one outcome reported for a judgeTiles call. A rejected key or exhausted credits win (they change
- * RuntimeState at once), then a counted failure, then a success. Uncounted failures alone report nothing.
+ * The outcomes reported for a judgeTiles call. A rejected key or exhausted credits win (they change RuntimeState at
+ * once), then a counted failure. Otherwise one success per pass, a fallback answer over the chosen model's, so a
+ * fallback stays noted until its own pass's chosen model answers (decision-engine.md Section 5.2). Uncounted
+ * failures alone report nothing.
  */
-export function summarizeOutcomes(list: ModelOutcome[]): ModelOutcome | undefined {
+export function summarizeOutcomes(list: ModelOutcome[]): ModelOutcome[] {
   const failed = (reason: ReasonCode) => list.find((o) => !o.ok && o.reason === reason);
-  return failed('keyRejected') ?? failed('creditsExhausted') ?? list.find((o) => !o.ok && o.countsAsFailure) ?? list.find((o) => o.ok);
+  const failure = failed('keyRejected') ?? failed('creditsExhausted') ?? list.find((o) => !o.ok && o.countsAsFailure);
+  if (failure) return [failure];
+  // Fallback answers sort last, so each one replaces its pass's chosen answer in the Map.
+  return [
+    ...new Map(
+      list
+        .filter((o) => o.ok)
+        .sort((a, b) => +a.fallback - +b.fallback)
+        .map((o) => [o.thumbnail, o] as const),
+    ).values(),
+  ];
 }
 
+const versionInputs = (rules: Rule[], settings: Settings): RulesVersionInputs => ({
+  rules,
+  models: settings.models,
+  textFraming: TEXT_FRAMING,
+  requestShapeVersion: REQUEST_SHAPE_VERSION,
+  thumbnailShapeVersion: THUMBNAIL_SHAPE_VERSION,
+  engine: settings.engine,
+  direct: settings.direct,
+  customEndpoint: settings.customEndpoint,
+  chatPromptVersion: CHAT_PROMPT_VERSION,
+});
+
 export function computeRulesVersion(rules: Rule[], settings: Settings): string {
-  return rulesVersion({
-    rules,
-    models: settings.models,
-    textFraming: TEXT_FRAMING,
-    requestShapeVersion: REQUEST_SHAPE_VERSION,
-    engine: settings.engine,
-    direct: settings.direct,
-    customEndpoint: settings.customEndpoint,
-  });
+  return rulesVersion(versionInputs(rules, settings));
 }
+
+/** The versions a Tile's cached text and thumbnail answers must carry to be used. */
+export function computeAnswerVersions(rules: Rule[], settings: Settings): { text: string; thumb: string } {
+  return answerVersions(versionInputs(rules, settings));
+}
+
+/** What a Tile asked by another judgeTiles call at the same time got: its text answer, or why it has none. */
+type SharedText = { text: CachedText } | { reason: ReasonCode };
 
 export function createJudge(deps: JudgeDeps): Judge {
   const textSem = new Semaphore(TEXT_IN_FLIGHT);
@@ -227,6 +277,31 @@ export function createJudge(deps: JudgeDeps): Judge {
   const sleep = deps.sleep ?? defaultSleep;
   const decisionsDeps: DecisionsDeps = { fetch: deps.fetch, sleep, now: () => deps.now(), timeoutMs: deps.timeouts?.requestMs, log: deps.log };
   const exactMemo = new Map<SiteId, { version: string; compiled: CompiledExact }>();
+  // Text answers being asked right now, keyed `<context> <textV> <keepOnly> <videoId>`, so a second tab showing the
+  // same Tiles waits for them instead of paying for the same questions. A private tab shares only with itself.
+  const askingText = new Map<string, Promise<SharedText>>();
+  // A private tab writes only its own records here, keyed `<tabId> <videoId>`, merged like putVerdicts. It reads
+  // the stored Verdict cache too, which reading leaves unchanged, with its own records laid over it.
+  const privateVerdicts = new Map<string, VerdictCacheRecord>();
+  const cacheGet = async (ctx: JudgeContext, videoIds: string[], rv: string) => {
+    const out = await deps.cacheGet(videoIds, rv);
+    if (!ctx.private) return out;
+    for (const v of videoIds) {
+      const rec = privateVerdicts.get(`${ctx.tabId} ${v}`);
+      if (rec?.rulesVersion === rv) out.set(v, { ...out.get(v), ...rec });
+    }
+    return out;
+  };
+  const cachePut = async (ctx: JudgeContext, puts: VerdictPut[]) => {
+    if (!ctx.private) return deps.cachePut(puts);
+    for (const { videoId, ...put } of puts) {
+      const key = `${ctx.tabId} ${videoId}`;
+      const prev = privateVerdicts.get(key);
+      privateVerdicts.delete(key);
+      privateVerdicts.set(key, prev?.rulesVersion === put.rulesVersion ? { ...prev, ...put } : put);
+      if (privateVerdicts.size > PRIVATE_CACHE_MAX) privateVerdicts.delete(privateVerdicts.keys().next().value!);
+    }
+  };
 
   const compiledFor = (site: SiteId, rules: Rule[], regexEnabled: boolean): CompiledExact => {
     const version = exactVersion(rules, regexEnabled);
@@ -239,11 +314,11 @@ export function createJudge(deps: JudgeDeps): Judge {
     const [settings, everyRule] = await Promise.all([deps.settings(), deps.rules()]);
     // Content compares Verdicts with this one, which every Rule changes.
     const rv = computeRulesVersion(everyRule, settings);
-    // One Site per batch (the router checks), judged only against the Rules that work there (ADR 0012). The Verdict
-    // cache keys on those, so a Rule for another Site never voids this Site's cached answers.
+    // One Site per batch (the router checks), judged only against the Rules that work there (ADR 0012). Cached
+    // answers carry versions over those, so a Rule for another Site never voids this Site's cached answers.
     const site = items[0] ? SURFACE_SITE[items[0].surface] : 'youtube';
     const allRules = rulesOn(everyRule, site);
-    const siteRv = computeRulesVersion(allRules, settings);
+    const versions = computeAnswerVersions(allRules, settings);
     const custom = settings.engine === 'custom';
     // A direct Decision provider (§12): its own address, model and key, no OpenRouter fallback chain.
     const direct = settings.engine === 'direct' ? settings.direct : undefined;
@@ -269,19 +344,21 @@ export function createJudge(deps: JudgeDeps): Judge {
     const fromSubscribed = subscriptions ? subscribedMatcher(subscriptions) : undefined;
     const viewWithout = (skip: ReadonlySet<string>): RuleView => {
       const applies = (r: Rule) => !skip.has(r.id);
+      const skippedRefs = (list: Rule[]) => list.filter((r) => !applies(r)).map((r) => r.ref);
       const remove = topicRemove.filter(applies);
-      const skippedRefs = [...topicRemove, ...thumbnail].filter((r) => !applies(r)).map((r) => r.ref);
       return {
         topicRemove: remove,
         thumbnail: thumbnail.filter(applies),
         rulesByRef: new Map([...rulesByRef].filter(([, r]) => applies(r))),
         hasTopicRules: remove.length + topicKeep.length > 0,
-        cacheRv: cacheVersion(siteRv, skippedRefs),
+        textV: cacheVersion(versions.text, skippedRefs(topicRemove)),
+        thumbV: cacheVersion(versions.thumb, skippedRefs(thumbnail)),
       };
     };
     const fullView = viewWithout(new Set());
     const subscribedView = skipping.length > 0 ? viewWithout(skippingIds) : fullView;
     const views = subscribedView === fullView ? [fullView] : [fullView, subscribedView];
+    const scope = ctx.private ? `p${ctx.tabId}` : 'n';
 
     const slots = new Map<string, Slot>();
     for (const t of items) {
@@ -321,19 +398,15 @@ export function createJudge(deps: JudgeDeps): Judge {
         const reason = allowed.ok ? 'noKey' : allowed.reason;
         for (const s of modelSlots) s.reason = reason;
       } else {
-        // Stage 5: Verdict cache.
+        // Stage 5: Verdict cache. Each answer counts only under the version of the Rules it was asked about.
         if (opts.useCache) {
-          for (const view of views) {
-            const group = modelSlots.filter((s) => s.view === view);
-            if (group.length === 0) continue;
-            const cached = await deps.cacheGet(group.map((s) => s.facts.videoId), view.cacheRv);
-            for (const s of group) {
-              const rec = cached.get(s.facts.videoId);
-              if (!rec) continue;
-              // A keep-only answer holds no remove answer, so a Tile that now needs the full text pass re-asks.
-              if (rec.text && !(rec.text.keepOnly && s.exact.kind === 'none' && view.topicRemove.length > 0)) s.text = rec.text;
-              if (rec.thumb) s.thumb = rec.thumb;
-            }
+          const cached = await cacheGet(ctx, modelSlots.map((s) => s.facts.videoId), VERDICT_RECORD_VERSION);
+          for (const s of modelSlots) {
+            const { text, thumb } = cached.get(s.facts.videoId) ?? {};
+            // A keep-only answer holds no remove answer, so a Tile that now needs the full text pass re-asks.
+            const usable = text && !(text.keepOnly && s.exact.kind === 'none' && s.view.topicRemove.length > 0);
+            if (usable && text.v === s.view.textV) s.text = text;
+            if (thumb?.v === s.view.thumbV) s.thumb = thumb;
           }
         }
 
@@ -358,11 +431,20 @@ export function createJudge(deps: JudgeDeps): Judge {
           if (reason) for (const s of tiles) s.reason = reason;
           return reason === undefined;
         };
-        // One model outcome per judgeTiles call (architecture.md §7: counted per batch, after the chain).
+        // Model outcomes are reported per judgeTiles call (architecture.md §7: counted per batch, after the chain).
         const outcomes: ModelOutcome[] = [];
         const fail = (tiles: Slot[], r: { reason: ReasonCode; countsAsFailure: boolean }) => {
           for (const s of tiles) s.reason = r.reason;
           outcomes.push({ ok: false, reason: r.reason, countsAsFailure: r.countsAsFailure });
+        };
+        // A paid answer counts as spend even when unusable (§8.3). One that fails the check fails its Tiles.
+        const checked = async (sent: Extract<ChainResult, { ok: true }>, questions: BuiltRequest['questions'], tiles: Slot[]) => {
+          const valid = validateResponse(sent.json, questions);
+          await account(sent.model, valid.ok ? valid.value.usage : readUsage(sent.json));
+          if (valid.ok) return valid.value;
+          deps.log?.({ event: 'apiShapeChanged', model: sent.model, problem: valid.problem, shape: valid.shape });
+          fail(tiles, { reason: 'apiShapeChanged', countsAsFailure: true });
+          return undefined;
         };
 
         // Stage 6: text pass (Topic rules, Topic Keep rules) and keep-only questions.
@@ -374,8 +456,14 @@ export function createJudge(deps: JudgeDeps): Judge {
         const fullPass = overLimit ? [] : wanted;
         const keepPass = modelSlots.filter((s) => s.exact.kind === 'remove' && s.text?.pKeep === undefined);
         if (fullPass.length + keepPass.length > 0) {
-          const exceptions = fullPass.some((s) => s.view.topicRemove.length > 0) ? await deps.recentExceptions(MAX_KEPT_EXAMPLES, exampleOn(everyRule, site)) : [];
-          const keepOnlyIds = new Set(keepPass.map((s) => s.facts.videoId));
+          // A Tile with an exact remove pending is asked in full wherever remove Topic rules are asked, so no request
+          // shows which Tiles a local Rule removed (§2.5). Its remove answer is cached, and unused while the exact
+          // remove stands. Only where no choice question can go does it get its Keep questions alone.
+          const keepOnlyIds = new Set(keepPass.filter((s) => overLimit || s.view.topicRemove.length === 0).map((s) => s.facts.videoId));
+          const asksRemove = [...fullPass, ...keepPass].some((s) => !keepOnlyIds.has(s.facts.videoId) && s.view.topicRemove.length > 0);
+          const exceptions = asksRemove ? await deps.recentExceptions(MAX_KEPT_EXAMPLES, exampleOn(everyRule, site)) : [];
+          // Judged counts only Tiles no local Rule decided (§8.3).
+          const countsJudged = (s: Slot) => s.exact.kind !== 'remove';
           // More Topic Keep rules than fit next to a choice question in 64 go to extra keep-only requests.
           const keepGroups = topicKeep.length > MAX_KEEP_RULES_PER_REQUEST ? chunk(topicKeep, MAX_KEEP_RULES_PER_REQUEST) : [topicKeep];
 
@@ -391,7 +479,7 @@ export function createJudge(deps: JudgeDeps): Judge {
             // A paid reply counts as spend even when its content is unusable (§8.3).
             costUsd += chatCost(sent.json) ?? 0;
             const parsed = parseChatResponse(sent.json, plan, endpoint.model);
-            for (const s of group) if (!keepOnlyIds.has(s.facts.videoId)) judged.add(s.facts.videoId);
+            for (const s of group) if (countsJudged(s)) judged.add(s.facts.videoId);
             if (!parsed.ok) {
               deps.log?.({ event: 'apiShapeChanged', model: endpoint.model, problem: parsed.detail, shape: '' });
               return fail(group, { reason: parsed.reason, countsAsFailure: true });
@@ -400,14 +488,13 @@ export function createJudge(deps: JudgeDeps): Judge {
               const r = parsed.results.get(s.facts.videoId)!;
               s.newText = s.text = keepOnlyIds.has(s.facts.videoId) ? { ...r, keepOnly: true } : r;
             }
-            outcomes.push({ ok: true, model: endpoint.model, fallback: false });
+            outcomes.push({ ok: true, fallback: false });
           };
 
           const sendText = async (group: Slot[], removeRules: Rule[]): Promise<void> => {
             const facts = group.map((s) => s.facts);
             const needsChoice = group.some((s) => !keepOnlyIds.has(s.facts.videoId));
             const merged = new Map<string, CachedText>();
-            let lastOk: { model: string; fallback: boolean } | undefined;
             for (const [gi, keepGroup] of keepGroups.entries()) {
               const built: BuiltRequest =
                 gi === 0 && needsChoice
@@ -430,53 +517,79 @@ export function createJudge(deps: JudgeDeps): Judge {
                 }
                 return fail(group, sent);
               }
-              // §8.3: every Tile in a paid text request counts as judged, keep-only Tiles do not.
-              if (gi === 0) for (const s of group) if (!keepOnlyIds.has(s.facts.videoId)) judged.add(s.facts.videoId);
-              const valid = validateResponse(sent.json, built.questions);
-              if (!valid.ok) {
-                await account(sent.model, readUsage(sent.json));
-                deps.log?.({ event: 'apiShapeChanged', model: sent.model, problem: valid.problem, shape: valid.shape });
-                return fail(group, { reason: 'apiShapeChanged', countsAsFailure: true });
-              }
-              await account(sent.model, valid.value.usage);
-              for (const [videoId, r] of deriveTextResults(built, valid.value.answers, sent.model)) {
+              // §8.3: every Tile in a paid text request counts as judged, Tiles with an exact remove do not.
+              if (gi === 0) for (const s of group) if (countsJudged(s)) judged.add(s.facts.videoId);
+              const answer = await checked(sent, built.questions, group);
+              if (!answer) return;
+              for (const [videoId, r] of deriveTextResults(built, answer.answers, sent.model)) {
                 const prev = merged.get(videoId);
                 merged.set(videoId, prev ? mergeKeep(prev, r) : r);
               }
-              lastOk = { model: sent.model, fallback: sent.fallback };
+              outcomes.push({ ok: true, fallback: sent.fallback });
             }
             for (const s of group) {
               const r = merged.get(s.facts.videoId)!;
               s.newText = s.text = keepOnlyIds.has(s.facts.videoId) ? { ...r, keepOnly: true } : withoutKeepOnly(r);
             }
-            if (lastOk) outcomes.push({ ok: true, ...lastOk });
           };
 
-          // Tiles from Subscribed channels go in requests of their own, asked only the Rules that apply to them.
-          const all = [...fullPass, ...keepPass];
-          const sends: Promise<void>[] = [];
-          for (const view of views) {
-            const group = all.filter((s) => s.view === view);
-            const size = custom ? 16 : textBatchSizeFor(TEXT_FRAMING, view.topicRemove.length, keepGroups[0]!.length);
-            for (const part of chunk(group, size)) sends.push(custom ? sendCustom(part, view.topicRemove) : sendText(part, view.topicRemove));
+          // A Tile another call is asking already waits for that answer. The others are announced, then asked.
+          const all: Slot[] = [];
+          const waits: Promise<void>[] = [];
+          const announced: { s: Slot; key: string; done: (r: SharedText) => void }[] = [];
+          for (const s of [...fullPass, ...keepPass]) {
+            const key = `${scope} ${s.view.textV} ${keepOnlyIds.has(s.facts.videoId)} ${s.facts.videoId}`;
+            const asking = opts.useCache ? askingText.get(key) : undefined;
+            if (asking) {
+              const settle = (r: SharedText) => {
+                if ('text' in r) s.text = r.text;
+                else s.reason = r.reason;
+              };
+              waits.push(asking.then(settle));
+              continue;
+            }
+            all.push(s);
+            if (opts.useCache) askingText.set(key, new Promise((done) => announced.push({ s, key, done })));
           }
-          await Promise.all(sends);
+          try {
+            // Tiles from Subscribed channels go in requests of their own, asked only the Rules that apply to them.
+            const sends: Promise<void>[] = [];
+            for (const view of views) {
+              const group = all.filter((s) => s.view === view);
+              const size = custom ? 16 : textBatchSizeFor(TEXT_FRAMING, view.topicRemove.length, keepGroups[0]!.length);
+              for (const part of chunk(group, size)) sends.push(custom ? sendCustom(part, view.topicRemove) : sendText(part, view.topicRemove));
+            }
+            await Promise.all(sends);
+          } finally {
+            for (const { s, key, done } of announced) {
+              askingText.delete(key);
+              done(s.newText ? { text: s.newText } : { reason: s.reason ?? 'modelError' });
+            }
+          }
+          await Promise.all(waits);
         }
 
         // Stage 7: thumbnail pass, only where stage 6 matched no Rule at all.
         if (hasThumb && images) {
-          const thumbPass = modelSlots.filter(
+          const thumbWanted = modelSlots.filter(
             (s) => s.exact.kind === 'none' && s.view.thumbnail.length > 0 && !s.thumb && !s.reason && needsThumbnailPass(s.text, s.view.hasTopicRules),
           );
+          // The thumbnail question has the same option limit as the text choice question (§12.1).
+          const thumbOverLimit = (s: Slot) => !!provider && s.view.thumbnail.length > topicRuleLimit(provider);
+          for (const s of thumbWanted) if (thumbOverLimit(s)) s.reason = 'tooManyRules';
+          const thumbPass = thumbWanted.filter((s) => !thumbOverLimit(s));
           await Promise.all(
-            thumbPass.map((s) =>
-              thumbSem.run(async () => {
-                const keepTile = () => {
-                  s.thumb = { p: 0, model: models.image };
-                  s.thumbKept = true;
-                };
-                const dataUrl = await fetchThumbnail(deps.fetch, s.facts, deps.timeouts?.thumbnailMs);
-                if (!dataUrl) return keepTile();
+            thumbPass.map(async (s) => {
+              const keepTile = () => {
+                s.thumb = { p: 0, model: models.image };
+                s.thumbKept = true;
+              };
+              // Fetched before taking a request slot, so the slots wait on the model only.
+              const dataUrl = await fetchThumbnail(deps.fetch, s.facts, deps.timeouts?.thumbnailMs);
+              if (!dataUrl) return keepTile();
+              return thumbSem.run(async () => {
+                // Only the Thumbnail rules that apply to the Tile (REQ-RULE-14): one choice question shares its
+                // probability among its options, so a Rule that skips the Tile would take the share of one that applies.
                 const built = buildThumbnailRequest(s.view.thumbnail, s.facts, dataUrl, { model: models.image });
                 if (!(await stillAllowed([s]))) return;
                 const sent = await sendDecisions(decisionsDeps, key, built.body, 'thumbnail', FALLBACK_MODELS.image, target);
@@ -486,17 +599,12 @@ export function createJudge(deps: JudgeDeps): Judge {
                   return fail([s], sent);
                 }
                 if (!s.view.hasTopicRules) judged.add(s.facts.videoId);
-                const valid = validateResponse(sent.json, built.questions);
-                if (!valid.ok) {
-                  await account(sent.model, readUsage(sent.json));
-                  deps.log?.({ event: 'apiShapeChanged', model: sent.model, problem: valid.problem, shape: valid.shape });
-                  return fail([s], { reason: 'apiShapeChanged', countsAsFailure: true });
-                }
-                await account(sent.model, valid.value.usage);
-                s.newThumb = s.thumb = deriveThumbResult(built, valid.value.answers, sent.model);
-                outcomes.push({ ok: true, model: sent.model, fallback: sent.fallback });
-              }),
-            ),
+                const answer = await checked(sent, built.questions, [s]);
+                if (!answer) return;
+                s.newThumb = s.thumb = deriveThumbResult(built, answer.answers, sent.model);
+                outcomes.push({ ok: true, fallback: sent.fallback, thumbnail: true });
+              });
+            }),
           );
         }
 
@@ -509,19 +617,18 @@ export function createJudge(deps: JudgeDeps): Judge {
           }
         };
         if (requests > 0) await guard('addCost', () => deps.addCost({ usd: costUsd, judged: opts.countJudged ? judged.size : 0, requests }, ctx));
-        const outcome = summarizeOutcomes(outcomes);
-        if (outcome) await guard('recordModelOutcome', () => deps.recordModelOutcome(outcome));
-        if (opts.useCache && !ctx.private) {
+        for (const outcome of summarizeOutcomes(outcomes)) await guard('recordModelOutcome', () => deps.recordModelOutcome(outcome));
+        if (opts.useCache) {
           const at = deps.now();
           const puts: VerdictPut[] = [];
           for (const s of modelSlots) {
             if (!s.newText && !s.newThumb) continue;
-            const put: VerdictPut = { videoId: s.facts.videoId, rulesVersion: s.view.cacheRv, at };
-            if (s.newText) put.text = s.newText;
-            if (s.newThumb) put.thumb = s.newThumb;
+            const put: VerdictPut = { videoId: s.facts.videoId, rulesVersion: VERDICT_RECORD_VERSION, at };
+            if (s.newText) put.text = { ...s.newText, v: s.view.textV };
+            if (s.newThumb) put.thumb = { ...s.newThumb, v: s.view.thumbV };
             puts.push(put);
           }
-          if (puts.length > 0) await guard('cachePut', () => deps.cachePut(puts));
+          if (puts.length > 0) await guard('cachePut', () => cachePut(ctx, puts));
         }
       }
     }
@@ -558,14 +665,12 @@ export function createJudge(deps: JudgeDeps): Judge {
     },
 
     async tryTitle(input, ctx) {
-      const title = typeof input.title === 'string' ? input.title.trim() : '';
-      if (!title || title.length > TRY_TITLE_MAX_CHARS) return { error: 'invalidInput' };
-      const channelName = typeof input.channelName === 'string' && input.channelName.trim() ? input.channelName.trim() : undefined;
+      const title = input.title.trim();
+      const channelName = input.channelName?.trim();
       const d = input.durationSec;
-      if (d !== undefined && !(typeof d === 'number' && Number.isFinite(d) && d >= 0)) return { error: 'invalidInput' };
       const site = input.site ?? 'youtube';
       let videoId = TRY_TITLE_ID;
-      if (typeof input.thumbnailUrl === 'string' && input.thumbnailUrl.trim()) {
+      if (input.thumbnailUrl?.trim()) {
         if (site !== 'youtube') return { error: 'invalidInput' };
         const parsed = parseThumbnailInput(input.thumbnailUrl);
         if (!parsed) return { error: 'invalidInput' };
@@ -589,5 +694,9 @@ export function createJudge(deps: JudgeDeps): Judge {
     },
 
     rulesVersionFor: computeRulesVersion,
+
+    forgetTab(tabId) {
+      for (const key of privateVerdicts.keys()) if (key.startsWith(`${tabId} `)) privateVerdicts.delete(key);
+    },
   };
 }

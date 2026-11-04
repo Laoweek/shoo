@@ -53,6 +53,14 @@ describe('onboarding resume', () => {
     expect(text(el)).toContain('You can change this later in Settings, Connection.');
   });
 
+  it('links the privacy policy on step 1, in a new tab', async () => {
+    const el = mount(<App isFirefox={false} />);
+    await settle();
+    const link = [...el.querySelectorAll('a')].find((a) => text(a) === 'Privacy policy')!;
+    expect(link.getAttribute('href')).toBe('https://laoweek.github.io/shoo/release/privacy-policy.html');
+    expect(link.target).toBe('_blank');
+  });
+
   it('resumes at the saved step with completed steps checked', async () => {
     fake.settings.onboarding = { step: 2, done: false };
     fake.settings.consent = { version: CONSENT_VERSION, acceptedAt: 1 };
@@ -184,6 +192,16 @@ describe('connect (step 2)', () => {
     expect(text(el)).toContain('Filtering strength was tuned on clef-flash, so jev-1.13.0 may remove more or fewer videos.');
     expect(text(el.querySelector('label[for="direct-key"]')!)).toBe('TypeSafe API key');
     expect(document.getElementById(button(el, 'Use TypeSafe').getAttribute('aria-describedby')!)!.textContent).toBe('Paste your TypeSafe API key to continue.');
+  });
+
+  it("a provider reached directly says its own terms apply, not OpenRouter's, and a model on this computer does not", async () => {
+    const terms = "OpenRouter's setting that leaves out providers who train on your data does not apply here.";
+    const el = mount(<ConnectStep headingRef={heading} onNext={vi.fn()} />);
+    await settle();
+    click(radio(el, 'Perplexity'));
+    expect(text(el)).toContain(`Perplexity's own terms decide what it keeps. ${terms}`);
+    click(radio(el, 'Ollama'));
+    expect(text(el)).not.toContain(terms);
   });
 
   it('Ollama: no key, a free check first, then consent that says nothing leaves the computer', async () => {

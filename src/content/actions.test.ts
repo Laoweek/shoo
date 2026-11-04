@@ -580,10 +580,10 @@ describe("NativeActionQueue: YouTube's own focus calls never move the page", () 
   /** ResizeObserver stand-in: one notification after the frame's animation frame callbacks, before it paints. */
   class FrameEndObserver {
     private on = false;
-    constructor(private readonly cb: () => void) {}
-    observe() {
+    constructor(private readonly cb: (entries: { target: Element }[], observer: FrameEndObserver) => void) {}
+    observe(target: Element) {
       this.on = true;
-      setTimeout(() => this.on && this.cb(), 0);
+      setTimeout(() => this.on && this.cb([{ target }], this), 0);
     }
     unobserve() {}
     disconnect() {
@@ -790,7 +790,8 @@ describe("NativeActionQueue: YouTube's own focus calls never move the page", () 
     placeholderFocuses(job, 635);
     const p = queue().enqueue(job);
     await vi.advanceTimersByTimeAsync(100); // the menu is open, its icons not rendered yet
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    // A lone modifier: the guard sees a key, and the job has no reason to yield (any other key would close the menu).
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', shiftKey: true, bubbles: true }));
     await vi.advanceTimersByTimeAsync(1000);
     expect((await p).status).toBe('ok');
     expect(window.scrollY).toBe(1400);
@@ -1024,6 +1025,52 @@ describe("NativeActionQueue: the user's scrolling comes first", () => {
       expect(document.activeElement).toBe(keep);
     },
   );
+
+  it.each(['Enter', ' ', 'k', 'Tab', 'ArrowLeft'])(
+    "a key (%j) pressed while Shoo's menu holds focus never reaches the menu; Shoo closes it and tries again later",
+    async (key) => {
+      const job = tileFor('home', 'HOMEvideo01', { iconDelayMs: 1000 });
+      const keep = outside();
+      keep.focus();
+      const p = queue().enqueue(job);
+      await vi.advanceTimersByTimeAsync(200); // the menu is open and took focus, its icons not rendered yet
+      const dropdown = sim.dropdown() as HTMLElement;
+      expect(dropdown.contains(document.activeElement)).toBe(true);
+      // YouTube runs the focused item on Enter or Space.
+      const reached: string[] = [];
+      dropdown.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') return; // Shoo's own Escape
+        reached.push(ev.key);
+        if (ev.key === 'Enter' || ev.key === ' ') (ev.target as HTMLElement).click();
+      });
+      const pressed = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, composed: true });
+      document.activeElement?.dispatchEvent(pressed);
+      expect(reached).toEqual([]);
+      expect(pressed.defaultPrevented).toBe(true);
+      expect(sim.log).toEqual(['open@HOMEvideo01', 'escape']);
+      await vi.advanceTimersByTimeAsync(TIMING.scrollQuietMs - 100);
+      expect(sim.log).toEqual(['open@HOMEvideo01', 'escape']); // nothing reopens until the user has paused
+      expect(document.activeElement).toBe(keep);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect((await p).status).toBe('ok');
+      expect(sim.log).toEqual(['open@HOMEvideo01', 'escape', 'open@HOMEvideo01', 'click:Not interested@HOMEvideo01', 'placeholder@HOMEvideo01']);
+    },
+  );
+
+  it.each([
+    ['Ctrl+F', { key: 'f', ctrlKey: true }],
+    ['a lone Shift', { key: 'Shift', shiftKey: true }],
+  ])("%s on Shoo's menu is left to the browser and does not make the job yield", async (_, init) => {
+    const job = tileFor('home', 'HOMEvideo01', { iconDelayMs: 300 });
+    const p = queue().enqueue(job);
+    await vi.advanceTimersByTimeAsync(200);
+    const pressed = new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true, composed: true });
+    document.activeElement?.dispatchEvent(pressed);
+    expect(pressed.defaultPrevented).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect((await p).status).toBe('ok');
+    expect(sim.log).toEqual(['open@HOMEvideo01', 'click:Not interested@HOMEvideo01', 'placeholder@HOMEvideo01']);
+  });
 
   it('a job waiting to try again after a scroll can still be cancelled', async () => {
     const job = tileFor('home', 'HOMEvideo01', { iconDelayMs: 1000 });

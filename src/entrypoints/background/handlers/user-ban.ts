@@ -2,13 +2,14 @@
 // whose content watches its own menu sends these (YouTube today). Source of truth: docs/spec/requirements.md
 // REQ-ACT-5, docs/spec/architecture.md Section 6.
 import { tileChannelIdentity } from '~/core/channel';
+import { bannedRuleFor, keepRuleFor } from '~/core/escalation';
 import { newId } from '~/core/ids';
 import { SURFACE_SITE } from '~/core/sites';
 import { queryActivity } from '~/store/local';
 import { isNonEmpty, isRecord, isTileFacts, isVideoId } from '../guards';
 import { InvalidInput, type Routes } from '../router';
 import type { Services } from '../services';
-import { addedChannelRule, bannedRuleFor, channelRuleOp, keepRuleFor } from './escalation';
+import { addedChannelRule, channelRuleOp } from './escalation';
 import { truncateTitle } from './judging';
 
 /** The Site's Undo can lift the ban only this long after it was added, like Activity's Undo routing. */

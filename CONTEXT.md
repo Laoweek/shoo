@@ -115,8 +115,12 @@ How sure the Decision model must be before a Topic rule or Thumbnail rule produc
 _Avoid_: threshold, confidence, sensitivity
 
 **Verdict cache**:
-The record of what the Decision model answered for a video under the current Rules, so the same video is never sent to the model twice.
+The record of what the Decision model answered for a video, each answer kept with the version of the Rules it depends on and for at most 30 days, so the same video is never sent to the model twice for the same Rules within 30 days.
 _Avoid_: decision cache, model cache
+
+**Clear history**:
+The Settings action that deletes, on this device, everything Shoo learned from browsing: Activity, the Verdict cache, Rule hit and Rescue counts, past days' counters, Escalation counts and suggestions, and the Subscribed channels list. Rules, Exceptions, settings and keys stay. Reset is the action that deletes everything.
+_Avoid_: clear Activity, clear cache
 
 **Daily cap**:
 The most Tiles Shoo sends to the Decision model in one day before it stops asking until midnight.

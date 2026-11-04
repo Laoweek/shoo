@@ -33,7 +33,7 @@ export interface RuntimeInputs {
   judging?: boolean;
   /** CONSENT_VERSION (store/schema.ts). Consent recorded for an older version no longer counts. */
   consentVersion: number;
-  /** Firefox: the optional `data_collection: ['websiteContent']` permission is granted. Always true on Chrome. */
+  /** Firefox: both optional data collection categories (DATA_COLLECTION in core/types.ts) are granted. Always true on Chrome. */
   dataCollection: boolean;
 }
 

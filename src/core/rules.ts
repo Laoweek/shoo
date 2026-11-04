@@ -196,12 +196,14 @@ export const siteChoosable = (r: Pick<Rule, 'kind' | 'params'>): boolean =>
 export const rulesOn = (rules: Rule[], site: SiteId): Rule[] => rules.filter((r) => (ruleSite(r) ?? site) === site);
 
 /**
- * Which Exceptions a Site's requests may show the model as kept examples: all but those kept from a Rule that works
- * only on another Site, which that Site's requests never name.
+ * Which Exceptions a Site's requests may show the model as kept examples: only those kept from an enabled remove
+ * Topic rule that works on that Site, the one kind of Rule `viewer_kept_anyway` speaks to. An Exception from a Banned
+ * channel, an Exact or Thumbnail rule, a disabled or deleted Rule, or with no Rule stays on the device, because it
+ * tells the model nothing about its questions and is often the only time that title would leave it.
  */
 export function exampleOn(rules: Rule[], site: SiteId): (x: Exception) => boolean {
-  const elsewhere = new Set(rules.filter((r) => (ruleSite(r) ?? site) !== site).map((r) => r.id));
-  return (x) => x.ruleId === undefined || !elsewhere.has(x.ruleId);
+  const topic = new Set(activeRules(rulesOn(rules, site)).filter((r) => r.kind === 'topic' && r.polarity === 'remove').map((r) => r.id));
+  return (x) => x.ruleId !== undefined && topic.has(x.ruleId);
 }
 
 /** Sorted copy: K refs before R refs, then by number. Unparseable refs last, then by ref text and id. */

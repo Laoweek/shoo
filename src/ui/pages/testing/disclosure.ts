@@ -38,8 +38,20 @@ export const DISCLOSURE_ROWS: { title: string; lines?: string[]; lists: string[]
     ],
   },
   {
-    title: 'Never sent',
-    lists: [['Web addresses', "Video IDs, including Bilibili's BV ids", 'Your watch history', 'Cookies', 'Comments', "The page's HTML", 'Your YouTube or Bilibili account details']],
+    title: 'Never sent to any of them',
+    lists: [
+      [
+        'Web addresses',
+        "Video IDs, including Bilibili's BV ids",
+        'Channel IDs and handles',
+        'Your YouTube subscriptions',
+        'Your watch history',
+        'Cookies',
+        'Comments',
+        "The page's HTML",
+        'Your YouTube or Bilibili account details',
+      ],
+    ],
   },
 ];
 

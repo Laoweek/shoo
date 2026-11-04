@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TileFacts } from '~/core/types';
 import { removeOverlay } from '~/ui/in-page';
 import { addSyntheticShelfControl, appendContinuation, wireShelf } from '~/sites/youtube/test-harness';
-import { OFF, grid, overlayRoot, setupHome, shooHosts, snapshot, tilesOf, wireAll, type Env } from './testing';
+import { OFF, collectUnhandled, grid, overlayRoot, setupHome, shooHosts, snapshot, tilesOf, wireAll, type Env } from './testing';
 
 let hidden = false;
 let env: Env | undefined;
@@ -146,6 +146,27 @@ describe('bootstrapped pipeline: judging', () => {
     expect(judgedIds(e)).toContain('FIXTURE0006');
     expect(e.kinds('FIXTURE0006')).toEqual([undefined]);
     expect(e.bg.of('reviewPending').at(-1)).toEqual({ count: 0 });
+  });
+
+  it('a hidden tab re-judges nothing on settingsChanged, then once when it is shown', async () => {
+    const e = start();
+    e.bg.outcomes.set('FIXTURE0006', { ruleId: 'r1' });
+    await e.showAll();
+    const before = e.bg.of('judgeTiles').length;
+    hidden = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    e.bg.outcomes.set('FIXTURE0006', 'keep');
+    e.p.settingsChanged({ settingsGeneration: 2, rulesVersion: 'rv2' });
+    e.bg.state = { ...e.bg.state, settingsGeneration: 3, rulesVersion: 'rv3' };
+    e.p.settingsChanged({ settingsGeneration: 3, rulesVersion: 'rv3' });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(e.bg.of('judgeTiles')).toHaveLength(before);
+    hidden = false;
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(400);
+    expect(e.bg.of('judgeTiles')).toHaveLength(before + 1);
+    expect(judgedIds(e)).toContain('FIXTURE0006');
+    expect(e.kinds('FIXTURE0006')).toEqual([undefined]);
   });
 
   it('the markup self-test reports an existing but empty container as ok', async () => {
@@ -408,6 +429,21 @@ describe('Auto mode', () => {
       ['Reaction videos', 'Reaction videos'],
       ['Crypto & trading', 'Videos about cryptocurrency or trading'],
     ]);
+  });
+
+  it.each(['annotation', 'summary'] as const)('a Removal is reported even when the %s throws, and the error still surfaces', async (part) => {
+    const e = start({ mode: 'auto' });
+    e.bg.outcomes.set('FIXTURE0006', { ruleId: 'r1' });
+    // A page that defined `shoo-chip-host` first can make attachShadow throw, for example.
+    vi.spyOn(e.ui, part).mockImplementation(() => {
+      throw new Error(`${part} broke`);
+    });
+    const unhandled = await collectUnhandled(async () => {
+      await e.showAll();
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(e.bg.of('reportActionResult')).toEqual([expect.objectContaining({ ok: true, videoId: 'FIXTURE0006' })]);
+    expect(unhandled).toEqual([expect.objectContaining({ message: `${part} broke` })]);
   });
 
   it('the annotation names the removed video: title and channel, the title alone on the Shorts shelf', async () => {

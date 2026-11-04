@@ -1,6 +1,7 @@
 // The three storage areas behind one small interface, so tests can pass quota-enforcing fakes and two
 // simulated devices. Source of truth for keys and budgets: docs/spec/architecture.md Section 8.
 import { browser } from 'wxt/browser';
+import { isRecord } from '~/core/types';
 
 export interface StorageChange {
   oldValue?: unknown;
@@ -64,4 +65,11 @@ export async function getOne<T>(area: AreaLike, key: string): Promise<T | undefi
   return v === undefined || v === null ? undefined : (v as T);
 }
 
-export const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+export { isRecord };
+
+/** JSON with object keys sorted at every level, so a comparison does not depend on key order (Chrome returns keys sorted). */
+export function stableJson(v: unknown): string {
+  return JSON.stringify(v, (_key, value: unknown) =>
+    isRecord(value) ? Object.fromEntries(Object.keys(value).sort().map((k) => [k, value[k]])) : value,
+  );
+}

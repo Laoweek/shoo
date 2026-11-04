@@ -20,9 +20,29 @@ export function textBatchSize(topicKeepRules: number): number {
   return Math.max(1, Math.min(MAX_TILES_PER_BATCH, Math.floor(MAX_QUESTIONS_PER_REQUEST / (1 + Math.max(0, topicKeepRules)))));
 }
 
-/** Conservative estimate for English: one token per 4 characters of JSON. */
+/**
+ * Conservative token estimate of the JSON: a quarter token per ASCII character, as English measured, and one per
+ * other UTF-16 unit. A Chinese character is at most about one token, so counting it as a quarter would let a
+ * Chinese state pass Cloudflare's reading limit unseen.
+ */
 export function estimateTokens(obj: unknown): number {
-  return Math.ceil(JSON.stringify(obj).length / 4);
+  const json = JSON.stringify(obj);
+  let ascii = 0;
+  for (let i = 0; i < json.length; i++) if (json.charCodeAt(i) < 0x80) ascii++;
+  return Math.ceil(ascii / 4 + (json.length - ascii));
+}
+
+/**
+ * The most of a title and a channel name a request carries. Real ones are far shorter (YouTube allows 100
+ * characters for a title, Bilibili 80), so this only bounds what a hostile page can put in a request.
+ */
+export const PROMPT_TITLE_MAX = 300;
+export const PROMPT_CHANNEL_MAX = 100;
+
+/** The first `max` code points of `s`, so a cut never splits a surrogate pair. */
+export function clip(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return Array.from(s).slice(0, max).join('');
 }
 
 export interface ModelState {
@@ -31,7 +51,10 @@ export interface ModelState {
   viewer_kept_anyway?: string[];
 }
 
-const exampleText = (e: Exception) => (e.channelName ? `${e.title} (channel: ${e.channelName})` : e.title);
+const exampleText = (e: Exception) => {
+  const title = clip(e.title, PROMPT_TITLE_MAX);
+  return e.channelName ? `${title} (channel: ${clip(e.channelName, PROMPT_CHANNEL_MAX)})` : title;
+};
 
 /**
  * Builds the `state` object for a text request and fits it into STATE_TOKEN_BUDGET. Uses enabled,
