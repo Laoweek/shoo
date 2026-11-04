@@ -7,8 +7,6 @@ Shoo's own code is licensed under the Apache License 2.0 ([LICENSE](LICENSE)). T
 | [Lucide](https://lucide.dev) (`lucide-preact`) | 1.52.0 | ISC, and MIT for the icons derived from Feather | Icons on the extension pages, bundled from `lucide-preact`. The path data of the `ban`, `check` and `user-check` icons is hand-copied into `src/ui/in-page/icons.tsx` for the in-page UI (`check` is one of the icons derived from Feather) |
 | [Figtree](https://github.com/erikdkennedy/figtree) (`@fontsource-variable/figtree`) | 5.3.0 | SIL Open Font License 1.1 | `figtree-latin-wght-normal.woff2`, bundled for the extension pages |
 | [Preact](https://preactjs.com) | 11.0.1 | MIT | UI runtime, bundled in the content scripts and the extension pages |
-| [`@webext-core/messaging`](https://github.com/aklinker1/webext-core) | 4.0.0 | MIT | Typed messages between the background, the content scripts and the extension pages |
-| `@aklinker1/zero-serialize-error` | 1.0.2 | MIT | Bundled as a dependency of `@webext-core/messaging` |
 | [WXT](https://wxt.dev) (`wxt`, `@wxt-dev/browser`, `@wxt-dev/i18n`) | 0.21.4, 0.3.4, 0.2.8 | MIT | The runtime helpers the build bundles: entrypoint setup, the `browser` API wrapper and the translated-string runtime |
 | [Tailwind CSS](https://tailwindcss.com) | 4.3.3 | MIT | Preflight and generated utility CSS in the extension pages' stylesheet |
 
@@ -170,62 +168,6 @@ From `preact/LICENSE`.
 The MIT License (MIT)
 
 Copyright (c) 2015-present Jason Miller
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-## @webext-core/messaging
-
-The npm package declares MIT and ships no licence file. This text is the `LICENSE` of its source repository, https://github.com/aklinker1/webext-core.
-
-```text
-MIT License
-
-Copyright (c) 2022 Aaron
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-## @aklinker1/zero-serialize-error
-
-From `@aklinker1/zero-serialize-error/LICENSE`.
-
-```text
-MIT License
-
-Copyright (c) 2026 Aaron
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
