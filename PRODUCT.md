@@ -53,7 +53,7 @@ Existing extensions in this space ("Not Interested!", "Nah", "Nope", "UnFeed") a
 
 ## Evidence on Hand
 
-No real users, testimonials or usage metrics exist yet. The five store screenshots in `docs/release/screenshots/` use synthetic Tiles, Rules and Activity on rebuilt YouTube pages (`docs/release/chrome-web-store.md`, Screenshots). They predate Bilibili support and the redesign, so they are to be re-shot before submission. The README's `mock-*.png` screenshots were taken on a real youtube.com Watch page with every title, channel, view count, age, thumbnail and avatar replaced by made-up ones before the page loaded, video streams blocked and the player's controls, play button and watermark hidden, and the README says so. Any other demonstration content must be synthetic and labelled as such. Cost and latency figures come from the calibration harness on synthetic Tiles (`scripts/calibration/`), not from real use.
+No real users, testimonials or usage metrics exist yet. The five store screenshots in `docs/release/screenshots/` use synthetic Tiles, Rules and Activity on rebuilt YouTube pages (`docs/release/chrome-web-store.md`, Screenshots). The README's `mock-*.png` screenshots were taken on a real youtube.com Watch page with every title, channel, view count, age, thumbnail and avatar replaced by made-up ones before the page loaded, video streams blocked and the player's controls, play button and watermark hidden, and the README says so. Any other demonstration content must be synthetic and labelled as such. Cost and latency figures come from the calibration harness on synthetic Tiles (`scripts/calibration/`), not from real use.
 
 ## Product Principles
 

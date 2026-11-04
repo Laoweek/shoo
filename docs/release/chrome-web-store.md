@@ -70,19 +70,19 @@ English. The extension also ships a Simplified Chinese UI (`_locales/zh_CN`), wh
 | Asset | File | Notes |
 |---|---|---|
 | Store icon 128×128 | `public/icon/128.png` (also in the package) | Shoo's eyes mark. No YouTube logo or red play button |
-| Small promo tile 440×280 (**required**) | `docs/release/screenshots/promo-small-440x280.png` | Icon, wordmark and one line. Made for this pack |
+| Small promo tile 440×280 (**required**) | `docs/release/screenshots/promo-small-440x280.png` | Wordmark and one line on the page ground, in Figtree. Made for this pack |
 | Marquee 1400×560 | none | Optional |
 | Screenshots 1280×800 (1 to 5) | see below | All five slots used |
 
 ### Screenshots
 
-All 1280×800 PNG, no alpha, from the built extension in a fresh Chrome profile with "Use Exact rules only" and Exact rules written for the capture. No OpenRouter key, no real user data. Screenshot 3 was captured on 2026-10-10 (Chrome 155, puppeteer-core). Screenshot 5 was captured on 2026-11-04 (Chrome for Testing 150, puppeteer-core) at 1680×1050 and scaled to 1280×800. Screenshots 1, 2 and 4 were captured on 2026-11-04 (Chrome for Testing 150, puppeteer-core) on the fixture pages (`test/fixtures/youtube/page-watch.html`, `page-home.html`) served at youtube.com, with synthetic titles, channels and generated thumbnails and a minimal page style of our own, so no third-party thumbnails or titles appear. All five were taken before Bilibili support and the redesign, so they show the old look and screenshot 5 shows consent text that does not name Bilibili. All five are to be re-shot from the current build the same way before submission.
+All 1280×800 PNG, no alpha, from the built extension in a fresh Chrome profile with "Use Exact rules only" and Exact rules written for the capture. No OpenRouter key, no real user data. All five were captured on 2026-11-04 from the current build (Chrome for Testing 150, puppeteer-core). Screenshots 1, 2, 3 and 4 come from one run on the fixture pages (`test/fixtures/youtube/page-watch.html`, `page-home.html`) served at youtube.com, with synthetic titles, channels and generated thumbnails and a minimal page style of our own, so no third-party thumbnails or titles appear. Screenshot 5 was captured at 1680×1050 and scaled to 1280×800.
 
 | # | File | Shows | Staged? |
 |---|---|---|---|
 | 1 | `screenshots/1-review-chip.png` | Review chip "Remove?" with the Rule's swatch and label ("cartoon", the Rule's text, no R-number), Remove and Keep, on a Watch sidebar video | Fixture page, synthetic Rules. The thumbnail must be wide enough for the full chip |
 | 2 | `screenshots/2-popup.png` | Toolbar popup: On, Mode switch (Review), today's counts, "Shoo only uses Exact rules", Add a rule | **Composite**: the popup page placed over screenshot 1 where the toolbar popup would open. The popup shows 0 judged when only Exact rules ran (the counter counts model-judged videos) |
-| 3 | `screenshots/3-settings-rules.png` | Settings, Rules: five Exact rules (keywords episode, cartoon, compilation, for kids, and Shorts) | Synthetic Rules. Mode reads Dry-run because the capture switched Mode to fill Activity |
+| 3 | `screenshots/3-settings-rules.png` | Settings, Rules: Try a title above the first four of five Exact rules (Shorts, and the keywords cartoon, episode and compilation, with for kids below the fold) | Synthetic Rules. Mode reads Dry-run because the capture switched Mode to fill Activity |
 | 4 | `screenshots/4-activity.png` | Activity: Would remove rows with the Rule that matched, Keep and Always keep this channel | Synthetic Rules, Dry-run results on the fixture pages |
 | 5 | `screenshots/5-onboarding-consent.png` | Onboarding step 1: what Shoo does, What Shoo sends, Agree and continue, Use Exact rules only | Real page, captured 2026-11-04 at 1680×1050 so the whole disclosure fits, then scaled to 1280×800 with no other edits. This is the in-product disclosure CWS asks for |
 

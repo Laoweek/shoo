@@ -28,7 +28,7 @@ Unlisted ("On your own") signing needs none of this except the sources and revie
 | Summary | `Write what you don't want to see. Shoo tells YouTube and Bilibili "Not interested" for you, and shows which rule did it.` | 120 of 250. No URLs allowed (none present) |
 | Description | Same text as `docs/release/chrome-web-store.md`, Description | 15,000 characters. AMO accepts limited Markdown, the plain list renders as is |
 | Categories (up to 2) | **Photos, Music & Videos**. Optional second: **Other** | |
-| Screenshots | Five 1280×800 PNGs (AMO's recommended size) in `docs/release/screenshots/`, listed in `chrome-web-store.md`, Screenshots. They predate Bilibili support and the redesign, so all five are to be re-shot before submission | No count limit |
+| Screenshots | Five 1280×800 PNGs (AMO's recommended size) in `docs/release/screenshots/`, listed in `chrome-web-store.md`, Screenshots. | No count limit |
 | Support email / site | `shoo@piran.xyz`, https://github.com/Laoweek/shoo/issues | |
 | License | Apache-2.0 (`LICENSE`, and `license` in `package.json`) | Required for a listed version |
 | Privacy policy | https://laoweek.github.io/shoo/release/privacy-policy.html, or paste the text of `docs/release/privacy-policy.md` | Required when data leaves the device |
