@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TileFacts } from '~/core/types';
 import { removeOverlay } from '~/ui/in-page';
 import { addSyntheticShelfControl, appendContinuation, wireShelf } from '~/sites/youtube/test-harness';
-import { OFF, collectUnhandled, grid, overlayRoot, setupHome, shooHosts, snapshot, tilesOf, wireAll, type Env } from './testing';
+import { VERDICTS_WAIT_MS } from './pipeline';
+import { OFF, RULES, collectUnhandled, grid, overlayRoot, setupHome, shooHosts, snapshot, tilesOf, wireAll, type Env } from './testing';
 
 let hidden = false;
 let env: Env | undefined;
@@ -185,6 +186,144 @@ describe('bootstrapped pipeline: judging', () => {
     expect(e.bg.of('reportMarkupCheck').at(-1)).not.toMatchObject({ ok: false }); // the 10 s container wait runs first
     await vi.advanceTimersByTimeAsync(5000);
     expect(e.bg.of('reportMarkupCheck').at(-1)).toMatchObject({ ok: false, missing: ['home.container'] });
+  });
+});
+
+describe('thumbnail Verdicts after the reply', () => {
+  const PENDING = 'FIXTURE0006';
+  /** The fake background's push for these videos of judgeTiles call `call`, judged under settings generation `gen`. */
+  function push(e: Env, ids: string[], { call = -1, gen = 1 } = {}): void {
+    const req = e.bg.of('judgeTiles').at(call)!;
+    const results = ids.map((videoId) => e.bg.result({ videoId } as TileFacts));
+    e.p.tileVerdicts({ batchId: req.batchId!, results, rulesVersion: 'rv1', settingsGeneration: gen, runtime: e.bg.state, rules: RULES });
+  }
+  /** A reason left and back: the pipeline re-sends every Tile it holds no Verdict for. */
+  async function rescan(e: Env): Promise<void> {
+    e.broadcast({ reason: 'offline' });
+    e.broadcast({ reason: 'ok' });
+    await vi.advanceTimersByTimeAsync(400);
+  }
+  const startPending = async (mode: 'review' | 'dryRun' | 'auto' = 'review') => {
+    const e = start({ mode });
+    e.bg.outcomes.set('FIXTURE0007', { ruleId: 'r2' });
+    e.bg.outcomes.set(PENDING, { undecided: 'thumbnailPending' });
+    await e.showAll();
+    e.bg.outcomes.set(PENDING, { ruleId: 'r1', source: 'modelThumbnail', p: 0.9 });
+    return e;
+  };
+
+  it.each([
+    ['review', 'chip'],
+    ['dryRun', 'label'],
+  ] as const)('%s: a Tile the reply left pending stays in flight, then the push decorates it like a reply', async (mode, kind) => {
+    const e = await startPending(mode);
+    expect(e.kinds('FIXTURE0007')).toEqual([kind]);
+    expect(e.kinds(PENDING)).toEqual([undefined]);
+    await rescan(e);
+    expect(e.bg.of('judgeTiles')).toHaveLength(1);
+    push(e, [PENDING]);
+    await e.settle();
+    expect(e.kinds(PENDING)).toEqual([kind]);
+    if (mode === 'review') expect(e.bg.of('reviewPending').at(-1)).toEqual({ count: 2 });
+    else expect(e.bg.of('recordWouldRemove').flatMap((r) => r.results.map((x) => x.videoId))).toEqual(['FIXTURE0007', PENDING]);
+  });
+
+  it('auto: the pushed remove Verdict is acted on and reported like a replied one', async () => {
+    const e = await startPending('auto');
+    push(e, [PENDING]);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(e.bg.of('reportActionResult').map((r) => [r.videoId, r.ok && r.source])).toEqual([
+      ['FIXTURE0007', 'exact'],
+      [PENDING, 'modelThumbnail'],
+    ]);
+  });
+
+  it('a push that comes before its reply is applied once the reply is', async () => {
+    const e = start();
+    e.bg.outcomes.set(PENDING, { undecided: 'thumbnailPending' });
+    e.bg.hold = true;
+    await e.showAll();
+    e.bg.outcomes.set(PENDING, { ruleId: 'r1', source: 'modelThumbnail', p: 0.9 });
+    push(e, [PENDING]);
+    await e.settle();
+    expect(e.kinds(PENDING)).toEqual([undefined]);
+    e.bg.outcomes.set(PENDING, { undecided: 'thumbnailPending' });
+    e.bg.release();
+    await e.settle();
+    expect(e.kinds(PENDING)).toEqual(['chip']);
+  });
+
+  it.each([
+    ['a Rule change', (e: Env) => (e.broadcast({ settingsGeneration: 2, rulesVersion: 'rv2' }), e.p.settingsChanged({ settingsGeneration: 2, rulesVersion: 'rv2' }))],
+    ['a Mode change', (e: Env) => (e.broadcast({ mode: 'dryRun', settingsGeneration: 2 }), e.p.settingsChanged({ settingsGeneration: 2, rulesVersion: 'rv1' }))],
+    ['an Exception, which changes no version (new epoch)', (e: Env) => e.p.settingsChanged({ settingsGeneration: 1, rulesVersion: 'rv1' })],
+  ])('a push stale after %s is dropped and the Tile judged again', async (_name, change) => {
+    const e = await startPending();
+    const remove = e.bg.outcomes.get(PENDING)!;
+    e.bg.outcomes.set(PENDING, 'keep');
+    change(e);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(e.bg.of('judgeTiles').slice(1).flatMap((r) => r.items.map((f) => f.videoId))).toContain(PENDING);
+    e.bg.outcomes.set(PENDING, remove);
+    push(e, [PENDING], { call: 0 });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(e.kinds(PENDING)).toEqual([undefined]);
+  });
+
+  it('a push judged under an older generation than a runtimeStateChanged brought is dropped and its Tiles sent again', async () => {
+    const e = await startPending();
+    e.broadcast({ settingsGeneration: 2 });
+    push(e, [PENDING]);
+    e.bg.outcomes.set(PENDING, 'keep');
+    await vi.advanceTimersByTimeAsync(400);
+    expect(e.kinds(PENDING)).toEqual([undefined]);
+    expect(e.bg.of('judgeTiles')[1]!.items.map((f) => f.videoId)).toEqual([PENDING]);
+  });
+
+  it('without a push the pending Tiles are sent again once the background no longer holds the batch, and a late push is dropped', async () => {
+    const e = await startPending();
+    await vi.advanceTimersByTimeAsync(VERDICTS_WAIT_MS - 1);
+    expect(e.bg.of('judgeTiles')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1 + 400);
+    expect(e.bg.of('tileVerdictsPending')).toEqual([{ batchId: e.bg.of('judgeTiles')[0]!.batchId }]);
+    expect(e.bg.of('judgeTiles')).toHaveLength(2);
+    expect(e.bg.of('judgeTiles')[1]!.items.map((f) => f.videoId)).toEqual([PENDING]);
+    expect(e.kinds(PENDING)).toEqual(['chip']);
+    e.bg.outcomes.set(PENDING, 'keep');
+    push(e, [PENDING], { call: 0 });
+    await e.settle();
+    expect(e.kinds(PENDING)).toEqual(['chip']);
+  });
+
+  it('while the background still holds the batch, its Tiles wait past VERDICTS_WAIT_MS and its push is applied', async () => {
+    const e = await startPending();
+    e.bg.verdictsPending = true;
+    await vi.advanceTimersByTimeAsync(2 * VERDICTS_WAIT_MS + 400);
+    expect(e.bg.of('tileVerdictsPending')).toHaveLength(2);
+    expect(e.bg.of('judgeTiles')).toHaveLength(1);
+    push(e, [PENDING]);
+    await e.settle();
+    expect(e.kinds(PENDING)).toEqual(['chip']);
+  });
+
+  it.each([
+    ['review', 'chip'],
+    ['dryRun', 'label'],
+  ] as const)('%s: a Tile re-judged after a settingsChanged that gets no push loses its old %s and is sent again', async (mode, kind) => {
+    const e = start({ mode });
+    e.bg.outcomes.set(PENDING, { ruleId: 'r1' });
+    await e.showAll();
+    expect(e.kinds(PENDING)).toEqual([kind]);
+    e.bg.outcomes.set(PENDING, { undecided: 'thumbnailPending' });
+    e.p.settingsChanged({ settingsGeneration: 1, rulesVersion: 'rv1' });
+    await vi.advanceTimersByTimeAsync(400);
+    expect(e.bg.of('judgeTiles').at(-1)!.items.map((f) => f.videoId)).toContain(PENDING);
+    expect(e.kinds(PENDING)).toEqual([kind]);
+    const sent = e.bg.of('judgeTiles').length;
+    e.bg.outcomes.set(PENDING, 'keep');
+    await vi.advanceTimersByTimeAsync(VERDICTS_WAIT_MS + 400);
+    expect(e.bg.of('judgeTiles').slice(sent).map((r) => r.items.map((f) => f.videoId))).toEqual([[PENDING]]);
+    expect(e.kinds(PENDING)).toEqual([undefined]);
   });
 });
 

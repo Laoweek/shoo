@@ -31,8 +31,8 @@ flowchart LR
 
   Page -- "DOM only" --> CS
   CS -- "synthetic clicks (YouTube) or hovers (Bilibili)<br/>on the site's own menu" --> Page
-  CS -- "judgeTiles, reportActionResult, reportUndo,<br/>addException, reviewPending, reportMarkupCheck" --> BG
-  BG -- "runtimeStateChanged, settingsChanged, undoRemoval" --> CS
+  CS -- "judgeTiles, tileVerdictsPending, reportActionResult,<br/>reportUndo, addException, reviewPending, reportMarkupCheck" --> BG
+  BG -- "runtimeStateChanged, settingsChanged, undoRemoval, tileVerdicts" --> CS
   CS -. "reads local:settings.enabled once at load" .-> LOCAL
   POP & OPT & ONB -- "updateSettings, mutateRules, tryTitle,<br/>connectOpenRouter, exportData, ..." --> BG
   POP & OPT & ONB -. "read only" .-> SYNC & LOCAL
@@ -250,6 +250,7 @@ The background is authoritative for every judging stage. Content finds, extracts
 - **Exact remove vs Topic Keep.** When stage 3 or 4 would remove a Tile and any Topic Keep rule is enabled, the background asks the keep-only question (`buildKeepOnlyRequest` in `decision-engine.md`) before finalizing. When the model cannot be asked (any reason in Section 7 that disables the model), the Tile is returned `undecided` with reason `keepCheckUnavailable`: no action, no chip.
 - **Skip Subscribed channels (REQ-RULE-14).** While an enabled remove Rule has `skipSubscribed`, the background reads the user's Subscribed channels (`youtube-integration.md` Section 9) before stage 1. For a Tile from a Subscribed channel those Rules do not exist: stages 3 and 4 pass over them, stages 6 and 7 never ask them (such Tiles go in text requests of their own), and a Tile no remaining Rule could remove gets no request. Without a usable list every Rule applies, and a remove by a skipping Rule of a Tile that shows a channel comes back `undecided` with `subscriptionsUnavailable`, unless an Exact rule that does not skip also removes it in stages 3 and 4. A read that changes the list broadcasts `settingsChanged`, so open tabs judge again. A private-window batch never starts a read. Only YouTube Tiles are checked against the list: a Bilibili batch never starts a read, and a skipping Rule that works on Bilibili removes Bilibili Tiles as if it did not skip.
 - **No consent or no key.** Stages 1-4 run. Tiles needing stages 5-7 come back `undecided` with the reason from Section 7.
+- **Thumbnail Verdicts after the reply.** The `judgeTiles` reply goes out once stage 6 is done, so a Tile the text pass or an Exact rule removed does not wait for its batch's thumbnail checks. Tiles still in stage 7 come back `undecided` with `thumbnailPending`, and their results follow in one `tileVerdicts` message to the tab that sent the batch (Section 6), with the same `rulesVersion`, `settingsGeneration`, snapshot, `rules` and `private` a reply carries. The tab's eye shows `judging` until then. Content keeps those Tiles in flight: not decorated, not sent again. It applies the push exactly as a reply, so Removals, Dry-run labels, Review chips, `recordWouldRemove` and notices follow the same path. Each `VERDICTS_WAIT_MS` (30 s, the idle stop of Section 11) without a push, content asks `tileVerdictsPending`. While the background still holds the batch, a slow thumbnail pass or a long queue of checks, the Tiles wait on, so content never sends again, and pays again for, Tiles whose checks are still running. Once it no longer does, because it stopped between reply and push or cannot be reached, the Tiles go back to the rescan path. Content marks them `pending` first, so a Tile re-judged after a `settingsChanged` drops the chip, label or keep the older Rules gave it and is sent again. The background counts each Tile once: spend, judged counts, the batch's model outcome and Verdict cache writes run once after stage 7, and Escalation judged counts, Rule hits and Rescues are counted for the reply's results and for the push's results, which never share a Tile.
 - `tryTitle` runs the same pipeline on a synthetic `TileFacts` and requires consent.
 
 ### Sequence
@@ -269,21 +270,24 @@ sequenceDiagram
 
   W->>X: new or changed Tile element in viewport (+1 viewport margin)
   X->>B: TileFacts (ads, Mixes, playlists, current video skipped)
-  B->>BG: judgeTiles({ items, settingsGeneration }) at 16 Tiles or 400 ms
+  B->>BG: judgeTiles({ items, settingsGeneration, batchId }) at 16 Tiles or 400 ms
   BG->>BG: stages 1-4 (Keep, Exception, Banned channel, Exact)
   BG->>C: stage 5 lookup videoId, check each answer's version
   alt cache hit
     C-->>BG: model result
   else miss and model allowed
     BG->>OR: text pass, one request per batch
-    opt Thumbnail rules on and stage 6 matched no Rule
-      BG->>OR: image request per Tile (limits in decision-engine.md)
-    end
-    BG->>C: store result
+    BG->>C: store results, after stage 7 when the batch has thumbnail checks
   end
-  BG-->>B: results + rulesVersion + settingsGeneration (outcome from current Filtering strength)
-  B->>B: drop the reply if either version is stale
+  BG-->>B: results + rulesVersion + settingsGeneration (outcome from current Filtering strength), stage 7 Tiles thumbnailPending
+  B->>B: drop the reply if either version is stale, keep thumbnailPending Tiles in flight
   B->>G: decided TileResults
+  opt Thumbnail rules on and stage 6 matched no Rule
+    BG->>OR: image request per Tile (limits in decision-engine.md)
+    BG-->>B: tileVerdicts({ batchId, results, rulesVersion, settingsGeneration }) to the asking tab
+    B->>B: drop the push if stale like a reply, every 30 s without one ask tileVerdictsPending, rescan once it is false
+    B->>G: decided TileResults
+  end
   alt auto and remove
     G->>Q: enqueue once per videoId per page
     Q->>Q: precheck, act, confirm placeholder (youtube-integration.md)
@@ -303,7 +307,7 @@ sequenceDiagram
 
 ### Decoration state and duplicate Tiles
 
-- Content keeps `judged: Map<videoId, { result: TileResult, rulesVersion, settingsGeneration }>` per tab and `decor: WeakMap<Element, { videoId, state: 'pending' | 'chip' | 'label' | 'acting' | 'removed' | 'annotated' | 'none' }>` per element.
+- Content keeps `judged: Map<videoId, { result: TileResult, rulesVersion, settingsGeneration }>` per tab, the Tiles in flight with the epoch they were sent in (a Tile the reply left `thumbnailPending` stays in flight until its push), and `decor: WeakMap<Element, { videoId, state: 'pending' | 'chip' | 'label' | 'acting' | 'removed' | 'annotated' | 'none' }>` per element.
 - A Verdict applies to every element showing that video. In Auto, Shoo acts once per videoId per page (the first visible copy). Other copies get the removed-Tile annotation pointing to the same Verdict.
 - When an element's videoId changes (YouTube reuses elements), unmount its UI, reset its `decor` entry and treat it as a new Tile.
 - Re-rendered Tiles (navigating back to Home) are decorated again from `judged` without a new request. The same holds when YouTube destroys a chip or label inside a Tile it keeps (an inner re-render, Back navigation): content notices the lost host and mounts it again, and `reviewPending` counts only chips that are showing (`youtube-integration.md` Section 6, "Disposable hosts").
@@ -311,7 +315,7 @@ sequenceDiagram
 
 ### Mid-flight changes and Mode transitions
 
-- Every `judgeTiles` reply carries `rulesVersion` and `settingsGeneration`. Content drops a reply when either is older than the latest it has seen from `settingsChanged`.
+- Every `judgeTiles` reply carries `rulesVersion` and `settingsGeneration`. Content drops a reply when either is older than the latest it has seen from `settingsChanged`. A `tileVerdicts` push carries the same fields and is checked the same way, and is also dropped when a `settingsChanged` (a Rule, Mode or Exception change) or a stop of the pipeline came after its batch was sent. Its Tiles are then sent again by that change's rescan.
 - On `settingsChanged`, content re-sends `judgeTiles` for every decorated or pending Tile still on the page. The background answers from the Verdict cache when it can, so this is cheap. Chips and labels that no longer hold are withdrawn. A hidden tab (`document.hidden`) defers this to one re-send when it is shown again, however many `settingsChanged` arrived meanwhile, because the NativeActionQueue acts on nothing while hidden.
 - The NativeActionQueue precheck, run right before each action, asks the background `getRuntimeState()` once per queue run and re-validates Mode, `enabled`, Keep rules and Exceptions through the latest `judged` entry.
 
@@ -331,7 +335,7 @@ Shelf dismissal (REQ-ACT-6) runs only on a Site that offers Shelves (the optiona
 - Removals are counted from `reportActionResult({ ok: true })`, never from Verdicts, so Dry-run and Review never count as Removals. A Shelf dismissal is not a Removal: it adds a `shelfDismissed` Activity event and no counter.
 - `ruleStats` keys on `ruleId`. Remove Rule hits are counted from judge results with `outcome: 'remove'`. Keep rule hits are counted only for Rescues: keep results with `source: 'keepRule'` and a `rescuedFrom` (REQ-RULE-6). A Keep rule keep that is no Rescue is not counted and does not enter the once-per-day memo, so it counts when it later becomes one. Keep rule hits stored before Rescues existed counted every keep and are not migrated: they leave the week's count as their days pass, and stay in `total` and `lastHitAt`. A Rescue follows the Filtering strength at judge time, and a counted hit or `keptByRule` event is never taken back, so lowering and raising the strength again can leave a hit counted.
 - Tiles kept by a Keep rule (REQ-ACTV-1): after `judgeTiles`, the background writes a `keptByRule` Activity event for every decided result whose Verdict has `outcome: 'keep'`, `source: 'keepRule'`, a `ruleId` and a `rescuedFrom`, so only Rescues are recorded. That covers exact Keep rules, Topic Keep rules and the keep-only question. Each Keep rule, video and local day is written once: an in-memory set, seeded from today's `keptByRule` events the first time a day needs it, skips repeats from rescans and from a restarted background. A failed read of the day's events is not cached, and keeps from a failed write are dropped from the set, so a later batch writes them. At most `KEPT_BY_RULE_DAY_MAX` (100) are written a day. The next day writes the keep again. The event carries `videoId`, `ruleId`, `source`, the title (truncated to 120), Surface, `channelName` and `channelKey` when known, and `seenAt = at`, so the row is never lit. Private-window senders write none, and `tryTitle` writes none.
-- Escalation: the background counts each `(channelKey, videoId)` once per day as judged when the pipeline returns a decided result, and counts Topic removals from `removed` events with `source: 'model'`. After "Not now", the channel is suggested again only after 3 more Topic removals. Nothing is counted while Escalation is Off, and switching to Off deletes the counts and records, so turning it on again starts from zero. The writer checks the setting inside its queue, so a batch or Removal report that was in flight when the user switched to Off writes nothing, and an update that finds counts stored while Off deletes them. Once a day stops counting judged videos at its size limit, its Topic removals go uncounted too, so a channel's share of removed Tiles never rests on a cut judged count. A batch's judged counts, Rule hits and Rescues are queued before the `judgeTiles` reply and written after it.
+- Escalation: the background counts each `(channelKey, videoId)` once per day as judged when the pipeline returns a decided result, and counts Topic removals from `removed` events with `source: 'model'`. After "Not now", the channel is suggested again only after 3 more Topic removals. Nothing is counted while Escalation is Off, and switching to Off deletes the counts and records, so turning it on again starts from zero. The writer checks the setting inside its queue, so a batch or Removal report that was in flight when the user switched to Off writes nothing, and an update that finds counts stored while Off deletes them. Once a day stops counting judged videos at its size limit, its Topic removals go uncounted too, so a channel's share of removed Tiles never rests on a cut judged count. A batch's judged counts, Rule hits and Rescues are queued before the `judgeTiles` reply and written after it, and those of its `tileVerdicts` push when the push goes out.
 
 ## 6. Messages contract
 
@@ -346,12 +350,13 @@ type ReasonCode =
   | 'keyRejected' | 'creditsExhausted' | 'rateLimited' | 'modelError' | 'apiShapeChanged'
   | 'keepCheckUnavailable' | 'privateWindow' | 'unsupportedSurface' | 'cancelled' | 'invalidInput'
   | 'tooManyRules'   // more remove Topic rules than the direct Decision provider takes (decision-engine.md §12.1)
-  | 'subscriptionsUnavailable'; // a Rule that skips Subscribed channels would remove the Tile, and no list is usable (REQ-RULE-14)
+  | 'subscriptionsUnavailable' // a Rule that skips Subscribed channels would remove the Tile, and no list is usable (REQ-RULE-14)
+  | 'thumbnailPending';        // in a judgeTiles reply: the Tile's thumbnail check runs on, its result comes in tileVerdicts
 
 interface RuntimeSnapshot {
   enabled: boolean;
   mode: Mode;
-  reason: Exclude<ReasonCode, 'keyRejected' | 'creditsExhausted' | 'rateLimited' | 'modelError' | 'apiShapeChanged' | 'keepCheckUnavailable' | 'privateWindow' | 'unsupportedSurface' | 'cancelled' | 'invalidInput' | 'tooManyRules'> | 'ok';
+  reason: Exclude<ReasonCode, 'keyRejected' | 'creditsExhausted' | 'rateLimited' | 'modelError' | 'apiShapeChanged' | 'keepCheckUnavailable' | 'privateWindow' | 'unsupportedSurface' | 'cancelled' | 'invalidInput' | 'tooManyRules' | 'thumbnailPending'> | 'ok';
   detail?: ReasonCode;                 // e.g. noKey + keyRejected
   stages: { exact: boolean; model: boolean; nativeActions: boolean; ui: boolean };
   eye: EyeState;
@@ -379,8 +384,9 @@ type RuleOp =
 interface ProtocolMap {
   // content -> background (sender: a tab on a Site's origin, https://www.youtube.com/* or https://www.bilibili.com/*)
   getRuntimeState(): RuntimeSnapshot;
-  judgeTiles(req: { items: TileFacts[]; settingsGeneration: number }):  // every Tile on the sender's Site, else rejected
-    { results: TileResult[]; rulesVersion: string; settingsGeneration: number; runtime: RuntimeSnapshot };
+  judgeTiles(req: { items: TileFacts[]; settingsGeneration: number; batchId?: string }):  // every Tile on the sender's Site, else rejected
+    JudgedBatch;                       // { results: TileResult[]; rulesVersion: string; settingsGeneration: number; runtime: RuntimeSnapshot; rules?; private? }
+  tileVerdictsPending(req: { batchId: string }): boolean;              // this tab's batch still has its tileVerdicts push to come
   reportActionResult(req:
     | { ok: true; videoId: string; surface: SurfaceId; ruleId?: string; nativeAction: NativeAction; batchId: string; title: string; channelName?: string }
     | { ok: false; videoId: string; surface: SurfaceId; nativeAction: NativeAction; step: ActionStep; selectorVersion: string }): RuntimeSnapshot;
@@ -401,6 +407,7 @@ interface ProtocolMap {
   runtimeStateChanged(snapshot: RuntimeSnapshot): void;                 // broadcast to every Site tab
   settingsChanged(req: { settingsGeneration: number; rulesVersion: string; actOnShowingChips?: boolean }): void;
   undoRemoval(req: { videoId: string }): { ok: true } | { ok: false; reason: 'expired' | 'notFound' };
+  tileVerdicts(req: JudgedBatch & { batchId: string }): void;          // the batch's thumbnailPending Tiles, to the tab that sent it
 
   // pages -> background (sender: extension page URL)
   updateSettings(req: { patch: Partial<Settings> }): { settings: Settings };
@@ -443,6 +450,7 @@ interface ProtocolMap {
 - Question ids sent to OpenRouter are `t01`..`t16` plus one `tNN_<keepRef>` per Topic Keep rule (for example `t01_K2`), produced by `core/ids.ts` (changed from a single `tNN_keep` after calibration, `decision-engine.md` Section 2.2). Video IDs never reach OpenRouter.
 - `getRuntimeState` is also accepted from extension pages (the popup reads the snapshot through it). Pages read Escalation suggestions from storage themselves (`readEscalations` in `store/read.ts`, popup, Rules and Activity), and use `markActivitySeen` (lit-until-seen rows), `withdrawConsent` (Connection), and `setCustomEndpoint` (saves base URL, model and key after the host prompt). `setDirectEndpoint` and `testDirectEndpoint` (ADR 0007) do the same for a Decision provider reached directly (`decision-engine.md` Section 12). `keepChannel` takes `liftBan` once the user confirmed lifting a ban, and reports `bannedRuleId` when a ban exists so the UI can ask first. `reportActionResult` carries the Verdict's `source`, `p`, `mode` and channel fields so the background can record Activity and Escalation counts. `recordWouldRemove` carries the Tiles' facts for the Activity rows. The `judgeTiles` reply carries `rules` (ref, text, Rule name when set, and colour for every `ruleId` in its results, since content holds no Rules) and `private` (the sender tab is incognito). `openSettings({ hash })` lets content (the summary's Review button, notices) open Settings at a section, because content scripts cannot open extension pages without `web_accessible_resources`. `keepChannel` with a ban and no `liftBan` creates nothing and returns `{ ruleId: '', bannedRuleId }`, so the caller asks and sends again with `liftBan: true` (returns `liftedBanRuleId`) or `false` (the ban stays, the Keep rule wins). Content has no in-page prompt and sends `liftBan: false`. From a private-window tab `keepChannel` returns `{ error: 'privateWindow' }` instead of writing synced Rules (REQ-ACTV-3), and content does not offer it there. The `reportActionResult` reply adds `escalated: { ruleId, channelName }` when that Removal made an automatic Escalation, so the batch summary says "Banned <channel> too" (REQ-ESC-2). `getKeyUsage` adds `usageDaily` (OpenRouter's `usage_daily`, spend in the current UTC day) when the key check reports it, and Connection shows it as "used today". `getKeyUsage` and `listModels` contact OpenRouter only when it is the engine, consent names it and, on Firefox, data collection is granted. Before that `getKeyUsage` returns the stored label, source and `connectedAt`, and `listModels` the stored list. `getStoredKeys` and `forgetKey` (Settings, Connection) report and forget the stored key of a direct Decision provider and of the custom endpoint, whose endpoint stays saved without a key. `resumeFromBreaker` from content resumes only the `model` category, and anything else is `invalidInput`. `updateSettings` ignores `customEndpoint`, which only `setCustomEndpoint` saves. The TypeScript in `src/messaging/protocol.ts` is the exact contract.
 - Further contract details:
+  - `tileVerdicts` goes only to the tab that sent the `judgeTiles` batch, and only for a batch that named itself with `batchId` (a UUID from content, at most 64 characters, else `invalidInput`). Content matches it to the batch by that id, so a push for a batch it no longer waits for (stale, timed out, or sent before the page reloaded) is dropped. A push can arrive before its reply: content holds it until the reply is applied. `tileVerdictsPending` answers from memory whether the batch with that `batchId` from the sender's tab still has its push to come, true from the reply until the push went out or failed. A background that stopped since answers false.
   - `settingsChanged` carries `actOnShowingChips: true` only to the active Site tab when `setMode` asks for it. That is the tab whose `reviewPending` the popup's "Remove the N flagged videos now?" counted. Other tabs get a plain `settingsChanged` (REQ-MODE-5).
   - `addException` from content (Review Keep) and `reportUndo` broadcast `settingsChanged` to every Site tab, like page-made Exceptions. Another tab may hold a queued Auto job or a chip for that video.
   - The router rejects a `mutateRules` update whose `patch` has a key other than `text`, `name`, `params`, `enabled`, `kind`, `skipSubscribed` or `site` (`invalidInput`), an add or update whose `name` is not a string, one whose `skipSubscribed` is not a boolean, and a `site` that is not a Site id (or `null` in an update). The writer stores `skipSubscribed` only when true and refuses it on a Keep rule (`skipSubscribedKeep`). The writer trims the name, stores none for a blank one (so `name: ''` clears it) and refuses one over 40 characters (`nameTooLong`, REQ-RULE-11). A Starter rule is added with its label as `name`.
@@ -638,7 +646,7 @@ cacheVersion = answer version                               (a Tile no Rule skip
 | Alarms | 30 s minimum | | only `shoo:retention` (daily) |
 | Startup | `onStartup`, `onInstalled` | same | run migrations, ensure the alarm, refresh the action icon |
 
-- Surviving restarts: content wraps every `sendMessage` in one retry after 250 ms when the message was never delivered ("receiving end does not exist", "could not establish connection"). A closed port or a missing response is not retried, because the background may already have run the handler and writes such as `reportActionResult`, `addException` and `reportUndo` must not repeat. A second failure leaves the Tiles `undecided` and they are re-sent on the next rescan (Section 7). When the first `getRuntimeState` at load fails, content tries again after 1 s, 5 s and 30 s, then each time the tab is shown, until the background answers or a `runtimeStateChanged` broadcast arrives.
+- Surviving restarts: content wraps every `sendMessage` in one retry after 250 ms when the message was never delivered ("receiving end does not exist", "could not establish connection"). A closed port or a missing response is not retried, because the background may already have run the handler and writes such as `reportActionResult`, `addException` and `reportUndo` must not repeat. A second failure leaves the Tiles `undecided` and they are re-sent on the next rescan (Section 7). Tiles a reply left `thumbnailPending` go back to that rescan when no `tileVerdicts` push came within `VERDICTS_WAIT_MS` (30 s) and `tileVerdictsPending` then answers false or fails. A background that is still running the batch's thumbnail checks answers true, and content asks again after another 30 s. When the first `getRuntimeState` at load fails, content tries again after 1 s, 5 s and 30 s, then each time the tab is shown, until the background answers or a `runtimeStateChanged` broadcast arrives.
 - Action icon: the background owns the toolbar icon per tab (`action.setIcon({ tabId, path })` with the pre-rendered eye PNGs in `public/icon/`, picked by `toolbarIconPaths`) and the badge (today's Removals). `reviewPending` from a tab sets the `review` eye for that tab.
 - Onboarding opens on `onInstalled` with `reason === 'install'`.
 
@@ -649,7 +657,7 @@ cacheVersion = answer version                               (a Tile no Rule skip
 | Content script (one bundle per Site, Preact included) | ≤ 37 KB gzipped each (raised from 35 KB when Bilibili support joined the YouTube Shelf, user-ban and view count features) | `pnpm size` over `.output/*/content-scripts/*.js`, fails the check |
 | Content work at load when Shoo is off, or off on this Site | one `storage.local.get('settings')`, then nothing | unit test with fake settings: no `MutationObserver`, no message sent |
 | In-page UI | initialized only on first need, system UI font stack, SVG wordmark, no `FontFace`, no `web_accessible_resources` | test asserts `mountUi` is not called at load. `pnpm size` fails when a built manifest declares WAR entries |
-| Background | ≤ 43.5 KB gzipped (raised from 40 KB for view counts, Subscribed channels, user bans and Shelf dismissal, and from 42 KB for Sites. It loads once per browser, not per page) | `pnpm size` |
+| Background | ≤ 44.5 KB gzipped (raised from 40 KB for view counts, Subscribed channels, user bans and Shelf dismissal, from 42 KB for Sites, and from 43.5 KB for thumbnail Verdicts sent after the reply. It loads once per browser, not per page) | `pnpm size` |
 | Popup, options, onboarding JS | ≤ 60 KB gzipped each (fonts are separate assets) | `pnpm size` |
 | Extraction | relative regression ≤ 20% against a stored Vitest bench baseline under jsdom, compared as a ratio to a calibration workload in the same run so it holds across machines. Absolute ≤ 0.3 ms per Tile median, not yet measured on real hardware | `vitest bench` |
 | Observers | one `MutationObserver` per active container, records coalesced per animation frame, and one `ResizeObserver` per window for every chip host (thumbnail, host, and body while overlay hosts exist) | unit test counts observers per Surface |

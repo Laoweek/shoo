@@ -129,6 +129,11 @@ export interface JudgeResult {
   results: TileResult[];
   rulesVersion: string;
   costUsd: number;
+  /**
+   * judgeTiles only: the final results of the Tiles that came back `thumbnailPending`, once their thumbnail checks
+   * and the batch's bookkeeping (cost, model outcomes, cache writes) are done.
+   */
+  later?: Promise<TileResult[]>;
 }
 
 /** Checked by the tryTitle route (handlers/judging.ts): a non-blank title, a short channel name, a duration of 0 or more. */
@@ -145,7 +150,7 @@ export interface TryTitleInput {
 export type TryTitleResult = { result: TileResult; costUsd: number } | { error: ReasonCode };
 
 export interface Judge {
-  /** judgeTiles: one result per item, in input order. */
+  /** judgeTiles: one result per item, in input order. Tiles waiting on a thumbnail check get theirs in `later`. */
   judgeTiles(items: TileFacts[], ctx: JudgeContext): Promise<JudgeResult>;
   /** Try a title (§7.5): the same pipeline for one synthetic Tile, no Verdict cache, no daily cap, cost added. */
   tryTitle(input: TryTitleInput, ctx: JudgeContext): Promise<TryTitleResult>;
@@ -193,6 +198,8 @@ interface RunOptions {
   countJudged: boolean;
   /** Try a title already checked modelAllowed. */
   allowed?: true;
+  /** judgeTiles: answer once stage 6 is done, and give the thumbnail pass's results in `later`. */
+  early?: true;
   /** Try a title: ask Topic Keep rules even when nothing could remove the Tile, so one can be tested (REQ-RULE-8). */
   askKeepAlone?: true;
   /** Try a title judges the title alone, as from a channel the user is not subscribed to. */
@@ -389,6 +396,9 @@ export function createJudge(deps: JudgeDeps): Judge {
     let costUsd = 0;
     let requests = 0;
     const judged = new Set<string>();
+    // Stage 7 and the bookkeeping after it. With `early`, the Tiles in `pending` wait for it and the others do not.
+    let finish: (() => Promise<void>) | undefined;
+    let pending = new Set<Slot>();
 
     if (modelSlots.length > 0) {
       const allowed = opts.allowed ? ({ ok: true } as const) : await deps.modelAllowed({ ctx, ignoreDailyCap: opts.ignoreDailyCap });
@@ -570,14 +580,16 @@ export function createJudge(deps: JudgeDeps): Judge {
         }
 
         // Stage 7: thumbnail pass, only where stage 6 matched no Rule at all.
-        if (hasThumb && images) {
-          const thumbWanted = modelSlots.filter(
-            (s) => s.exact.kind === 'none' && s.view.thumbnail.length > 0 && !s.thumb && !s.reason && needsThumbnailPass(s.text, s.view.hasTopicRules),
-          );
-          // The thumbnail question has the same option limit as the text choice question (§12.1).
-          const thumbOverLimit = (s: Slot) => !!provider && s.view.thumbnail.length > topicRuleLimit(provider);
-          for (const s of thumbWanted) if (thumbOverLimit(s)) s.reason = 'tooManyRules';
-          const thumbPass = thumbWanted.filter((s) => !thumbOverLimit(s));
+        const thumbWanted =
+          hasThumb && images
+            ? modelSlots.filter((s) => s.exact.kind === 'none' && s.view.thumbnail.length > 0 && !s.thumb && !s.reason && needsThumbnailPass(s.text, s.view.hasTopicRules))
+            : [];
+        // The thumbnail question has the same option limit as the text choice question (§12.1).
+        const thumbOverLimit = (s: Slot) => !!provider && s.view.thumbnail.length > topicRuleLimit(provider);
+        for (const s of thumbWanted) if (thumbOverLimit(s)) s.reason = 'tooManyRules';
+        const thumbPass = thumbWanted.filter((s) => !thumbOverLimit(s));
+        if (opts.early) pending = new Set(thumbPass);
+        finish = async () => {
           await Promise.all(
             thumbPass.map(async (s) => {
               const keepTile = () => {
@@ -606,36 +618,35 @@ export function createJudge(deps: JudgeDeps): Judge {
               });
             }),
           );
-        }
 
-        // Side effects after paid calls: a storage error must not throw away the results (cost first).
-        const guard = async (what: string, fn: () => Promise<void>) => {
-          try {
-            await fn();
-          } catch {
-            deps.log?.({ event: 'sideEffectFailed', what });
+          // Side effects after paid calls: a storage error must not throw away the results (cost first).
+          const guard = async (what: string, fn: () => Promise<void>) => {
+            try {
+              await fn();
+            } catch {
+              deps.log?.({ event: 'sideEffectFailed', what });
+            }
+          };
+          if (requests > 0) await guard('addCost', () => deps.addCost({ usd: costUsd, judged: opts.countJudged ? judged.size : 0, requests }, ctx));
+          for (const outcome of summarizeOutcomes(outcomes)) await guard('recordModelOutcome', () => deps.recordModelOutcome(outcome));
+          if (opts.useCache) {
+            const at = deps.now();
+            const puts: VerdictPut[] = [];
+            for (const s of modelSlots) {
+              if (!s.newText && !s.newThumb) continue;
+              const put: VerdictPut = { videoId: s.facts.videoId, rulesVersion: VERDICT_RECORD_VERSION, at };
+              if (s.newText) put.text = { ...s.newText, v: s.view.textV };
+              if (s.newThumb) put.thumb = { ...s.newThumb, v: s.view.thumbV };
+              puts.push(put);
+            }
+            if (puts.length > 0) await guard('cachePut', () => cachePut(ctx, puts));
           }
         };
-        if (requests > 0) await guard('addCost', () => deps.addCost({ usd: costUsd, judged: opts.countJudged ? judged.size : 0, requests }, ctx));
-        for (const outcome of summarizeOutcomes(outcomes)) await guard('recordModelOutcome', () => deps.recordModelOutcome(outcome));
-        if (opts.useCache) {
-          const at = deps.now();
-          const puts: VerdictPut[] = [];
-          for (const s of modelSlots) {
-            if (!s.newText && !s.newThumb) continue;
-            const put: VerdictPut = { videoId: s.facts.videoId, rulesVersion: VERDICT_RECORD_VERSION, at };
-            if (s.newText) put.text = { ...s.newText, v: s.view.textV };
-            if (s.newThumb) put.thumb = { ...s.newThumb, v: s.view.thumbV };
-            puts.push(put);
-          }
-          if (puts.length > 0) await guard('cachePut', () => cachePut(ctx, puts));
-        }
       }
     }
 
     // Stage 8: final Verdicts with the current Filtering strength, in input order.
-    const now = deps.now();
-    const results: TileResult[] = items.map((t) => {
+    const verdictOf = (t: TileFacts, now: number): TileResult => {
       const s = slots.get(t.videoId)!;
       const verdict = finalVerdict({
         videoId: t.videoId,
@@ -655,13 +666,24 @@ export function createJudge(deps: JudgeDeps): Judge {
       if (verdict) return { videoId: t.videoId, status: 'decided', verdict };
       const reason: ReasonCode = s.exact.kind === 'remove' ? 'keepCheckUnavailable' : (s.reason ?? 'modelError');
       return { videoId: t.videoId, status: 'undecided', reason };
-    });
-    return { results, rulesVersion: rv, costUsd };
+    };
+    const decide = (list: TileFacts[]) => {
+      const now = deps.now();
+      return list.map((t) => verdictOf(t, now));
+    };
+    if (pending.size === 0) {
+      await finish?.();
+      return { results: decide(items), rulesVersion: rv, costUsd };
+    }
+    const waits = (t: TileFacts) => pending.has(slots.get(t.videoId)!);
+    const results = decide(items).map((r, i): TileResult => (waits(items[i]!) ? { videoId: r.videoId, status: 'undecided', reason: 'thumbnailPending' } : r));
+    const later = finish!().then(() => decide(items.filter(waits)));
+    return { results, rulesVersion: rv, costUsd, later };
   }
 
   return {
     judgeTiles(items, ctx) {
-      return run(items, ctx, { useCache: true, ignoreDailyCap: false, countJudged: true });
+      return run(items, ctx, { useCache: true, ignoreDailyCap: false, countJudged: true, early: true });
     },
 
     async tryTitle(input, ctx) {

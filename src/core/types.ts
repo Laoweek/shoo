@@ -198,7 +198,9 @@ export type ReasonCode =
   /** More enabled remove Topic rules than the direct Decision provider's choice question takes (decision-engine.md §12.1). */
   | 'tooManyRules'
   /** A Rule with skipSubscribed would remove the Tile, and Shoo has no list of Subscribed channels to check it against. */
-  | 'subscriptionsUnavailable';
+  | 'subscriptionsUnavailable'
+  /** A judgeTiles reply's Tile whose thumbnail check is still running: its Verdict follows in tileVerdicts. */
+  | 'thumbnailPending';
 
 export type FailureCategory = 'model' | 'nativeAction' | 'markup';
 

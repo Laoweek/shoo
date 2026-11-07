@@ -95,7 +95,7 @@ describe('boot', () => {
     // toggle-shoo turns it on.
     handlers.get('runtimeStateChanged')?.(snapshot());
     expect(booted.pipeline()?.running).toBe(true);
-    expect(handlers.has('undoRemoval')).toBe(true);
+    expect([handlers.has('undoRemoval'), handlers.has('tileVerdicts')]).toEqual([true, true]);
     expect(observers).toBeGreaterThan(0);
   });
 

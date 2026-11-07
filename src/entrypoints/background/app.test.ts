@@ -385,6 +385,86 @@ describe('judgeTiles', () => {
     expect(h.areas.session.dump()['private:7:exceptions']).toBeUndefined();
   });
 
+  describe('thumbnail Verdicts after the reply', () => {
+    const thumbnailRule = { op: 'add' as const, rule: { polarity: 'remove' as const, kind: 'thumbnail' as const, text: 'Shocked faces', enabled: true, origin: 'user' as const } };
+    const items = [tile('ccccccccccc', 'Jake reacts to drama', { channelName: 'Jake Reacts' }), tile('ddddddddddd', 'Sourdough basics', { channelName: 'Bread Co' })];
+    /** Text by title as in fakeOpenRouter, every thumbnail a match. Image fetches wait for `release`. */
+    function setup(tabs?: { id: number; url: string; incognito: boolean }[]) {
+      const fake = fakeOpenRouter({ decisions: answerer({ choose: (title) => (/react/i.test(title) ? { keep: 0.05, R1: 0.95 } : { keep: 0.97, R1: 0.03 }), noul: () => 0.9 }) });
+      let release = () => {};
+      const images = new Promise<void>((resolve) => (release = resolve));
+      const fetch: FetchLike = async (input, init) => {
+        if (!String(input).startsWith('https://i.ytimg.com/')) return fake.fetch(input, init);
+        await images;
+        return new Response(new Uint8Array([0xff, 0xd8, 0xff]), { headers: { 'content-type': 'image/jpeg' } });
+      };
+      return { fake, release: () => release(), h: harness({ fetch, ...(tabs && { tabs }) }) };
+    }
+
+    it('replies before the thumbnail checks end, then sends their Verdicts to the asking tab and counts each Tile once', async () => {
+      const { fake, release, h } = setup();
+      const [r1, th] = await h.addRules(topicRule('Reaction videos'), thumbnailRule);
+      await h.connect();
+      const reply = await h.bg.dispatch('judgeTiles', { items, settingsGeneration: 1, batchId: 'b1' }, contentSender(2));
+      expect(reply.results[0]).toMatchObject({ status: 'decided', verdict: { outcome: 'remove', source: 'model', ruleId: r1!.id } });
+      expect(reply.results[1]).toEqual({ videoId: 'ddddddddddd', status: 'undecided', reason: 'thumbnailPending' });
+      expect(h.sentOf('tileVerdicts')).toEqual([]);
+      release();
+      await judgingSettled(h.bg.services);
+      expect(h.sentOf('tileVerdicts')).toEqual([
+        {
+          type: 'tileVerdicts',
+          tabId: 2,
+          data: expect.objectContaining({
+            batchId: 'b1',
+            rulesVersion: reply.rulesVersion,
+            settingsGeneration: reply.settingsGeneration,
+            private: false,
+            rules: { [th!.id]: { ref: th!.ref, text: 'Shocked faces', colour: th!.colour } },
+            results: [expect.objectContaining({ videoId: 'ddddddddddd', status: 'decided', verdict: expect.objectContaining({ outcome: 'remove', source: 'modelThumbnail', ruleId: th!.id }) })],
+          }),
+        },
+      ]);
+      const day = h.writer.today();
+      expect(await h.writer.getDayCounters(day)).toMatchObject({ judged: 2, requests: 2 });
+      expect(fake.decisionRequests()).toHaveLength(2);
+      const escalation = await h.writer.getEscalation();
+      expect([escalation['jake reacts']?.judged, escalation['bread co']?.judged]).toEqual([{ [day]: ['ccccccccccc'] }, { [day]: ['ddddddddddd'] }]);
+      const stats = h.areas.local.dump().ruleStats as Record<string, { total: number }>;
+      expect([stats[r1!.id]?.total, stats[th!.id]?.total]).toEqual([1, 1]);
+    });
+
+    it('tileVerdictsPending says the batch is held for its tab until the push goes out', async () => {
+      const { release, h } = setup();
+      await h.addRules(topicRule('Reaction videos'), thumbnailRule);
+      await h.connect();
+      await h.bg.dispatch('judgeTiles', { items, settingsGeneration: 1, batchId: 'b1' }, contentSender(2));
+      const pending = (tabId: number) => h.bg.dispatch('tileVerdictsPending', { batchId: 'b1' }, contentSender(tabId));
+      expect([await pending(2), await pending(3)]).toEqual([true, false]);
+      release();
+      await judgingSettled(h.bg.services);
+      expect(h.sentOf('tileVerdicts')).toHaveLength(1);
+      expect(await pending(2)).toBe(false);
+    });
+
+    it('in a private window says so in the push and writes nothing to storage.local for the pushed Verdicts', async () => {
+      const { release, h } = setup([{ id: 7, url: 'https://www.youtube.com/', incognito: true }]);
+      await h.addRules(topicRule('Reaction videos'), thumbnailRule);
+      await h.connect();
+      await h.writer.flush();
+      const persistent = () => {
+        const { syncOutbox: _o, ...rest } = h.areas.local.dump();
+        return JSON.stringify(rest);
+      };
+      const before = persistent();
+      release();
+      await h.call('judgeTiles', { items, settingsGeneration: 1, batchId: 'b1' }, contentSender(7, true));
+      await h.writer.flush();
+      expect(h.sentOf('tileVerdicts').map((m) => [m.tabId, m.data.private, m.data.results[0].verdict.source])).toEqual([[7, true, 'modelThumbnail']]);
+      expect(persistent()).toBe(before);
+    });
+  });
+
   it("forgets a private tab's in-memory answers when the tab closes", async () => {
     const fake = fakeOpenRouter();
     const h = harness({ fetch: fake.fetch, tabs: [{ id: 7, url: 'https://www.youtube.com/', incognito: true }] });
