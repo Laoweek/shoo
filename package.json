@@ -31,7 +31,7 @@
   "dependencies": {
     "@wxt-dev/i18n": "0.2.8",
     "lucide-preact": "1.52.0",
-    "preact": "11.0.1"
+    "preact": "11.1.1"
   },
   "devDependencies": {
     "@babel/core": "^8.0.9",
