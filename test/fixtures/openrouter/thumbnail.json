@@ -1,0 +1,69 @@
+{
+  "name": "thumbnail",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "cloudflare"
+        ],
+        "allow_fallbacks": false
+      },
+      "state": [
+        "Title: 80s pop singer performs his biggest hit live",
+        "Channel: Retro Music Vault",
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "data:image/jpeg;base64,<10303 bytes of a 320x180 JPEG elided>"
+          }
+        }
+      ],
+      "questions": {
+        "R4": {
+          "type": "noul",
+          "instructions": "The thumbnail image shows: Shocked faces, red arrows or circled objects"
+        },
+        "R7": {
+          "type": "noul",
+          "instructions": "The thumbnail image shows: A person pointing at the camera"
+        },
+        "R8": {
+          "type": "noul",
+          "instructions": "The thumbnail image shows: A man singing or dancing"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "answers": {
+        "R4": {
+          "type": "noul",
+          "noul": 0.0088
+        },
+        "R7": {
+          "type": "noul",
+          "noul": 0.3433
+        },
+        "R8": {
+          "type": "noul",
+          "noul": 0.9431
+        }
+      },
+      "usage": {
+        "input_tokens": 415,
+        "output_tokens": 0,
+        "cost": 0.00003735
+      },
+      "id": "REDACTED",
+      "provider": "Cloudflare"
+    }
+  }
+}

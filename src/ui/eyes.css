@@ -1,0 +1,50 @@
+/* The eyes on extension pages: the shared rules, then what only pages use (the judging, review and paused states,
+   wide, reading, drift and pointer tracking). The in-page UI imports eyes-shared.css alone. */
+@import './eyes-shared.css';
+
+.eyes.tracking .pupil {
+  transition: none;
+}
+.eyes[data-state='judging'] {
+  --px: 1;
+  --py: 0.35;
+}
+.eyes[data-state='review'] {
+  --lt: 10.4px;
+  --py: 0.4;
+}
+.eyes[data-state='paused'] {
+  --lt: 13px;
+  --lb: -13px;
+}
+.eyes[data-wide] {
+  --ps: 0.8;
+  --rs: 1.08;
+}
+.eyes[data-reading] .pupil {
+  animation: shoo-eyes-read 0.9s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+.eyes[data-drift] .drift {
+  animation: shoo-eyes-drift 9s ease-in-out infinite alternate;
+}
+@keyframes shoo-eyes-read {
+  from {
+    transform: translate(-2.88px, 0.6px);
+  }
+  to {
+    transform: translate(2.88px, 0.6px);
+  }
+}
+@keyframes shoo-eyes-drift {
+  0%,
+  20% {
+    transform: translate(0, 0);
+  }
+  45% {
+    transform: translate(-1px, 0.3px);
+  }
+  70%,
+  100% {
+    transform: translate(1px, -0.2px);
+  }
+}

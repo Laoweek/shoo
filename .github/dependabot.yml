@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # The workflow pins each action to a commit SHA, so only these PRs move them forward.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # A week lets a compromised release be caught and pulled before it reaches CI.
+    cooldown:
+      default-days: 7
+
+  # The cooldown delays version updates only, never security updates.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # Build and test tooling arrives as one PR. Each runtime dependency ships in the extension,
+    # so it keeps its own PR and review.
+    groups:
+      dev-dependencies:
+        dependency-type: development
+    ignore:
+      # TypeScript 7 does not export the compiler API that scripts/calibration/requests.test.ts uses.
+      # Held from 2026-11-05 for about a week. Remove this entry to take the major update.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']

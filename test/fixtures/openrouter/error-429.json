@@ -1,0 +1,22 @@
+{
+  "name": "error-429",
+  "handWritten": true,
+  "note": "Not seen in the Decisions API smoke test at 4 concurrent requests. Shape follows the observed error envelope, Retry-After per https://openrouter.ai/docs/api_reference/errors-and-debugging.",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": null
+  },
+  "response": {
+    "status": 429,
+    "headers": {
+      "content-type": "application/json",
+      "retry-after": "1"
+    },
+    "body": {
+      "error": {
+        "code": 429,
+        "message": "Rate limit exceeded: too many requests."
+      }
+    }
+  }
+}

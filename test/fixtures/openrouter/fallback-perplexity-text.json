@@ -1,0 +1,229 @@
+{
+  "name": "fallback-perplexity-text",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "perplexity/pplx-decider-v1.1-27b",
+      "provider": {
+        "order": [
+          "perplexity"
+        ],
+        "allow_fallbacks": false,
+        "data_collection": "deny"
+      },
+      "state": {
+        "viewer_does_not_want": {
+          "R1": "Reaction videos, where someone watches and reacts to other content",
+          "R2": "Crypto, day trading, or get-rich-quick finance",
+          "R3": "Celebrity gossip and drama"
+        },
+        "viewer_always_wants": {
+          "K1": "Programming tutorials"
+        },
+        "viewer_kept_anyway": [
+          "Vocal coach reacts to classic rock songs (channel: Vocal Coach Ana)"
+        ]
+      },
+      "questions": {
+        "t01": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t01_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t02": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t02_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t03": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t03_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t05": {
+          "type": "choice",
+          "instructions": {
+            "task": "Which rule in viewer_does_not_want does this recommended YouTube video match? Choose keep if it matches none. Videos similar to viewer_kept_anyway should be kept.",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          },
+          "criteria": {
+            "keep": "Matches none of the rules",
+            "R1": "Reaction videos, where someone watches and reacts to other content",
+            "R2": "Crypto, day trading, or get-rich-quick finance",
+            "R3": "Celebrity gossip and drama"
+          }
+        },
+        "t05_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "perplexity/pplx-decider-v1.1-27b-20261006",
+      "answers": {
+        "t01": {
+          "type": "choice",
+          "choice": "R1",
+          "probabilities": {
+            "keep": 0.0005956698375392494,
+            "R1": 0.9993701313009382,
+            "R2": 0.000019138939392343023,
+            "R3": 0.000015059922130254092
+          },
+          "confidence": 0.9991601750679177
+        },
+        "t01_keep": {
+          "type": "noul",
+          "noul": 0.000021143264985853678
+        },
+        "t02": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.9999085703718957,
+            "R1": 0.000059799156867900595,
+            "R2": 0.00002214124623930252,
+            "R3": 0.000009489224996838328
+          },
+          "confidence": 0.9998780938291943
+        },
+        "t02_keep": {
+          "type": "noul",
+          "noul": 0.000029475134590412967
+        },
+        "t03": {
+          "type": "choice",
+          "choice": "R2",
+          "probabilities": {
+            "keep": 0.00018778369361121568,
+            "R1": 0.0000326686554808621,
+            "R2": 0.9997273403008504,
+            "R3": 0.000052207350057488574
+          },
+          "confidence": 0.9996364537344672
+        },
+        "t03_keep": {
+          "type": "noul",
+          "noul": 0.000022898310317255287
+        },
+        "t05": {
+          "type": "choice",
+          "choice": "keep",
+          "probabilities": {
+            "keep": 0.9998468983555502,
+            "R1": 0.00006552053990956837,
+            "R2": 0.00005966731527185189,
+            "R3": 0.000027913789268432974
+          },
+          "confidence": 0.9997958644740669
+        },
+        "t05_keep": {
+          "type": "noul",
+          "noul": 0.9997760763120124
+        }
+      },
+      "usage": {
+        "input_tokens": 2110,
+        "output_tokens": 8,
+        "cost": 0.0000422
+      },
+      "id": "REDACTED",
+      "provider": "Perplexity"
+    }
+  }
+}

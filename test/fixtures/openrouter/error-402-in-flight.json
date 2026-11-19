@@ -1,0 +1,27 @@
+{
+  "name": "error-402-in-flight",
+  "handWritten": true,
+  "note": "Not triggerable in the Decisions API smoke test. Body copied from https://openrouter.ai/docs/api_reference/limits (In-flight spending budget), Retry-After assumed 2 s.",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": null
+  },
+  "response": {
+    "status": 402,
+    "headers": {
+      "content-type": "application/json",
+      "retry-after": "2"
+    },
+    "body": {
+      "error": {
+        "code": 402,
+        "message": "This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.",
+        "metadata": {
+          "reason": "in_flight_budget_exhausted",
+          "limit_source": "openrouter_in_flight_budget",
+          "remedy_hint": "Retry after your in-flight requests settle (see the Retry-After header)."
+        }
+      }
+    }
+  }
+}

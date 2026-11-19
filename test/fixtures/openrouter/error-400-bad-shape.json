@@ -1,0 +1,35 @@
+{
+  "name": "error-400-bad-shape",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "cloudflare"
+        ],
+        "allow_fallbacks": false
+      },
+      "state": "x",
+      "questions": {
+        "t01": {
+          "type": "choice",
+          "instructions": "x"
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "message": "[\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"questions\",\n      \"t01\",\n      \"criteria\"\n    ],\n    \"message\": \"Invalid input: expected record, received undefined\"\n  }\n]",
+        "code": 400
+      },
+      "user_id": "REDACTED"
+    }
+  }
+}

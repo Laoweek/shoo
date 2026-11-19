@@ -1,0 +1,63 @@
+/* Shoo tokens for extension pages. Source of truth: docs/spec/ui-design.md, Section 2.
+   The tokens the in-page UI uses come from tokens-shared.css. The ones below are for extension pages only, so
+   they stay out of every shadow root. Extension pages switch with prefers-color-scheme, or with data-theme. */
+@import './tokens-shared.css';
+
+:root {
+  --ground: #f4f1ec;
+  --stroke: #cfc6bd;
+  --line: rgb(43 36 31 / 0.09);
+  --lit: #fff3d6;
+  /* The switch's knob: white on the light theme's orange, dark on the dark theme's lighter orange. */
+  --knob: #ffffff;
+
+  /* Verdict pills: pale grounds, so a Verdict never looks pressable. */
+  --remove-bg: #fde4e1;
+  --remove-fg: #b4232a;
+  --keep-bg: #ddf3e3;
+  --keep-fg: #1e6b3e;
+
+  --shadow: 0 1px 2px rgb(43 36 31 / 0.06), 0 8px 24px rgb(43 36 31 / 0.07);
+}
+
+:root[data-theme='dark'] {
+  --ground: #1b1816;
+  --stroke: #4e4640;
+  --line: rgb(242 237 232 / 0.09);
+  --lit: rgb(255 196 92 / 0.1);
+  --knob: #1b1816;
+  --remove-bg: #4a2220;
+  --remove-fg: #ffb4ac;
+  --keep-bg: #1d3a28;
+  --keep-fg: #9ee0b5;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px rgb(0 0 0 / 0.35);
+}
+
+/* Every dark value, shared and page-only, so data-theme='dark' and the system's dark theme look the same. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ground: #1b1816;
+    --paper: #26221f;
+    --ink: #f2ede8;
+    --muted: #b3a89f;
+    --edge: #7a6f67;
+    --stroke: #4e4640;
+    --line: rgb(242 237 232 / 0.09);
+    --line-strong: rgb(242 237 232 / 0.18);
+    --tint: rgb(242 237 232 / 0.05);
+    --lit: rgb(255 196 92 / 0.1);
+    --danger: #ff9a8f;
+    --action: #ff7a50;
+    --action-hover: #ff9370;
+    --on-action: #1b1816;
+    --knob: #1b1816;
+    --remove-bg: #4a2220;
+    --remove-fg: #ffb4ac;
+    --keep-bg: #1d3a28;
+    --keep-fg: #9ee0b5;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 28px rgb(0 0 0 / 0.35);
+    --shadow-float: 0 1px 3px rgb(0 0 0 / 0.4), 0 12px 32px rgb(0 0 0 / 0.5);
+    --dot-ring: transparent;
+    color-scheme: dark;
+  }
+}

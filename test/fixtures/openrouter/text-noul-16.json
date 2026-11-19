@@ -1,0 +1,1065 @@
+{
+  "name": "text-noul-16",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "cloudflare"
+        ],
+        "allow_fallbacks": false,
+        "data_collection": "deny"
+      },
+      "state": {
+        "viewer_does_not_want": {
+          "R1": "Reaction videos, where someone watches and reacts to other content",
+          "R2": "Crypto, day trading, or get-rich-quick finance",
+          "R3": "Celebrity gossip and drama"
+        },
+        "viewer_always_wants": {
+          "K1": "Programming tutorials"
+        },
+        "viewer_kept_anyway": [
+          "Vocal coach reacts to classic rock songs (channel: Vocal Coach Ana)"
+        ]
+      },
+      "questions": {
+        "t01_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t01_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t01_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t01_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t02_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t02_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t02_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t02_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "How sourdough fermentation actually works",
+              "channel": "Food Science Lab",
+              "duration": "14:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t03_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t03_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t03_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t03_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "This altcoin will 100x before Christmas",
+              "channel": "Crypto Kingz",
+              "duration": "9:31",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t04_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Taylor and Travis: the breakup rumors explained",
+              "channel": "Pop Tea Daily",
+              "duration": "12:00",
+              "surface": "home page"
+            }
+          }
+        },
+        "t04_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Taylor and Travis: the breakup rumors explained",
+              "channel": "Pop Tea Daily",
+              "duration": "12:00",
+              "surface": "home page"
+            }
+          }
+        },
+        "t04_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Taylor and Travis: the breakup rumors explained",
+              "channel": "Pop Tea Daily",
+              "duration": "12:00",
+              "surface": "home page"
+            }
+          }
+        },
+        "t04_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Taylor and Travis: the breakup rumors explained",
+              "channel": "Pop Tea Daily",
+              "duration": "12:00",
+              "surface": "home page"
+            }
+          }
+        },
+        "t05_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t05_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t05_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t05_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t06_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Musician reacts to Bohemian Rhapsody for the first time",
+              "channel": "Vocal Coach Ana",
+              "duration": "22:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t06_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Musician reacts to Bohemian Rhapsody for the first time",
+              "channel": "Vocal Coach Ana",
+              "duration": "22:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t06_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Musician reacts to Bohemian Rhapsody for the first time",
+              "channel": "Vocal Coach Ana",
+              "duration": "22:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t06_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Musician reacts to Bohemian Rhapsody for the first time",
+              "channel": "Vocal Coach Ana",
+              "duration": "22:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t07_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Index funds vs. stock picking: what 30 years of data says",
+              "channel": "Plain Money",
+              "duration": "16:40",
+              "surface": "home page"
+            }
+          }
+        },
+        "t07_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Index funds vs. stock picking: what 30 years of data says",
+              "channel": "Plain Money",
+              "duration": "16:40",
+              "surface": "home page"
+            }
+          }
+        },
+        "t07_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Index funds vs. stock picking: what 30 years of data says",
+              "channel": "Plain Money",
+              "duration": "16:40",
+              "surface": "home page"
+            }
+          }
+        },
+        "t07_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Index funds vs. stock picking: what 30 years of data says",
+              "channel": "Plain Money",
+              "duration": "16:40",
+              "surface": "home page"
+            }
+          }
+        },
+        "t08_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "I tried day trading for 30 days with $1,000",
+              "channel": "Max Hustle",
+              "duration": "19:02",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t08_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "I tried day trading for 30 days with $1,000",
+              "channel": "Max Hustle",
+              "duration": "19:02",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t08_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "I tried day trading for 30 days with $1,000",
+              "channel": "Max Hustle",
+              "duration": "19:02",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t08_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "I tried day trading for 30 days with $1,000",
+              "channel": "Max Hustle",
+              "duration": "19:02",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t09_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Restoring a rusted 1950s hand plane",
+              "channel": "Workshop Tales",
+              "duration": "25:13",
+              "surface": "home page"
+            }
+          }
+        },
+        "t09_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Restoring a rusted 1950s hand plane",
+              "channel": "Workshop Tales",
+              "duration": "25:13",
+              "surface": "home page"
+            }
+          }
+        },
+        "t09_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Restoring a rusted 1950s hand plane",
+              "channel": "Workshop Tales",
+              "duration": "25:13",
+              "surface": "home page"
+            }
+          }
+        },
+        "t09_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Restoring a rusted 1950s hand plane",
+              "channel": "Workshop Tales",
+              "duration": "25:13",
+              "surface": "home page"
+            }
+          }
+        },
+        "t10_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Drake vs Kendrick: every diss track, in order",
+              "channel": "Rap Lore",
+              "duration": "31:20",
+              "surface": "home page"
+            }
+          }
+        },
+        "t10_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Drake vs Kendrick: every diss track, in order",
+              "channel": "Rap Lore",
+              "duration": "31:20",
+              "surface": "home page"
+            }
+          }
+        },
+        "t10_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Drake vs Kendrick: every diss track, in order",
+              "channel": "Rap Lore",
+              "duration": "31:20",
+              "surface": "home page"
+            }
+          }
+        },
+        "t10_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Drake vs Kendrick: every diss track, in order",
+              "channel": "Rap Lore",
+              "duration": "31:20",
+              "surface": "home page"
+            }
+          }
+        },
+        "t11_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Bitcoin's whitepaper explained, line by line",
+              "channel": "CS Explained",
+              "duration": "27:45",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t11_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Bitcoin's whitepaper explained, line by line",
+              "channel": "CS Explained",
+              "duration": "27:45",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t11_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Bitcoin's whitepaper explained, line by line",
+              "channel": "CS Explained",
+              "duration": "27:45",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t11_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Bitcoin's whitepaper explained, line by line",
+              "channel": "CS Explained",
+              "duration": "27:45",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t12_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t12_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t12_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t12_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t13_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "xQc reacts to the new GTA trailer",
+              "channel": "xQc Clips",
+              "duration": "15:33",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t13_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "xQc reacts to the new GTA trailer",
+              "channel": "xQc Clips",
+              "duration": "15:33",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t13_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "xQc reacts to the new GTA trailer",
+              "channel": "xQc Clips",
+              "duration": "15:33",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t13_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "xQc reacts to the new GTA trailer",
+              "channel": "xQc Clips",
+              "duration": "15:33",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t14_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "React hooks crash course for beginners",
+              "channel": "Web Dev Simplified",
+              "duration": "28:03",
+              "surface": "home page"
+            }
+          }
+        },
+        "t14_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "React hooks crash course for beginners",
+              "channel": "Web Dev Simplified",
+              "duration": "28:03",
+              "surface": "home page"
+            }
+          }
+        },
+        "t14_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "React hooks crash course for beginners",
+              "channel": "Web Dev Simplified",
+              "duration": "28:03",
+              "surface": "home page"
+            }
+          }
+        },
+        "t14_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "React hooks crash course for beginners",
+              "channel": "Web Dev Simplified",
+              "duration": "28:03",
+              "surface": "home page"
+            }
+          }
+        },
+        "t15_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t15_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t15_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t15_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t16_R1": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R1 in viewer_does_not_want?",
+            "video": {
+              "title": "wait for it 😂",
+              "surface": "Shorts shelf"
+            }
+          }
+        },
+        "t16_R2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R2 in viewer_does_not_want?",
+            "video": {
+              "title": "wait for it 😂",
+              "surface": "Shorts shelf"
+            }
+          }
+        },
+        "t16_R3": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match rule R3 in viewer_does_not_want?",
+            "video": {
+              "title": "wait for it 😂",
+              "surface": "Shorts shelf"
+            }
+          }
+        },
+        "t16_keep": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match at least one rule in viewer_always_wants?",
+            "video": {
+              "title": "wait for it 😂",
+              "surface": "Shorts shelf"
+            }
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "answers": {
+        "t01_R1": {
+          "type": "noul",
+          "noul": 0.9271
+        },
+        "t01_R2": {
+          "type": "noul",
+          "noul": 0.0116
+        },
+        "t01_R3": {
+          "type": "noul",
+          "noul": 0.0296
+        },
+        "t01_keep": {
+          "type": "noul",
+          "noul": 0.015
+        },
+        "t02_R1": {
+          "type": "noul",
+          "noul": 0.0199
+        },
+        "t02_R2": {
+          "type": "noul",
+          "noul": 0.0167
+        },
+        "t02_R3": {
+          "type": "noul",
+          "noul": 0.0071
+        },
+        "t02_keep": {
+          "type": "noul",
+          "noul": 0.1481
+        },
+        "t03_R1": {
+          "type": "noul",
+          "noul": 0.8996
+        },
+        "t03_R2": {
+          "type": "noul",
+          "noul": 0.9784
+        },
+        "t03_R3": {
+          "type": "noul",
+          "noul": 0.0668
+        },
+        "t03_keep": {
+          "type": "noul",
+          "noul": 0.0081
+        },
+        "t04_R1": {
+          "type": "noul",
+          "noul": 0.9376
+        },
+        "t04_R2": {
+          "type": "noul",
+          "noul": 0.0819
+        },
+        "t04_R3": {
+          "type": "noul",
+          "noul": 0.9718
+        },
+        "t04_keep": {
+          "type": "noul",
+          "noul": 0.0105
+        },
+        "t05_R1": {
+          "type": "noul",
+          "noul": 0.016
+        },
+        "t05_R2": {
+          "type": "noul",
+          "noul": 0.0083
+        },
+        "t05_R3": {
+          "type": "noul",
+          "noul": 0.0063
+        },
+        "t05_keep": {
+          "type": "noul",
+          "noul": 0.9328
+        },
+        "t06_R1": {
+          "type": "noul",
+          "noul": 0.1475
+        },
+        "t06_R2": {
+          "type": "noul",
+          "noul": 0.0161
+        },
+        "t06_R3": {
+          "type": "noul",
+          "noul": 0.0308
+        },
+        "t06_keep": {
+          "type": "noul",
+          "noul": 0.6825
+        },
+        "t07_R1": {
+          "type": "noul",
+          "noul": 0.5239
+        },
+        "t07_R2": {
+          "type": "noul",
+          "noul": 0.5484
+        },
+        "t07_R3": {
+          "type": "noul",
+          "noul": 0.0223
+        },
+        "t07_keep": {
+          "type": "noul",
+          "noul": 0.036
+        },
+        "t08_R1": {
+          "type": "noul",
+          "noul": 0.8793
+        },
+        "t08_R2": {
+          "type": "noul",
+          "noul": 0.9702
+        },
+        "t08_R3": {
+          "type": "noul",
+          "noul": 0.1621
+        },
+        "t08_keep": {
+          "type": "noul",
+          "noul": 0.0131
+        },
+        "t09_R1": {
+          "type": "noul",
+          "noul": 0.0185
+        },
+        "t09_R2": {
+          "type": "noul",
+          "noul": 0.0094
+        },
+        "t09_R3": {
+          "type": "noul",
+          "noul": 0.0079
+        },
+        "t09_keep": {
+          "type": "noul",
+          "noul": 0.0276
+        },
+        "t10_R1": {
+          "type": "noul",
+          "noul": 0.4681
+        },
+        "t10_R2": {
+          "type": "noul",
+          "noul": 0.0285
+        },
+        "t10_R3": {
+          "type": "noul",
+          "noul": 0.2457
+        },
+        "t10_keep": {
+          "type": "noul",
+          "noul": 0.0175
+        },
+        "t11_R1": {
+          "type": "noul",
+          "noul": 0.2359
+        },
+        "t11_R2": {
+          "type": "noul",
+          "noul": 0.7645
+        },
+        "t11_R3": {
+          "type": "noul",
+          "noul": 0.0234
+        },
+        "t11_keep": {
+          "type": "noul",
+          "noul": 0.1248
+        },
+        "t12_R1": {
+          "type": "noul",
+          "noul": 0.0155
+        },
+        "t12_R2": {
+          "type": "noul",
+          "noul": 0.0079
+        },
+        "t12_R3": {
+          "type": "noul",
+          "noul": 0.0064
+        },
+        "t12_keep": {
+          "type": "noul",
+          "noul": 0.8249
+        },
+        "t13_R1": {
+          "type": "noul",
+          "noul": 0.9087
+        },
+        "t13_R2": {
+          "type": "noul",
+          "noul": 0.0898
+        },
+        "t13_R3": {
+          "type": "noul",
+          "noul": 0.0947
+        },
+        "t13_keep": {
+          "type": "noul",
+          "noul": 0.0207
+        },
+        "t14_R1": {
+          "type": "noul",
+          "noul": 0.0226
+        },
+        "t14_R2": {
+          "type": "noul",
+          "noul": 0.0133
+        },
+        "t14_R3": {
+          "type": "noul",
+          "noul": 0.0072
+        },
+        "t14_keep": {
+          "type": "noul",
+          "noul": 0.8195
+        },
+        "t15_R1": {
+          "type": "noul",
+          "noul": 0.9553
+        },
+        "t15_R2": {
+          "type": "noul",
+          "noul": 0.262
+        },
+        "t15_R3": {
+          "type": "noul",
+          "noul": 0.9813
+        },
+        "t15_keep": {
+          "type": "noul",
+          "noul": 0.0098
+        },
+        "t16_R1": {
+          "type": "noul",
+          "noul": 0.078
+        },
+        "t16_R2": {
+          "type": "noul",
+          "noul": 0.0202
+        },
+        "t16_R3": {
+          "type": "noul",
+          "noul": 0.0349
+        },
+        "t16_keep": {
+          "type": "noul",
+          "noul": 0.0086
+        }
+      },
+      "usage": {
+        "input_tokens": 8688,
+        "output_tokens": 0,
+        "cost": 0.00078192
+      },
+      "id": "REDACTED",
+      "provider": "Cloudflare"
+    }
+  }
+}

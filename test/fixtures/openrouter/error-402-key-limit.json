@@ -1,0 +1,25 @@
+{
+  "name": "error-402-key-limit",
+  "handWritten": true,
+  "note": "Not triggerable in the Decisions API smoke test. limit_source per https://openrouter.ai/docs/api_reference/limits.",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": null
+  },
+  "response": {
+    "status": 402,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "error": {
+        "code": 402,
+        "message": "Key limit exceeded.",
+        "metadata": {
+          "limit_source": "openrouter_key_limit",
+          "remedy_hint": "Raise the key limit at https://openrouter.ai/keys."
+        }
+      }
+    }
+  }
+}

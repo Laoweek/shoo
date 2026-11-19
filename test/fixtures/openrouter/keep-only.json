@@ -1,0 +1,170 @@
+{
+  "name": "keep-only",
+  "request": {
+    "url": "https://openrouter.ai/api/alpha/decisions",
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "provider": {
+        "order": [
+          "cloudflare"
+        ],
+        "allow_fallbacks": false,
+        "data_collection": "deny"
+      },
+      "state": {
+        "viewer_always_wants": {
+          "K2": "Programming tutorials",
+          "K5": "Woodworking and furniture making"
+        }
+      },
+      "questions": {
+        "t05_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t05_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Rust ownership in 10 minutes",
+              "channel": "Code Bites",
+              "duration": "10:12",
+              "surface": "watch page sidebar"
+            }
+          }
+        },
+        "t12_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t12_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Build a REST API in Go, step by step",
+              "channel": "Gopher School",
+              "duration": "42:10",
+              "surface": "home page"
+            }
+          }
+        },
+        "t01_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t01_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Reacting to the WORST cooking fails of 2026",
+              "channel": "Jake Reacts",
+              "duration": "18:42",
+              "surface": "home page"
+            }
+          }
+        },
+        "t15_K2": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Programming tutorials?",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          }
+        },
+        "t15_K5": {
+          "type": "noul",
+          "instructions": {
+            "task": "Does this recommended YouTube video match this rule: Woodworking and furniture making?",
+            "video": {
+              "title": "Kardashian family feud gets worse",
+              "channel": "Celeb Buzz",
+              "duration": "10:05",
+              "surface": "home page"
+            }
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "cloudflare/clef-flash",
+      "answers": {
+        "t05_K2": {
+          "type": "noul",
+          "noul": 0.9633
+        },
+        "t05_K5": {
+          "type": "noul",
+          "noul": 0.0083
+        },
+        "t12_K2": {
+          "type": "noul",
+          "noul": 0.9629
+        },
+        "t12_K5": {
+          "type": "noul",
+          "noul": 0.0088
+        },
+        "t01_K2": {
+          "type": "noul",
+          "noul": 0.0141
+        },
+        "t01_K5": {
+          "type": "noul",
+          "noul": 0.0147
+        },
+        "t15_K2": {
+          "type": "noul",
+          "noul": 0.0089
+        },
+        "t15_K5": {
+          "type": "noul",
+          "noul": 0.009
+        }
+      },
+      "usage": {
+        "input_tokens": 1127,
+        "output_tokens": 0,
+        "cost": 0.00010143
+      },
+      "id": "REDACTED",
+      "provider": "Cloudflare"
+    }
+  }
+}
