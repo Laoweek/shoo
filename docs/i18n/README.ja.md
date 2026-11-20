@@ -55,7 +55,7 @@ Shoo がモデルプロバイダーに Web アドレス、動画 ID、チャン�
 
 ## 現状
 
-プレリリースのバージョン 0.2.0 です。Shoo はまだ Chrome ウェブストアにも Firefox Add-ons にも公開されていないため、ソースからインストールしてください。
+プレリリースのバージョン 0.2.1 です。Shoo はまだ Chrome ウェブストアにも Firefox Add-ons にも公開されていないため、ソースからインストールしてください。
 
 - Connect OpenRouter（OAuth によるサインイン）は、まだ実環境でテストしていません。代わりに OpenRouter キーを貼り付けることもできます。
 - 直接つなぐ判定プロバイダーは、各プロバイダーのドキュメントに書かれた仕様に従う代替サーバーを相手にテストしたもので、実際のキーではテストしていません。
@@ -83,8 +83,8 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 リリースするには、`package.json` の `version` を設定してコミットし、それに合ったタグをプッシュします。
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 CI はタグが `package.json` と一致するかを確認し、3 つの zip を添えた GitHub Release を公開します。Chrome ウェブストアと Firefox Add-ons へのアップロードは手作業で、その GitHub Release の zip を使います。ローカルでビルドしたものは使いません。ストア掲載文とストアのフォームは [docs/release/](../release/) にあります。

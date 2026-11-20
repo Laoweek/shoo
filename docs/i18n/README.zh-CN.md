@@ -55,7 +55,7 @@ Shoo 从不向模型服务商发送网址、视频 ID、频道 ID 和标识名�
 
 ## 状态
 
-预发布版本，版本号 0.2.0。Shoo 尚未上架 Chrome 应用商店或 Firefox 附加组件网站，因此请从源码安装。
+预发布版本，版本号 0.2.1。Shoo 尚未上架 Chrome 应用商店或 Firefox 附加组件网站，因此请从源码安装。
 
 - Connect OpenRouter（通过 OAuth 登录）尚未经过真实环境测试。你可以改为粘贴 OpenRouter 密钥。
 - 直接连接的决策服务商是用模拟服务器测试的，这些服务器遵循各服务商公开文档中的规则，并未使用真实密钥测试。
@@ -83,8 +83,8 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 发布时，先在 `package.json` 中设置 `version` 并提交，然后推送一个对应的标签：
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 CI 会检查标签是否与 `package.json` 一致，并发布一个附带这三个 zip 的 GitHub Release。上传到 Chrome 应用商店和 Firefox 附加组件网站需要手动完成，并且使用该 GitHub Release 中的 zip，绝不使用本地构建。商店介绍文案和商店表单见 [docs/release/](../release/)。

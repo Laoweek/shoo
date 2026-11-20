@@ -55,7 +55,7 @@ Shoo nunca envía a un proveedor de modelos direcciones web, ID de vídeo, ID ni
 
 ## Estado
 
-Versión preliminar 0.2.0. Shoo todavía no está en la Chrome Web Store ni en Firefox Add-ons, así que instálalo desde el código fuente.
+Versión preliminar 0.2.1. Shoo todavía no está en la Chrome Web Store ni en Firefox Add-ons, así que instálalo desde el código fuente.
 
 - Connect OpenRouter (inicio de sesión con OAuth) todavía no se ha probado en real. Puedes pegar una clave de OpenRouter en su lugar.
 - Los proveedores de decisión directos se probaron con servidores sustitutos que siguen las reglas documentadas de cada proveedor, no con claves reales.
@@ -83,8 +83,8 @@ La [CI](../../.github/workflows/ci.yml) ejecuta `pnpm check` en cada pull reques
 Para publicar una versión, ajusta `version` en `package.json`, haz commit y luego sube una etiqueta que coincida:
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 La CI comprueba que la etiqueta coincide con `package.json` y publica una GitHub Release con los tres zips. La subida a la Chrome Web Store y a Firefox Add-ons es un paso manual que usa los zips de esa GitHub Release, nunca una compilación local. Los textos de las fichas y los formularios de las tiendas están en [docs/release/](../release/).

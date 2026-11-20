@@ -53,7 +53,7 @@ Shoo never sends a model provider web addresses, video IDs, channel IDs or handl
 
 ## Status
 
-Pre-release, version 0.2.0. Shoo is not yet in the Chrome Web Store or on Firefox Add-ons, so install it from source.
+Pre-release, version 0.2.1. Shoo is not yet in the Chrome Web Store or on Firefox Add-ons, so install it from source.
 
 - Connect OpenRouter (OAuth sign-in) has not been tested live yet. You can paste an OpenRouter key instead.
 - The direct Decision providers were tested against stand-in servers that follow each provider's documented rules, not with real keys.
@@ -81,8 +81,8 @@ pnpm build:firefox    # Firefox, written to .output/firefox-mv3/
 To release, set `version` in `package.json`, commit, then push a matching tag:
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 CI checks that the tag matches `package.json` and publishes a GitHub Release with the three zips. Uploading to the Chrome Web Store and Firefox Add-ons is a manual step that uses the zips from that GitHub Release, never a local build. The listing copy and store forms are in [docs/release/](docs/release/).

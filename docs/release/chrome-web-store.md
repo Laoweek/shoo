@@ -8,10 +8,10 @@ Status of each field: **Ready** (paste as is), **Publisher** (needs a decision o
 
 | Item | Value | Status |
 |---|---|---|
-| Upload | `shoo-0.2.0-chrome.zip` from the GitHub Release `v0.2.0` (`gh release download v0.2.0 --repo Laoweek/shoo --pattern 'shoo-0.2.0-chrome.zip'`), built by CI from the tag after `pnpm check`. Never upload a local build | Ready once the tag's CI run has published the Release |
+| Upload | `shoo-0.2.1-chrome.zip` from the GitHub Release `v0.2.1` (`gh release download v0.2.1 --repo Laoweek/shoo --pattern 'shoo-0.2.1-chrome.zip'`), built by CI from the tag after `pnpm check`. Never upload a local build | Ready once the tag's CI run has published the Release |
 | Manifest name | `__MSG_extName__` → "Shoo · Clear unwanted video recommendations" | Ready |
 | Manifest description (store summary) | `__MSG_extDescription__` | Ready |
-| Version | 0.2.0 | Ready |
+| Version | 0.2.1 | Ready |
 | Minimum Chrome | 120 (`minimum_chrome_version`) | Ready |
 
 ## Store listing tab

@@ -10,8 +10,8 @@ Listing copy, reviewer notes, data collection declaration, sources and signing s
 | Minimum Firefox | 140.0 (`gecko.strict_min_version`) |
 | Background | event page (`background.scripts`) |
 | Data collection | `required: ["none"]`, `optional: ["websiteContent", "authenticationInfo"]` |
-| Extension zip | `shoo-0.2.0-firefox.zip` from the GitHub Release `v0.2.0`, built by CI with `pnpm zip:firefox` |
-| Sources zip | `shoo-0.2.0-sources.zip` from the same Release, written by the same command |
+| Extension zip | `shoo-0.2.1-firefox.zip` from the GitHub Release `v0.2.1`, built by CI with `pnpm zip:firefox` |
+| Sources zip | `shoo-0.2.1-sources.zip` from the same Release, written by the same command |
 | `web-ext lint` (10.7.0, 2026-10-10, rerun on the 0.2.0 build before upload) | 0 errors, 0 notices, 2 warnings `UNSAFE_VAR_ASSIGNMENT` (Preact's own innerHTML code path, no page data reaches it) |
 
 ### No `gecko_android`
@@ -98,7 +98,7 @@ Assessment: nothing reaches disk except counts with no browsing data, which fits
 
 ## Sources for review
 
-`pnpm zip:firefox` writes `.output/shoo-0.2.0-sources.zip` with `src/`, `public/`, `scripts/`, `wxt.config.ts`, `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `.nvmrc`, `README-SOURCES.md` and `THIRD_PARTY_NOTICES.md`. It holds no `.env*`, `docs/`, `.impeccable/` or `test/fixtures/` (checked 2026-10-10). Mozilla's default reviewer machine is Ubuntu 24.04 ARM64 with Node 24.14.0 and npm. README-SOURCES.md names Node 24.x and pnpm 11.9.0 via corepack, which covers the difference Mozilla asks builders to state.
+`pnpm zip:firefox` writes `.output/shoo-0.2.1-sources.zip` with `src/`, `public/`, `scripts/`, `wxt.config.ts`, `package.json`, `pnpm-lock.yaml`, `tsconfig.json`, `.nvmrc`, `README-SOURCES.md` and `THIRD_PARTY_NOTICES.md`. It holds no `.env*`, `docs/`, `.impeccable/` or `test/fixtures/` (checked 2026-10-10). Mozilla's default reviewer machine is Ubuntu 24.04 ARM64 with Node 24.14.0 and npm. README-SOURCES.md names Node 24.x and pnpm 11.9.0 via corepack, which covers the difference Mozilla asks builders to state.
 
 CI checks reproducibility on every push to `main` and every version tag (`cross-browser-and-stores.md` Section 3). The `package` job in `.github/workflows/ci.yml` unzips the sources zip outside the checkout, rebuilds it on Ubuntu with `pnpm install --frozen-lockfile && pnpm zip:firefox`, and fails unless every file of the rebuilt Firefox package matches the shipped one by sha256. A Release exists only when that check passed for its tag, so its sources zip rebuilds its Firefox zip.
 
@@ -111,9 +111,9 @@ Upload only the zips that the `release` job attached to the GitHub Release of th
 Before either path, download the Release into an empty directory outside the repo and check that its manifest has no `gecko_android` (above):
 
 ```sh
-mkdir shoo-v0.2.0 && cd shoo-v0.2.0
-gh release download v0.2.0 --repo Laoweek/shoo --pattern 'shoo-0.2.0-*.zip'
-unzip -q shoo-0.2.0-firefox.zip -d firefox
+mkdir shoo-v0.2.1 && cd shoo-v0.2.1
+gh release download v0.2.1 --repo Laoweek/shoo --pattern 'shoo-0.2.1-*.zip'
+unzip -q shoo-0.2.1-firefox.zip -d firefox
 grep -q gecko_android firefox/manifest.json && echo 'Stop: the manifest declares gecko_android'
 ```
 
@@ -121,9 +121,9 @@ grep -q gecko_android firefox/manifest.json && echo 'Stop: the manifest declares
 
 1. Sign in at https://addons.mozilla.org/developers/ and choose Submit a New Add-on.
 2. Choose **On your own** (unlisted, self-distributed).
-3. Upload `shoo-0.2.0-firefox.zip` from the Release. Wait for validation (expect the two Preact warnings).
+3. Upload `shoo-0.2.1-firefox.zip` from the Release. Wait for validation (expect the two Preact warnings).
 4. Platforms: Firefox desktop only. If Android is pre-ticked and locked, `gecko_android` is still in the manifest. Stop and remove it.
-5. Answer yes to "Do you need to submit source code?" and upload `shoo-0.2.0-sources.zip` from the Release.
+5. Answer yes to "Do you need to submit source code?" and upload `shoo-0.2.1-sources.zip` from the Release.
 6. Paste the reviewer notes above. Submit.
 7. When the version shows as signed, download the `.xpi` and install it in Firefox (drag it onto a window, or about:addons, Install Add-on From File).
 
@@ -141,7 +141,7 @@ Create API credentials at https://addons.mozilla.org/developers/addon/api/key/ a
   pnpm dlx --config.minimum-release-age=10080 web-ext@10.8.0 sign \
     --channel=unlisted \
     --source-dir=firefox \
-    --upload-source-code=shoo-0.2.0-sources.zip \
+    --upload-source-code=shoo-0.2.1-sources.zip \
     --artifacts-dir=signed
 )
 ```
