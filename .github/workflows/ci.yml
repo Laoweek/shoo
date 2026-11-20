@@ -108,6 +108,8 @@ jobs:
           pattern: shoo-*
           path: dist
           merge-multiple: true
+          # The zips are uploaded with archive: false, so unpacking them would drop the zips themselves.
+          skip-decompress: true
       - run: ls -l dist
       - run: gh release create "$GITHUB_REF_NAME" dist/*.zip --repo "$GITHUB_REPOSITORY" --title "Shoo $GITHUB_REF_NAME" --generate-notes --verify-tag
         env:
